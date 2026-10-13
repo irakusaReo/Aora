@@ -21,3 +21,9 @@ begin
   end if;
 end
 $$;
+
+-- No session state is ever set by the application (the runtime connection is a
+-- transaction-mode pooler), so the time zone is a property of the roles.
+alter role aora_owner set timezone = 'UTC';
+alter role aora_app set timezone = 'UTC';
+alter role aora_platform set timezone = 'UTC';

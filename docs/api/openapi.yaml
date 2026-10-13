@@ -4,9 +4,10 @@ info:
   version: 0.1.0
   summary: SANDBOX ONLY. No real money moves through this API.
   description: |
-    Phase 1 surface: sign-in with the sandbox authenticator, collection payment
-    intents against the AORA simulator provider, simulator webhook intake, and
-    operator reconciliation endpoints.
+    Sign-in with a phone number and a one-time code, PIN step-up, workspace
+    members and balances, consent records, collection payment intents against
+    the AORA simulator provider, simulator webhook intake, operator
+    reconciliation endpoints and scheduler-triggered jobs.
 
     Conventions:
     - Every response carries the header `Aora-Mode: sandbox`, and every JSON
@@ -25,9 +26,12 @@ servers:
 tags:
   - name: Health
   - name: Auth
+  - name: Workspace
+  - name: Consent
   - name: Payment intents
   - name: Webhooks
   - name: Operations
+  - name: Internal
 paths:
   /v1/health:
     get:
@@ -53,7 +57,7 @@ paths:
       summary: Start sign-in for a phone number
       description: >
         Always returns a challenge id, whether or not the number is registered.
-        In Phase 1 the sandbox authenticator sends nothing and accepts one fixed code.
+        A random six-digit code is sent by SMS. Rate-limited per phone number and per client address.
       requestBody:
         required: true
         content:
@@ -88,23 +92,80 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
-  /v1/auth/step-up/challenges:
+  /v1/auth/session:
+    delete:
+      tags: [Auth]
+      operationId: signOut
+      summary: Sign out (revokes the session)
+      security: [{ session: [] }]
+      responses:
+        '204': { description: Signed out }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/auth/pin/challenges:
     post:
       tags: [Auth]
-      operationId: startStepUp
-      summary: Start a second-factor challenge for the signed-in account
+      operationId: startPinChange
+      summary: Send a one-time code to set or change the PIN
       security: [{ session: [] }]
       responses:
         '201': { $ref: '#/components/responses/Challenge' }
         '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/auth/pin:
+    put:
+      tags: [Auth]
+      operationId: setPin
+      summary: Set or change the transaction PIN
+      description: >
+        Always needs a fresh one-time code from `POST /v1/auth/pin/challenges`.
+        The PIN is six digits and may not be a repeated digit or a simple sequence.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pin, challenge_id, code]
+              properties:
+                pin: { type: string, pattern: '^[0-9]{6}$' }
+                challenge_id: { type: string }
+                code: { type: string, minLength: 1, maxLength: 12 }
+      responses:
+        '200':
+          description: PIN set
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pin_set, mode]
+                properties:
+                  pin_set: { const: true }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /v1/auth/step-up:
     post:
       tags: [Auth]
       operationId: completeStepUp
-      summary: Confirm the second factor
-      description: Sensitive actions require a step-up completed within the last few minutes.
+      summary: Confirm a sensitive action with the PIN
+      description: >
+        Sensitive actions require a step-up completed within the last few minutes
+        on the same session. After repeated wrong PINs the PIN is locked for a
+        while; it can be replaced with a one-time code.
       security: [{ session: [] }]
-      requestBody: { $ref: '#/components/requestBodies/ChallengeAnswer' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pin]
+              properties:
+                pin: { type: string }
       responses:
         '200':
           description: Step-up recorded
@@ -118,6 +179,7 @@ paths:
                   mode: { $ref: '#/components/schemas/Mode' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
   /v1/me:
     get:
@@ -316,12 +378,249 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/members:
+    get:
+      tags: [Workspace]
+      operationId: listMembers
+      summary: List the workspace's members
+      description: 'Permission: `member.read` (admin, finance).'
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/Workspace' }]
+      responses:
+        '200':
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, mode]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Member' } }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Workspace]
+      operationId: addMember
+      summary: Add a member by phone number
+      description: 'Permission: `member.manage` (admin). Requires a PIN step-up.'
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/Workspace' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone, role]
+              properties:
+                phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+                role: { $ref: '#/components/schemas/Role' }
+      responses:
+        '201':
+          description: Member added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/members/{id}:
+    patch:
+      tags: [Workspace]
+      operationId: updateMember
+      summary: Change a member's role, or remove them
+      description: >
+        Permission: `member.manage` (admin). Requires a PIN step-up. Send either
+        `role` or `status`. A workspace always keeps at least one active admin.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                role: { $ref: '#/components/schemas/Role' }
+                status: { const: removed }
+      responses:
+        '200':
+          description: Member updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/ledger/balances:
+    get:
+      tags: [Workspace]
+      operationId: listBalances
+      summary: The workspace's ledger balances, one per account type
+      description: >
+        Permission: `ledger.read` (admin, finance). Each account type is a
+        different kind of balance; they are never added together.
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/Workspace' }]
+      responses:
+        '200':
+          description: Balances
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, mode]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [account_type, currency, balance_minor]
+                      properties:
+                        account_type: { type: string }
+                        currency: { type: string }
+                        balance_minor: { type: string, pattern: '^-?[0-9]+$' }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/terms/{key}:
+    get:
+      tags: [Consent]
+      operationId: getTerms
+      summary: The terms version currently in effect
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Terms
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, version, language, title, body, body_sha256, effective_from, mode]
+                properties:
+                  key: { type: string }
+                  version: { type: string }
+                  language: { type: string }
+                  title: { type: string }
+                  body: { type: string }
+                  body_sha256: { type: string }
+                  effective_from: { type: string, format: date-time }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/consents:
+    post:
+      tags: [Consent]
+      operationId: recordConsent
+      summary: Record consent to a terms version
+      description: >
+        Records the person, the capacity in which they act, the action, the time
+        and the exact terms version. The version must be the one in effect.
+        `workspace_id` is required for `business` capacity and refused otherwise.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [terms_key, terms_version, action, capacity]
+              properties:
+                terms_key: { type: string }
+                terms_version: { type: string }
+                action: { type: string }
+                capacity: { enum: [personal, business] }
+                workspace_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, created_at, mode]
+                properties:
+                  id: { type: string, format: uuid }
+                  created_at: { type: string, format: date-time }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/internal/cron/outbox:
+    get:
+      tags: [Internal]
+      operationId: cronOutbox
+      summary: Drain the outbox (called by the scheduler)
+      description: Idempotent and time-bounded. Authenticated with the cron secret.
+      security: [{ cron: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Job' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/internal/cron/sim-webhooks:
+    get:
+      tags: [Internal]
+      operationId: cronSimulatorWebhooks
+      summary: Deliver due simulator webhooks (sandbox only)
+      security: [{ cron: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Job' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/internal/cron/reconciliation:
+    get:
+      tags: [Internal]
+      operationId: cronReconciliation
+      summary: Run reconciliation unless a run is already in progress
+      security: [{ cron: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Job' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/internal/sandbox/sms:
+    get:
+      tags: [Internal]
+      operationId: listSimulatedSms
+      summary: Read simulated SMS messages (sandbox only)
+      description: >
+        Exists only while the simulated SMS sender is in use and an inbox token
+        is configured; otherwise it returns 404.
+      security: [{ inbox: [] }]
+      parameters:
+        - { name: phone, in: query, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: Messages, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, mode]
+                properties:
+                  data: { type: array, items: { type: object } }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     session:
       type: http
       scheme: bearer
       description: Session token from `POST /v1/auth/sessions`.
+    cron:
+      type: http
+      scheme: bearer
+      description: The deployment's cron secret. Sent by the scheduler only.
+    inbox:
+      type: http
+      scheme: bearer
+      description: The sandbox SMS inbox token.
   parameters:
     Workspace:
       name: Aora-Workspace-Id
@@ -352,6 +651,16 @@ components:
             properties:
               challenge_id: { type: string, format: uuid }
               mode: { $ref: '#/components/schemas/Mode' }
+    Job:
+      description: Job result
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [job, mode]
+            properties:
+              job: { type: string }
+              mode: { $ref: '#/components/schemas/Mode' }
     PaymentIntent:
       description: Payment intent
       content:
@@ -366,6 +675,18 @@ components:
     Mode:
       const: sandbox
       description: Every record and response is sandbox data.
+    Role:
+      enum: [admin, finance, cashier]
+    Member:
+      type: object
+      required: [id, account_id, role, status, phone_hint]
+      properties:
+        id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { enum: [active, removed] }
+        phone_hint: { type: string, description: Last three digits of the member's phone number. }
+        mode: { $ref: '#/components/schemas/Mode' }
     AmountMinor:
       type: string
       pattern: '^[1-9][0-9]{0,18}$'
@@ -444,6 +765,8 @@ components:
                 - capability_not_supported
                 - invalid_signature
                 - too_many_attempts
+                - pin_not_set
+                - conflict
                 - internal_error
             message: { type: string }
             request_id: { type: string }

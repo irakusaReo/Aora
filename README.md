@@ -9,7 +9,7 @@ AORA is a fintech platform launching in Kenya first: one modular monolith with s
 - **KELO** — credit and financing
 - **NAM Vault** — investments and vaults, embedded in CHIWO and KONY
 
-**Current state: Phase 1 built.** One sandbox payment travels from a signed-in user to a reconciled ledger entry: identity, tenant, double-entry ledger, payment intent, simulator webhook, reconciliation. Authentication and the payment provider are simulated. There is no user interface and no deployment yet. See [docs/progress.md](docs/progress.md).
+**Current state: Phase 2 in progress.** The API has one-time-code sign-in, PIN step-up, role permissions, consent records, rate limiting and scheduler-triggered jobs, on top of the Phase 1 payment slice. One-time-code delivery and the payment provider are still simulated. Nothing is deployed yet; hosting will be Vercel and Neon, where **Vercel's "Production" target is AORA staging, not live**. See [docs/progress.md](docs/progress.md).
 
 ## Read first
 
@@ -48,7 +48,7 @@ pnpm install
 cp .env.example .env.local
 ```
 
-Open `.env.local` and replace `<generate-locally>` with the output of `openssl rand -hex 32`. `.env.local` is git-ignored; never commit it.
+Open `.env.local` and replace each `<generate-locally>` with its own output of `openssl rand -hex 32`. `.env.local` is git-ignored; never commit it.
 
 ```bash
 pnpm db:start
@@ -80,7 +80,7 @@ In a second terminal:
 pnpm start:worker
 ```
 
-The seed creates two sandbox merchants and five accounts with phone numbers `+99900000001` (admin), `…02` (finance), `…03` (cashier), `…04` (another merchant's admin) and `…09` (platform operator). The sandbox sign-in code is `000000`. The API contract is [docs/api/openapi.yaml](docs/api/openapi.yaml).
+The seed creates two sandbox merchants and five accounts with phone numbers `+99900000001` (admin), `…02` (finance), `…03` (cashier), `…04` (another merchant's admin) and `…09` (platform operator). With `AUTH_PROVIDER=fixed` (local development only) the sign-in code is `000000`; it cannot be enabled on a deployed environment. The API contract is [docs/api/openapi.yaml](docs/api/openapi.yaml).
 
 ## Commands
 

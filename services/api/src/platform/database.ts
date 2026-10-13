@@ -5,11 +5,8 @@ import { APP_CONFIG, type AppConfig } from './config.js';
 
 export type Tx = Prisma.TransactionClient;
 
-// The driver sends timestamps as UTC wall-clock text. The session time zone must
-// be UTC too, or PostgreSQL shifts every `timestamptz` the application writes by
-// the server's local offset and it disagrees with now().
 function adapter(connectionString: string): PrismaPg {
-  return new PrismaPg({ connectionString, options: '-c TimeZone=UTC' });
+  return new PrismaPg({ connectionString });
 }
 
 /**
@@ -22,6 +19,12 @@ function adapter(connectionString: string): PrismaPg {
  *
  * Both run inside a transaction, so a state change, its journal entry and its
  * outbox event commit together or not at all.
+ *
+ * No session state is ever set. The runtime connection is a transaction-mode
+ * pooler (ADR 0013), where the next transaction may belong to anyone. The
+ * tenant and the time zone are therefore set with transaction scope, as the
+ * first statement of every transaction. (The driver sends timestamps as UTC
+ * wall-clock text, so the time zone must be UTC or PostgreSQL shifts them.)
  */
 @Injectable()
 export class Database implements OnModuleDestroy {
@@ -35,18 +38,25 @@ export class Database implements OnModuleDestroy {
 
   withTenant<T>(tenantId: string, work: (tx: Tx) => Promise<T>): Promise<T> {
     return this.app.$transaction(async (tx) => {
-      await tx.$executeRaw`select set_config('app.tenant_id', ${tenantId}, true)`;
+      await tx.$queryRaw`
+        select set_config('TimeZone', 'UTC', true), set_config('app.tenant_id', ${tenantId}, true)`;
       return work(tx);
     });
   }
 
   asPlatform<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.platform.$transaction(work);
+    return this.platform.$transaction(async (tx) => {
+      await tx.$queryRaw`select set_config('TimeZone', 'UTC', true)`;
+      return work(tx);
+    });
   }
 
   /** For isolation tests only: the tenant-scoped role with no tenant set. */
   withoutTenantForTest<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.app.$transaction(work);
+    return this.app.$transaction(async (tx) => {
+      await tx.$queryRaw`select set_config('TimeZone', 'UTC', true)`;
+      return work(tx);
+    });
   }
 
   async onModuleDestroy(): Promise<void> {

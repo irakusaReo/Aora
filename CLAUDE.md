@@ -34,7 +34,7 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 
 - Repository: greenfield, started 2026-10-13.
 - Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) on Vercel and Neon, against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`)
+- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`). Checkpoints 2A, 2C, 2D are built; 2B (Neon, Vercel) and 2E (SMS) wait for the owner's accounts and credentials.
 - Last approved milestone: Phase 1 (2026-10-13)
 - Live status, next steps and blockers: `docs/progress.md`
 
@@ -149,7 +149,7 @@ Requires Node 24 (`nvm use`), pnpm through corepack (`corepack enable`), and Pos
 | Task | Command |
 |---|---|
 | Install | `pnpm install` (CI: `pnpm install --frozen-lockfile`) |
-| Start local database | `pnpm db:start` (stop: `pnpm db:stop`; wipe: `pnpm db:reset`) |
+| Start local database and pooler | `pnpm db:start` (stop: `pnpm db:stop`; wipe: `pnpm db:reset`). Also starts PgBouncer in transaction mode on port 54330 for the pooled-connection tests |
 | Migrate | `pnpm db:migrate` |
 | Regenerate `schema.prisma` and client after a migration | `pnpm -r db:pull && pnpm db:generate` |
 | Lint | `pnpm lint` |
@@ -159,7 +159,10 @@ Requires Node 24 (`nvm use`), pnpm through corepack (`corepack enable`), and Pos
 | Build | `pnpm build` |
 | Seed sandbox data | `pnpm db:seed` (after build and migrate) |
 | Run API / worker | `pnpm start:api` / `pnpm start:worker` (after build; reads `.env.local`) |
-| Contract tests | Not available. No smart contracts exist (ADR 0006). |
+| Neon: create roles | `pnpm neon:bootstrap staging\|development` (needs `NEON_ADMIN_URL_*` in `.env.local`) |
+| Neon: migrate | `pnpm db:migrate:staging`, `pnpm db:migrate:development` (direct connection) |
+| Neon: verify through the pooler | `pnpm neon:verify staging\|development` (pass or fail only) |
+| Contract tests | Not available. No smart contracts exist yet (ADR 0015). |
 
 Run `format:check`, `lint`, `typecheck` and `test` before reporting any work as done. CI runs the same four, plus a check that `schema.prisma` matches the migrations.
 

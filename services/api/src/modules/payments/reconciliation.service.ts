@@ -67,7 +67,7 @@ export class ReconciliationService {
     return inserted.length === 1;
   }
 
-  async run(actor: { accountId: string; requestId: string }): Promise<{
+  async run(actor: { accountId: string | null; requestId: string }): Promise<{
     run_id: string;
     lines_checked: number;
     intents_checked: number;
@@ -198,7 +198,7 @@ export class ReconciliationService {
         data: { ...summary, finished_at: new Date() },
       });
       await this.audit.record(tx, {
-        actorKind: 'user',
+        actorKind: actor.accountId ? 'user' : 'system',
         actorAccountId: actor.accountId,
         action: 'payments.reconciliation.run',
         subjectType: 'reconciliation_run',

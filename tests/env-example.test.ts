@@ -16,7 +16,7 @@ const entries = readFileSync(path, 'utf8')
     return { key: line.slice(0, index), value: line.slice(index + 1) };
   });
 
-const SENSITIVE_KEY = /SECRET|PASSWORD|PRIVATE|TOKEN|MNEMONIC|SEED|API_?KEY|_KEY$/;
+const SENSITIVE_KEY = /SECRET|PASSWORD|PRIVATE|TOKEN|MNEMONIC|SEED|PEPPER|API_?KEY|_KEY$/;
 const PLACEHOLDER = /^<[a-z0-9-]+>$/;
 // Long hex or base64-like runs look like key material, not placeholders.
 const KEY_MATERIAL = /(0x)?[0-9a-fA-F]{32,}|[A-Za-z0-9+/_-]{40,}/;
@@ -26,6 +26,14 @@ describe('.env.example', () => {
     expect(entries.length).toBeGreaterThan(0);
     for (const { key } of entries) {
       expect(key).toMatch(/^[A-Z][A-Z0-9_]*$/);
+    }
+  });
+
+  it('leaves every admin connection string empty', () => {
+    for (const { key, value } of entries.filter((entry) =>
+      entry.key.startsWith('NEON_ADMIN_URL'),
+    )) {
+      expect(value, key).toBe('');
     }
   });
 

@@ -1,6 +1,6 @@
 # AORA — Domain Boundaries
 
-State at the end of Phase 1. Implements [ADR 0002](../adr/0002-backend-module-boundaries.md).
+State after Phase 2 checkpoints 2A, 2C and 2D. Implements [ADR 0002](../adr/0002-backend-module-boundaries.md).
 
 ## Modules and what they own
 
@@ -12,23 +12,30 @@ Each module owns one PostgreSQL schema of the same name. No module reads or writ
 | `business` | `business` | `business`, `business_identifier` | Canonical business identity ([ADR 0012](../adr/0012-canonical-business-identity.md)) |
 | `tenancy` | `tenancy` | `workspace`, `membership` | Workspaces (the tenant), roles |
 | `audit` | `audit` | `audit_event` | Append-only record of actions |
+| `consent` | `consent` | `terms_document`, `consent_record` | Versioned terms and consent records |
+| `jobs` | `ops` | `job_lease` | Scheduler-triggered jobs and the sandbox SMS inbox |
 | `ledger` | `ledger` | `asset`, `account`, `journal_entry`, `posting`, `account_balance` | Double-entry accounting ([financial-ledger.md](financial-ledger.md)) |
 | `outbox` | `outbox` | `outbox_event` | Durable, at-least-once event delivery |
 | `payments` | `payments`, `sim` | `payment_intent`, `payment_intent_transition`, `webhook_event`, `reconciliation_run`, `reconciliation_exception`; `sim_transaction`, `sim_webhook_delivery` | Payment intents, provider adapters, webhook intake, reconciliation, and the simulator provider |
 
-`src/platform/` holds what every module uses: configuration, the database gateway, the error envelope, HTTP conventions and money parsing.
+`src/platform/` holds what every module uses: configuration, the deployment guard, the database gateway, the error envelope, HTTP conventions, money parsing and the rate limiter (`ops.rate_limit`).
 
 No product module (`kony`, `kelo`, `chiwo`, `nam`) exists yet. Payment intents live in `payments` because they are platform capability, not KONY-specific.
 
 ## Dependency direction
 
-```text
-payments ──▶ ledger, outbox, audit
-identity ──▶ audit, tenancy (reads memberships)
-tenancy, business, ledger, outbox, audit ──▶ platform only
-```
+Enforced by lint (`eslint.config.mjs`), and proven by `tests/import-boundaries.test.ts`, which plants violations and checks they are rejected.
 
-Nothing depends on `payments`. `ledger` depends on no other module.
+| Module | May import |
+|---|---|
+| `platform` | nothing under `modules` |
+| `audit`, `business`, `ledger`, `outbox`, `consent` | `platform` |
+| `tenancy` | `audit` |
+| `identity` | `audit`, `tenancy` |
+| `payments` | `audit`, `ledger`, `outbox` |
+| `jobs` | `outbox`, `payments` |
+
+Two files may be imported from anywhere, so any controller can declare who may call it: `identity/guards.ts` and `tenancy/permissions.ts`. Only `platform/database.ts` may use the database client; modules import its types.
 
 ## Rules in force
 
@@ -40,7 +47,6 @@ Nothing depends on `payments`. `ledger` depends on no other module.
 
 ## Known exceptions and debts
 
-- `identity` reads `tenancy.membership` directly when it loads a session. It should call a tenancy service method.
-- `payments` reconciliation reads `ledger` tables directly to compare amounts. Acceptable for a read-only check; revisit if the ledger gains a query API.
-- Module boundaries are a convention plus database grants. **The lint rule that enforces import direction (ADR 0002 rule 3) is not in place yet**; it is the first task of Phase 2.
+- `payments` reconciliation and `tenancy`'s balances endpoint read `ledger` tables directly. Acceptable for read-only checks; revisit if the ledger gains a query API.
 - All modules are registered in one NestJS module (`AppModule`). Splitting into one NestJS module per domain is deferred until there are enough providers for it to matter.
+- `payments` still carries a `provider` column and one hard-wired simulator adapter. The rail model of [ADR 0014](../adr/0014-multi-rail-multi-country.md) arrives with the first real rail in Phase 3.

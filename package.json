@@ -24,7 +24,11 @@
     "postinstall": "pnpm -r db:generate",
     "start:api": "pnpm --filter @aora/api start",
     "start:worker": "pnpm --filter @aora/api start:worker",
-    "db:seed": "pnpm --filter @aora/api db:seed"
+    "db:seed": "pnpm --filter @aora/api db:seed",
+    "neon:bootstrap": "pnpm --filter @aora/api neon:bootstrap",
+    "neon:verify": "pnpm --filter @aora/api neon:verify",
+    "db:migrate:staging": "pnpm --filter @aora/api exec node --env-file=../../.env.local scripts/migrate-env.mjs staging",
+    "db:migrate:development": "pnpm --filter @aora/api exec node --env-file=../../.env.local scripts/migrate-env.mjs development"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

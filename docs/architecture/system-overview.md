@@ -1,6 +1,6 @@
 # AORA — System Overview
 
-State at the end of Phase 1. Sandbox only. This document describes what exists, not what is planned; for plans see [delivery-plan.md](delivery-plan.md).
+State after Phase 2 checkpoints 2A, 2C and 2D. Sandbox only. Nothing is deployed yet. This document describes what exists, not what is planned; for plans see [delivery-plan.md](delivery-plan.md).
 
 ## What runs
 
@@ -9,9 +9,10 @@ One codebase, `services/api`, with two processes and one PostgreSQL database.
 | Process | Entry point | Does |
 |---|---|---|
 | API | `src/main.ts` | Serves `/v1`. Signs users in, creates payment intents, receives webhooks, serves operator endpoints |
-| Worker | `src/worker.ts` | Drains the outbox. In sandbox it also plays the simulator provider's part and delivers its webhooks to the API over HTTP |
+| Worker (local only) | `src/worker.ts` | A loop that drains the outbox and delivers simulator webhooks, for local development |
+| Jobs (deployed) | `GET /v1/internal/cron/*` on the API | The same work as scheduler-triggered, authenticated, idempotent, time-bounded routes: outbox, simulator webhooks, reconciliation. Schedules are in `services/api/vercel.json` ([ADR 0013](../adr/0013-hosting-vercel-neon.md)) |
 
-There is no user interface, no deployment, no chain code and no real provider yet.
+There is no user interface, no deployment, no chain code and no real provider yet. Hosting will be Vercel and Neon; **Vercel's "Production" target is AORA staging, not live.**
 
 ## The one flow that exists
 
@@ -41,7 +42,8 @@ Journal entry for a successful collection of amount *a* in KES:
 | Part | Status |
 |---|---|
 | PostgreSQL schema, row-level security, ledger invariants, outbox, state machine, reconciliation | Real |
-| Authentication | **Simulated.** Fixed code, seeded accounts, nothing is sent. Behind `AuthProvider` |
+| Authentication | One-time codes are real and random; **delivery is simulated** until the Africa's Talking sandbox is connected. The fixed code exists for local development only and cannot run deployed |
+| PIN step-up, permissions, consent, rate limiting | Real |
 | Payment provider | **Simulated.** AORA's own simulator; it imitates no real provider |
 | Settlement, fees, payouts, refunds | Not built |
 | Chart of accounts | A sandbox assumption (open question M-4) |

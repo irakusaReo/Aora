@@ -1,3 +1,4 @@
+import { AuditService } from './modules/audit/audit.service.js';
 import { BusinessService } from './modules/business/business.service.js';
 import { LedgerService } from './modules/ledger/ledger.service.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
@@ -46,7 +47,7 @@ export async function seedSandbox(
   onWorkspace: WorkspaceHook = () => Promise.resolve(),
 ): Promise<SeedResult> {
   const businesses = new BusinessService();
-  const tenancy = new TenancyService();
+  const tenancy = new TenancyService(db, new AuditService());
   return db.asPlatform(async (tx) => {
     const adminA = await createAccount(tx, SEED_PHONES.adminA);
     const financeA = await createAccount(tx, SEED_PHONES.financeA);

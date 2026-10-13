@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "identity", "ledger", "outbox", "payments", "sim", "tenancy"]
+  schemas  = ["audit", "business", "consent", "identity", "ledger", "ops", "outbox", "payments", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -82,10 +82,11 @@ model auth_challenge {
 }
 
 model person {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  created_at   DateTime       @default(now()) @db.Timestamptz(6)
-  business     business[]
-  user_account user_account[]
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  business       business[]
+  consent_record consent_record[]
+  user_account   user_account[]
 
   @@schema("identity")
 }
@@ -111,7 +112,12 @@ model user_account {
   is_platform_operator Boolean          @default(false)
   mode                 String           @default("sandbox")
   created_at           DateTime         @default(now()) @db.Timestamptz(6)
+  pin_hash             String?
+  pin_set_at           DateTime?        @db.Timestamptz(6)
+  pin_failed_attempts  Int              @default(0)
+  pin_locked_until     DateTime?        @db.Timestamptz(6)
   audit_event          audit_event[]
+  consent_record       consent_record[]
   auth_challenge       auth_challenge[]
   session              session[]
   person               person           @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -130,6 +136,7 @@ model membership {
   role         String
   mode         String       @default("sandbox")
   created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  status       String       @default("active")
   user_account user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace    workspace    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -146,6 +153,7 @@ model workspace {
   mode                      String                      @default("sandbox")
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
   audit_event               audit_event[]
+  consent_record            consent_record[]
   account                   account[]
   account_balance           account_balance[]
   journal_entry             journal_entry[]
@@ -397,5 +405,77 @@ model sim_webhook_delivery {
   delivered_at    DateTime?       @db.Timestamptz(6)
   sim_transaction sim_transaction @relation(fields: [transaction_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@schema("sim")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model consent_record {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  person_id         String         @db.Uuid
+  account_id        String         @db.Uuid
+  capacity          String
+  tenant_id         String?        @db.Uuid
+  action            String
+  terms_document_id String         @db.Uuid
+  request_id        String?
+  mode              String         @default("sandbox")
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  user_account      user_account   @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  person            person         @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace         workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  terms_document    terms_document @relation(fields: [terms_document_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([account_id, created_at], map: "consent_record_account")
+  @@schema("consent")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model terms_document {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key            String
+  version        String
+  language       String
+  title          String
+  body           String
+  body_sha256    String
+  effective_from DateTime         @db.Timestamptz(6)
+  effective_to   DateTime?        @db.Timestamptz(6)
+  mode           String           @default("sandbox")
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  consent_record consent_record[]
+
+  @@unique([key, version, language])
+  @@schema("consent")
+}
+
+model job_lease {
+  name       String   @id
+  holder     String   @db.Uuid
+  expires_at DateTime @db.Timestamptz(6)
+
+  @@schema("ops")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rate_limit {
+  bucket       String
+  window_start DateTime @db.Timestamptz(6)
+  count        Int
+
+  @@id([bucket, window_start])
+  @@index([window_start], map: "rate_limit_window")
+  @@schema("ops")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sim_sms {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone_e164 String
+  body       String
+  mode       String   @default("sandbox")
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([phone_e164, created_at], map: "sim_sms_phone")
   @@schema("sim")
 }

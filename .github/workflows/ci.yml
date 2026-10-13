@@ -33,6 +33,7 @@ jobs:
     env:
       AORA_TEST_PG_HOST: 127.0.0.1
       AORA_TEST_PG_PORT: '5432'
+      AORA_TEST_POOLER_PORT: '6432'
       DATABASE_URL_OWNER: postgresql://aora_owner@127.0.0.1:5432/aora_ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,6 +47,29 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Start a transaction-mode pooler in front of the test database
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq pgbouncer
+          sudo systemctl stop pgbouncer || true
+          mkdir -p "$RUNNER_TEMP/pgbouncer"
+          printf '"aora_owner" ""\n"aora_app" ""\n"aora_platform" ""\n"postgres" ""\n' > "$RUNNER_TEMP/pgbouncer/userlist.txt"
+          cat > "$RUNNER_TEMP/pgbouncer/pgbouncer.ini" <<INI
+          [databases]
+          * = host=127.0.0.1 port=5432
+          [pgbouncer]
+          listen_addr = 127.0.0.1
+          listen_port = 6432
+          unix_socket_dir =
+          auth_type = trust
+          auth_file = $RUNNER_TEMP/pgbouncer/userlist.txt
+          pool_mode = transaction
+          default_pool_size = 1
+          max_client_conn = 500
+          logfile = $RUNNER_TEMP/pgbouncer/pgbouncer.log
+          pidfile = $RUNNER_TEMP/pgbouncer/pgbouncer.pid
+          INI
+          pgbouncer -d "$RUNNER_TEMP/pgbouncer/pgbouncer.ini"
 
       - name: Create database roles and apply migrations
         run: |

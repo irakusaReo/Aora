@@ -1,0 +1,18 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/v1/internal/cron/outbox",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/v1/internal/cron/sim-webhooks",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/v1/internal/cron/reconciliation",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

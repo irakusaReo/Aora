@@ -20,6 +20,8 @@ export type ErrorCode =
   | 'capability_not_supported'
   | 'invalid_signature'
   | 'too_many_attempts'
+  | 'pin_not_set'
+  | 'conflict'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -34,6 +36,8 @@ const STATUS: Record<ErrorCode, number> = {
   capability_not_supported: 422,
   invalid_signature: 401,
   too_many_attempts: 429,
+  pin_not_set: 409,
+  conflict: 409,
   internal_error: 500,
 };
 

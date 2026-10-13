@@ -4,7 +4,24 @@ import pg from 'pg';
 
 const HOST = process.env['AORA_TEST_PG_HOST'] ?? '127.0.0.1';
 const PORT = process.env['AORA_TEST_PG_PORT'] ?? '54329';
+const POOLER_PORT = process.env['AORA_TEST_POOLER_PORT'] ?? '54330';
 export const TEMPLATE = 'aora_test_template';
+
+/** The same database reached through PgBouncer in transaction mode. */
+export function pooledUrl(role: string, database: string): string {
+  return `postgresql://${role}@${HOST}:${POOLER_PORT}/${database}`;
+}
+
+export async function poolerAvailable(): Promise<boolean> {
+  const client = new pg.Client({ connectionString: pooledUrl('aora_owner', 'postgres') });
+  try {
+    await client.connect();
+    await client.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function url(role: string, database: string): string {
   return `postgresql://${role}@${HOST}:${PORT}/${database}`;

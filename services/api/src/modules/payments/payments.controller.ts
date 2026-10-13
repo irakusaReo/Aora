@@ -16,7 +16,8 @@ import { z } from 'zod';
 import { AppError } from '../../platform/errors.js';
 import { contextOf, parseBody, sessionOf, tenantOf } from '../../platform/http.js';
 import { parseMinorUnits } from '../../platform/money.js';
-import { AllowRoles, OperatorGuard, SessionGuard, WorkspaceGuard } from '../identity/guards.js';
+import { OperatorGuard, SessionGuard, WorkspaceGuard } from '../identity/guards.js';
+import { Permit } from '../tenancy/permissions.js';
 import { type IntentView, PaymentsService } from './payments.service.js';
 import { type ExceptionView, ReconciliationService } from './reconciliation.service.js';
 import { SCENARIOS, SIM_SIGNATURE_HEADER } from './simulator.js';
@@ -36,7 +37,7 @@ export class PaymentIntentsController {
   constructor(@Inject(PaymentsService) private readonly payments: PaymentsService) {}
 
   @Post()
-  @AllowRoles('admin', 'finance', 'cashier')
+  @Permit('payment_intent.create')
   async create(
     @Body() body: unknown,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
@@ -66,7 +67,7 @@ export class PaymentIntentsController {
   }
 
   @Get(':id')
-  @AllowRoles('admin', 'finance', 'cashier')
+  @Permit('payment_intent.read')
   get(@Param('id') id: string, @Req() request: Request): Promise<IntentView> {
     if (!UUID.test(id)) throw new AppError('not_found', 'Payment intent not found.');
     return this.payments.getIntent(tenantOf(request).tenantId, id);

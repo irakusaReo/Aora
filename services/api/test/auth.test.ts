@@ -2,12 +2,12 @@ import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SandboxAuthProvider } from '../src/modules/identity/auth-provider.js';
 import {
-  AllowRoles,
   OperatorGuard,
   SessionGuard,
   StepUpGuard,
   WorkspaceGuard,
 } from '../src/modules/identity/guards.js';
+import { Permit } from '../src/modules/tenancy/permissions.js';
 import { loadConfig } from '../src/platform/config.js';
 import { SEED_PHONES } from '../src/seed-data.js';
 import { type Harness, startHarness } from './support/harness.js';
@@ -23,7 +23,7 @@ class ProbeController {
 
   @Get('finance-only')
   @UseGuards(SessionGuard, WorkspaceGuard)
-  @AllowRoles('admin', 'finance')
+  @Permit('ledger.read')
   financeOnly(): { ok: true } {
     return { ok: true };
   }
@@ -62,6 +62,7 @@ describe('configuration', () => {
       DATABASE_URL_APP: 'postgresql://u:supersecret@h/db',
       DATABASE_URL_PLATFORM: 'x',
       SANDBOX_SIM_WEBHOOK_SECRET: 'y'.repeat(32),
+      PIN_PEPPER: 'p'.repeat(32),
     };
     expect(() => loadConfig(env)).toThrow(/AORA_MODE/);
     expect(() => loadConfig(env)).not.toThrow(/supersecret/);
@@ -192,58 +193,16 @@ describe('sessions', () => {
 });
 
 describe('step-up', () => {
-  it('blocks a sensitive action until a second factor is confirmed', async () => {
-    const auth = { Authorization: `Bearer ${await h.signIn('adminA')}` };
+  it('blocks a sensitive action until the PIN is confirmed, and expires', async () => {
+    const token = await h.signIn('adminA');
+    const auth = { Authorization: `Bearer ${token}` };
     const before = await h.http().post('/probe/sensitive').set(auth);
     expect(before.status).toBe(403);
     expect(before.body.error.code).toBe('step_up_required');
 
-    const started = await h.http().post('/v1/auth/step-up/challenges').set(auth);
-    const wrong = await h
-      .http()
-      .post('/v1/auth/step-up')
-      .set(auth)
-      .send({ challenge_id: started.body.challenge_id, code: '123123' });
-    expect(wrong.status).toBe(401);
-    expect((await h.http().post('/probe/sensitive').set(auth)).status).toBe(403);
-
-    const done = await h
-      .http()
-      .post('/v1/auth/step-up')
-      .set(auth)
-      .send({ challenge_id: started.body.challenge_id, code: CODE });
-    expect(done.status).toBe(200);
+    await h.stepUp(token);
     expect((await h.http().post('/probe/sensitive').set(auth)).status).toBe(201);
-  });
 
-  it("does not accept another account's step-up challenge, or a sign-in challenge", async () => {
-    const authA = { Authorization: `Bearer ${await h.signIn('financeA')}` };
-    const authB = { Authorization: `Bearer ${await h.signIn('adminB')}` };
-    const forB = await h.http().post('/v1/auth/step-up/challenges').set(authB);
-    const stolen = await h
-      .http()
-      .post('/v1/auth/step-up')
-      .set(authA)
-      .send({ challenge_id: forB.body.challenge_id, code: CODE });
-    expect(stolen.status).toBe(401);
-
-    const signInChallenge = await challenge(SEED_PHONES.financeA);
-    const misuse = await h
-      .http()
-      .post('/v1/auth/step-up')
-      .set(authA)
-      .send({ challenge_id: signInChallenge, code: CODE });
-    expect(misuse.status).toBe(401);
-  });
-
-  it('expires', async () => {
-    const auth = { Authorization: `Bearer ${await h.signIn('cashierA')}` };
-    const started = await h.http().post('/v1/auth/step-up/challenges').set(auth);
-    await h
-      .http()
-      .post('/v1/auth/step-up')
-      .set(auth)
-      .send({ challenge_id: started.body.challenge_id, code: CODE });
     await h.owner((client) =>
       client.query(`update identity.session set step_up_until = now() - interval '1 second'`),
     );

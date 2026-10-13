@@ -92,7 +92,7 @@ describe('source tree', () => {
     ];
     const offenders = files(root)
       .filter((path) => /\.(ts|sql|json|yaml|yml|prisma|sh)$/.test(path))
-      .filter((path) => !path.endsWith('hygiene.test.ts') && !path.endsWith('auth.test.ts'))
+      .filter((path) => !/(hygiene|auth|deployed-guard)\.test\.ts$/.test(path))
       .filter((path) => patterns.some((pattern) => pattern.test(readFileSync(path, 'utf8'))));
     expect(offenders).toEqual([]);
   });

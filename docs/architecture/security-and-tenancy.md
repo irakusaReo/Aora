@@ -1,6 +1,6 @@
 # AORA — Security and Tenancy
 
-State at the end of Phase 1. Sandbox only.
+State after Phase 2 checkpoints 2A, 2C and 2D. Sandbox only. Deployment (2B) and the real SMS adapter (2E) are not done yet; where that matters it is said.
 
 ## Tenancy
 
@@ -35,25 +35,55 @@ A test asserts that every table with a `tenant_id` column has row-level security
 
 ## Authentication
 
-- **Phase 1 uses a sandbox authenticator.** Seeded accounts, one fixed code, nothing sent. It refuses to load outside sandbox mode. Real phone and one-time-code sign-in arrives in Phase 2, behind the same `AuthProvider` interface. Production choice: [ADR 0011](../adr/0011-production-authentication.md).
-- Sign-in is a challenge then a code. Challenges expire, are single-use, and lock after repeated wrong codes. The endpoint answers the same way for registered and unregistered numbers.
-- Session tokens are 256 random bits, returned once, stored only as a SHA-256 hash, with expiry and revocation.
-- Codes are stored only as salted HMAC state.
+- **Sign-in is a phone number plus a random six-digit one-time code**, behind the `AuthProvider` interface. The code is generated per challenge, exists in memory only long enough to be sent, and is stored as a salted HMAC. Challenges expire, are single-use, lock after repeated wrong codes, and the endpoint answers the same way for registered and unregistered numbers.
+- **Delivery:** through an `SmsSender`. Until the Africa's Talking sandbox is connected (2E), the **simulated sender** stores messages in `sim.sim_sms`. On a deployed environment an operator can read them only through `/v1/internal/sandbox/sms` with the `SANDBOX_SMS_INBOX_TOKEN` secret; with no token configured the route returns 404. This is a sandbox stop-gap and is removed once SMS works.
+- **The fixed code `000000` cannot run on a deployed environment.** `SandboxAuthProvider` refuses to be constructed, and configuration refuses to load with `AUTH_PROVIDER=fixed`, unless no Vercel system variable is present **and** both database URLs point at this machine. The rule is derived from where the process runs and what it talks to; it is not a flag. `test/deployed-guard.test.ts` covers each condition. The default provider is the one-time code.
+- Session tokens are 256 random bits, returned once, stored only as a SHA-256 hash, with expiry, revocation and sign-out.
+- Production choice of authentication: [ADR 0011](../adr/0011-production-authentication.md), still pending.
+
+## Transaction PIN and step-up
+
+- A six-digit PIN; repeated digits and straight runs are refused.
+- Stored as scrypt over an HMAC with a server-side pepper (`PIN_PEPPER`) and a per-account salt. A database leak alone cannot test PINs. Never logged, never in audit detail.
+- **Setting or changing a PIN always needs a fresh one-time code**, so a stolen session cannot set one and a forgotten PIN can be replaced.
+- Wrong PINs are counted under a row lock; at the limit the PIN locks for a period, during which even the correct PIN is refused. Resetting with a one-time code clears the lock.
+- A correct PIN marks **that session** as stepped-up for five minutes. `StepUpGuard` requires it.
+- **Step-up now protects real endpoints:** adding a member, changing a role and removing a member (brief §7.2).
 
 ## Authorization
 
-- Default deny. A workspace route with no `@AllowRoles` admits nobody.
-- Roles: `admin`, `finance`, `cashier`. In Phase 1 all three may create and read payment intents; they differ from Phase 2 on.
-- Operator endpoints require the account's platform-operator flag.
-- **Step-up:** `StepUpGuard` requires a second-factor confirmation within the last five minutes. It is implemented and tested, but **no Phase 1 endpoint uses it**, because none is sensitive enough. It is first applied in Phase 2.
-- Membership of a workspace grants nothing beyond the listed role permissions.
+- Default deny. Routes name a **permission**, never a role; one table (`tenancy/permissions.ts`) maps permissions to roles. A workspace route with no permission admits nobody.
+
+  | Permission | admin | finance | cashier |
+  |---|---|---|---|
+  | `payment_intent.create`, `payment_intent.read` | ✓ | ✓ | ✓ |
+  | `ledger.read`, `member.read` | ✓ | ✓ | – |
+  | `member.manage` (with step-up) | ✓ | – | – |
+
+- `test/permissions.test.ts` holds the route × role matrix by hand and fails if a route, a permission or a step-up requirement changes without it. It also pins the list of routes that need no authentication.
+- A removed member loses access on their next request. A workspace always keeps one active admin: the database refuses otherwise.
+- Operator endpoints require the platform-operator flag. Cron routes require the cron secret; nothing else may call them.
+- Membership of a workspace grants nothing beyond the listed permissions.
+
+## Rate limiting
+
+Fixed-window counters in PostgreSQL (`ops.rate_limit`), one atomic upsert per check, so every serverless instance counts against the same store. Keys (phone number, client address, account) are stored only as SHA-256 digests. Limits are configuration: sign-in start per phone and per address, code verification per address, PIN step-up and PIN code requests per account. A test runs concurrent requests across two application instances and checks that exactly the limit succeeds.
+
+## Consent
+
+`consent.terms_document` holds versioned, immutable terms; `consent.consent_record` is append-only and names the person, the capacity (personal or on behalf of a business), the action, the time and the exact terms version (brief §7.4). Consent must name the version in effect. Business capacity requires membership of the workspace.
+
+## Connection pooling
+
+The runtime connection on Neon is PgBouncer in transaction mode. The application sets **no session state**: the tenant and the time zone are set with transaction scope as the first statement of every transaction. `test/pooler.test.ts` runs isolation, clock and payment tests through a local PgBouncer with a single server connection, so consecutive transactions of different tenants share a backend. `pnpm neon:verify` repeats the essential checks against the real pooler. No AORA role is a superuser or can bypass row-level security, on any environment.
 
 ## Secrets
 
 - None in code, migrations, database rows or logs. `bootstrap.sql` sets no passwords.
 - Configuration comes from the environment (`.env.local` locally, git-ignored). `.env.example` holds placeholders only, checked by a test.
 - A configuration error names the variable, never its value.
-- The only secret in Phase 1 is `SANDBOX_SIM_WEBHOOK_SECRET`, AORA's own simulator signing key.
+- Secrets so far: `SANDBOX_SIM_WEBHOOK_SECRET`, `PIN_PEPPER`, `CRON_SECRET`, `SANDBOX_SMS_INBOX_TOKEN`, the database passwords, and later the SMS API key. On deployed environments they are Vercel environment variables marked sensitive.
+- The migration (owner) connection string is never deployed: the running API cannot change the schema.
 
 ## Webhooks
 
@@ -76,8 +106,8 @@ Every tenant and financial table has `mode`, with a check that allows only `sand
 
 ## Not built yet, and known gaps
 
-- Rate limiting on any endpoint, including sign-in. The per-challenge lockout exists; per-number and per-address limits do not.
-- Session binding to a device; sign-out endpoint.
-- Encryption at rest, backups, TLS: these belong to deployment, which does not exist yet.
+- Nothing is deployed yet, so TLS, encryption at rest, backups and the behaviour of the platform's forwarded client address are unverified.
+- The Africa's Talking adapter (2E). Until then one-time codes go to the simulated sender.
+- Session binding to a device.
 - Dependency and secret scanning in CI.
-- The local and CI databases use trust authentication. That is acceptable only because they are throwaway and hold no data; any shared environment must set role credentials through its secret store.
+- The local and CI databases use trust authentication. That is acceptable only because they are throwaway and hold no data; Neon roles have generated passwords.
