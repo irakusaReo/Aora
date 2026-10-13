@@ -4,7 +4,8 @@ info:
   version: 0.1.0
   summary: SANDBOX ONLY. No real money moves through this API.
   description: |
-    Sign-in with a phone number and a one-time code, PIN step-up, workspace
+    Sign-in is handled by the identity provider (Clerk): clients send its session
+    token as a bearer token. This API covers the transaction PIN and step-up, workspace
     members and balances, consent records, collection payment intents against
     the AORA simulator provider, simulator webhook intake, operator
     reconciliation endpoints and scheduler-triggered jobs.
@@ -30,6 +31,7 @@ tags:
   - name: Consent
   - name: Payment intents
   - name: Webhooks
+  - name: Notifications
   - name: Operations
   - name: Internal
 paths:
@@ -50,14 +52,18 @@ paths:
                   status: { const: ok }
                   database: { const: ok }
                   mode: { $ref: '#/components/schemas/Mode' }
-  /v1/auth/challenges:
-    post:
+  /v1/me/phone:
+    put:
       tags: [Auth]
-      operationId: startSignIn
-      summary: Start sign-in for a phone number
+      operationId: setPhone
+      summary: Set the account's phone number (payment identifier)
       description: >
-        Always returns a challenge id, whether or not the number is registered.
-        A random six-digit code is sent by SMS. Rate-limited per phone number and per client address.
+        The phone number is the account's payment identifier and financial
+        identity. It is held by AORA, not by the identity provider, and is not a
+        sign-in credential. It is stored unverified. A number can belong to one
+        account only. Setting it the first time needs no step-up; replacing an
+        existing number needs a PIN step-up.
+      security: [{ session: [] }]
       requestBody:
         required: true
         content:
@@ -69,56 +75,31 @@ paths:
               properties:
                 phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
       responses:
-        '201': { $ref: '#/components/responses/Challenge' }
-        '400': { $ref: '#/components/responses/Error' }
-  /v1/auth/sessions:
-    post:
-      tags: [Auth]
-      operationId: createSession
-      summary: Exchange a challenge and code for a session token
-      requestBody: { $ref: '#/components/requestBodies/ChallengeAnswer' }
-      responses:
-        '201':
-          description: Session created. The token is shown once.
+        '200':
+          description: Phone number stored
           content:
             application/json:
               schema:
                 type: object
-                required: [token, expires_at, mode]
+                required: [phone_hint, phone_verified, mode]
                 properties:
-                  token: { type: string }
-                  expires_at: { type: string, format: date-time }
+                  phone_hint: { type: string, description: Last three digits, masked. }
+                  phone_verified: { type: boolean }
                   mode: { $ref: '#/components/schemas/Mode' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '429': { $ref: '#/components/responses/Error' }
-  /v1/auth/session:
-    delete:
-      tags: [Auth]
-      operationId: signOut
-      summary: Sign out (revokes the session)
-      security: [{ session: [] }]
-      responses:
-        '204': { description: Signed out }
-        '401': { $ref: '#/components/responses/Error' }
-  /v1/auth/pin/challenges:
-    post:
-      tags: [Auth]
-      operationId: startPinChange
-      summary: Send a one-time code to set or change the PIN
-      security: [{ session: [] }]
-      responses:
-        '201': { $ref: '#/components/responses/Challenge' }
-        '401': { $ref: '#/components/responses/Error' }
-        '429': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /v1/auth/pin:
     put:
       tags: [Auth]
       operationId: setPin
       summary: Set or change the transaction PIN
       description: >
-        Always needs a fresh one-time code from `POST /v1/auth/pin/challenges`.
-        The PIN is six digits and may not be a repeated digit or a simple sequence.
+        Allowed only on a session whose sign-in factor was verified in the last
+        few minutes; otherwise `reverification_required` is returned and the
+        client should ask the user to confirm their sign-in again. The PIN is six
+        digits and may not be a repeated digit or a simple sequence.
       security: [{ session: [] }]
       requestBody:
         required: true
@@ -127,11 +108,9 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [pin, challenge_id, code]
+              required: [pin]
               properties:
                 pin: { type: string, pattern: '^[0-9]{6}$' }
-                challenge_id: { type: string }
-                code: { type: string, minLength: 1, maxLength: 12 }
       responses:
         '200':
           description: PIN set
@@ -145,7 +124,7 @@ paths:
                   mode: { $ref: '#/components/schemas/Mode' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
-        '429': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
   /v1/auth/step-up:
     post:
       tags: [Auth]
@@ -153,8 +132,8 @@ paths:
       summary: Confirm a sensitive action with the PIN
       description: >
         Sensitive actions require a step-up completed within the last few minutes
-        on the same session. After repeated wrong PINs the PIN is locked for a
-        while; it can be replaced with a one-time code.
+        on the same sign-in session. After repeated wrong PINs the PIN is locked for a
+        while; it can be replaced after confirming sign-in again.
       security: [{ session: [] }]
       requestBody:
         required: true
@@ -583,44 +562,66 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Job' }
         '401': { $ref: '#/components/responses/Error' }
-  /v1/internal/sandbox/sms:
+  /v1/notifications:
     get:
-      tags: [Internal]
-      operationId: listSimulatedSms
-      summary: Read simulated SMS messages (sandbox only)
-      description: >
-        Exists only while the simulated SMS sender is in use and an inbox token
-        is configured; otherwise it returns 404.
-      security: [{ inbox: [] }]
-      parameters:
-        - { name: phone, in: query, required: false, schema: { type: string } }
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: What AORA has sent the signed-in person, and its delivery status
+      security: [{ session: [] }]
       responses:
         '200':
-          description: Messages, newest first
+          description: Notifications, newest first
           content:
             application/json:
               schema:
                 type: object
                 required: [data, mode]
                 properties:
-                  data: { type: array, items: { type: object } }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, type, channel, status, subject, sent_to, created_at, sent_at]
+                      properties:
+                        id: { type: string, format: uuid }
+                        type: { type: string }
+                        channel: { enum: [email] }
+                        status: { enum: [queued, sent, delivered, bounced, complained, failed, status_unknown] }
+                        subject: { type: [string, 'null'] }
+                        sent_to: { type: [string, 'null'], description: Masked address. }
+                        created_at: { type: string, format: date-time }
+                        sent_at: { type: [string, 'null'], format: date-time }
                   mode: { $ref: '#/components/schemas/Mode' }
         '401': { $ref: '#/components/responses/Error' }
-        '404': { $ref: '#/components/responses/Error' }
+  /v1/webhooks/clerk:
+    post:
+      tags: [Webhooks]
+      operationId: receiveClerkWebhook
+      summary: Identity provider events (user sync; sign-in emails to deliver)
+      description: Authenticated by a Svix signature over the raw body. Idempotent per delivery.
+      responses:
+        '200': { $ref: '#/components/responses/Received' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/webhooks/resend:
+    post:
+      tags: [Webhooks]
+      operationId: receiveResendWebhook
+      summary: Email provider events (delivery status)
+      description: Authenticated by a Svix signature over the raw body. Idempotent per delivery.
+      responses:
+        '200': { $ref: '#/components/responses/Received' }
+        '401': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     session:
       type: http
       scheme: bearer
-      description: Session token from `POST /v1/auth/sessions`.
+      description: The identity provider's (Clerk's) session token for the signed-in user.
     cron:
       type: http
       scheme: bearer
       description: The deployment's cron secret. Sent by the scheduler only.
-    inbox:
-      type: http
-      scheme: bearer
-      description: The sandbox SMS inbox token.
   parameters:
     Workspace:
       name: Aora-Workspace-Id
@@ -650,6 +651,16 @@ components:
             required: [challenge_id, mode]
             properties:
               challenge_id: { type: string, format: uuid }
+              mode: { $ref: '#/components/schemas/Mode' }
+    Received:
+      description: Received
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [received, mode]
+            properties:
+              received: { const: true }
               mode: { $ref: '#/components/schemas/Mode' }
     Job:
       description: Job result
@@ -758,6 +769,7 @@ components:
                 - unauthenticated
                 - forbidden
                 - step_up_required
+                - reverification_required
                 - not_found
                 - idempotency_key_required
                 - idempotency_key_reused

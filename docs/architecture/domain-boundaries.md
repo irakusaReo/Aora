@@ -1,6 +1,6 @@
 # AORA — Domain Boundaries
 
-State after Phase 2 checkpoints 2A, 2C and 2D. Implements [ADR 0002](../adr/0002-backend-module-boundaries.md).
+State after Phase 2 checkpoints 2A to 2F. Implements [ADR 0002](../adr/0002-backend-module-boundaries.md).
 
 ## Modules and what they own
 
@@ -8,7 +8,9 @@ Each module owns one PostgreSQL schema of the same name. No module reads or writ
 
 | Module (`src/modules/…`) | Schema | Tables | Responsibility |
 |---|---|---|---|
-| `identity` | `identity` | `person`, `user_account`, `auth_challenge`, `session` | Who a person is, how they prove it, sessions, step-up |
+| `identity` | `identity` | `person`, `user_account`, `step_up`, `provider_event` (and the retired `auth_challenge`, `session`) | AORA's person and account records, their link to the identity provider (Clerk), the transaction PIN and step-up |
+| `notifications` | `notifications` | `notification`, `delivery_event` | What was sent to whom and what became of it; email channel and Resend adapter |
+| `webhooks` | – | – | Intake of identity-provider and email-provider webhooks; composition only |
 | `business` | `business` | `business`, `business_identifier` | Canonical business identity ([ADR 0012](../adr/0012-canonical-business-identity.md)) |
 | `tenancy` | `tenancy` | `workspace`, `membership` | Workspaces (the tenant), roles |
 | `audit` | `audit` | `audit_event` | Append-only record of actions |
@@ -32,8 +34,10 @@ Enforced by lint (`eslint.config.mjs`), and proven by `tests/import-boundaries.t
 | `audit`, `business`, `ledger`, `outbox`, `consent` | `platform` |
 | `tenancy` | `audit` |
 | `identity` | `audit`, `tenancy` |
-| `payments` | `audit`, `ledger`, `outbox` |
+| `notifications` | `outbox` |
+| `payments` | `audit`, `ledger`, `notifications`, `outbox` |
 | `jobs` | `outbox`, `payments` |
+| `webhooks` | `identity`, `notifications` |
 
 Two files may be imported from anywhere, so any controller can declare who may call it: `identity/guards.ts` and `tenancy/permissions.ts`. Only `platform/database.ts` may use the database client; modules import its types.
 
@@ -46,6 +50,8 @@ Two files may be imported from anywhere, so any controller can declare who may c
 5. **Authorization is decided before a module's service is called** by guards, and tenant scope is enforced again by the database.
 
 ## Known exceptions and debts
+
+- `notifications` reads `identity.user_account` directly to find a recipient's address at send time.
 
 - `payments` reconciliation and `tenancy`'s balances endpoint read `ledger` tables directly. Acceptable for read-only checks; revisit if the ledger gains a query API.
 - All modules are registered in one NestJS module (`AppModule`). Splitting into one NestJS module per domain is deferred until there are enough providers for it to matter.

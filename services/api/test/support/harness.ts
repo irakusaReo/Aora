@@ -5,7 +5,7 @@ import { Test } from '@nestjs/testing';
 import type pg from 'pg';
 import request from 'supertest';
 import { AppModule } from '../../src/app.module.js';
-import { SandboxAuthProvider } from '../../src/modules/identity/auth-provider.js';
+import { AUTH_PROVIDER, SandboxAuthProvider } from '../../src/modules/identity/auth-provider.js';
 import { OutboxService } from '../../src/modules/outbox/outbox.service.js';
 import { SIM_SIGNATURE_HEADER, SimulatorProvider } from '../../src/modules/payments/simulator.js';
 import { type AppConfig, loadConfig } from '../../src/platform/config.js';
@@ -20,11 +20,15 @@ export interface Harness {
   readonly seed: SeedResult;
   readonly databaseName: string;
   http(): ReturnType<typeof request>;
-  signIn(who: keyof typeof SEED_PHONES): Promise<string>;
+  /** A request token for a seeded account, minted by the test-only sandbox authenticator. */
+  signIn(
+    who: keyof typeof SEED_PHONES,
+    options?: { sessionId?: string; firstFactorAgeMinutes?: number | null },
+  ): Promise<string>;
   /** Sets a PIN for a signed-in account and completes a step-up with it. */
   stepUp(token: string, pin?: string): Promise<void>;
-  /** The most recent simulated SMS code sent to a phone number. */
-  lastSmsCode(phone: string): Promise<string | null>;
+  /** The sandbox authenticator, for minting tokens for users AORA has not seen. */
+  readonly sandboxAuth: SandboxAuthProvider;
   /** Runs SQL as the cluster superuser (bypasses row-level security), for assertions only. */
   owner<T>(work: (client: pg.Client) => Promise<T>): Promise<T>;
   /** Everything the application logged, for checking that nothing sensitive is written. */
@@ -42,7 +46,6 @@ export async function startHarness(
     config?: (config: AppConfig) => AppConfig;
     /** Connect the application through PgBouncer in transaction mode. */
     pooled?: boolean;
-    authProvider?: 'otp' | 'fixed';
     /** Start a second application instance on another harness's database (no new seed). */
     shareDatabaseOf?: Harness;
     /** Keep the production rate limits instead of the relaxed test ones. */
@@ -64,9 +67,12 @@ export async function startHarness(
     SANDBOX_SIM_WEBHOOK_SECRET: randomBytes(24).toString('hex'),
     PIN_PEPPER: randomBytes(32).toString('hex'),
     CRON_SECRET: randomBytes(32).toString('hex'),
-    // Tests sign in with the development-only fixed code; this is legal only
-    // because the database is on this machine (see deployed-guard.test.ts).
-    AUTH_PROVIDER: options.authProvider ?? 'fixed',
+    // Tests use the sandbox authenticator; this is legal only because the
+    // database is on this machine (see deployed-guard.test.ts).
+    AUTH_PROVIDER: 'sandbox',
+    // Webhook signatures are real Svix signatures made with these throwaway secrets.
+    CLERK_WEBHOOK_SIGNING_SECRET: `whsec_${randomBytes(24).toString('base64')}`,
+    RESEND_WEBHOOK_SECRET: `whsec_${randomBytes(24).toString('base64')}`,
   });
   // Tests sign the same few accounts in hundreds of times; only rate-limit tests keep real limits.
   const relaxed: AppConfig = options.realRateLimits
@@ -104,6 +110,7 @@ export async function startHarness(
   const db = app.get(Database);
   const seed = shared?.seed ?? (await seedSandbox(db, AppModule.workspaceHook()));
   const http = (): ReturnType<typeof request> => request(app.getHttpServer());
+  const sandboxAuth = app.get<SandboxAuthProvider>(AUTH_PROVIDER);
 
   return {
     app,
@@ -112,44 +119,18 @@ export async function startHarness(
     seed,
     databaseName,
     http,
-    async signIn(who) {
-      const challenge = await http().post('/v1/auth/challenges').send({ phone: SEED_PHONES[who] });
-      const session = await http()
-        .post('/v1/auth/sessions')
-        .send({ challenge_id: challenge.body.challenge_id, code: SandboxAuthProvider.FIXED_CODE });
-      if (session.status !== 201) throw new Error(`sign-in failed for ${who}`);
-      return session.body.token as string;
+    signIn(who, options = {}) {
+      return Promise.resolve(sandboxAuth.issue(seed.clerkIds[who], options));
     },
     owner: (work) => withClient('postgres', databaseName, work),
     async stepUp(token, pin = '482915') {
       const auth = { Authorization: `Bearer ${token}` };
-      const challenge = await http().post('/v1/auth/pin/challenges').set(auth);
-      const code =
-        config.authProvider === 'fixed'
-          ? SandboxAuthProvider.FIXED_CODE
-          : await withClient('postgres', databaseName, async (client) => {
-              const result = await client.query<{ body: string }>(
-                `select body from sim.sim_sms order by created_at desc limit 1`,
-              );
-              return /code is (\d{6})/.exec(result.rows[0]?.body ?? '')?.[1] ?? '';
-            });
-      const set = await http()
-        .put('/v1/auth/pin')
-        .set(auth)
-        .send({ pin, challenge_id: challenge.body.challenge_id, code });
+      const set = await http().put('/v1/auth/pin').set(auth).send({ pin });
       if (set.status !== 200) throw new Error(`setting PIN failed: ${String(set.status)}`);
       const done = await http().post('/v1/auth/step-up').set(auth).send({ pin });
       if (done.status !== 200) throw new Error(`step-up failed: ${String(done.status)}`);
     },
-    async lastSmsCode(phone) {
-      return withClient('postgres', databaseName, async (client) => {
-        const result = await client.query<{ body: string }>(
-          `select body from sim.sim_sms where phone_e164 = $1 order by created_at desc limit 1`,
-          [phone],
-        );
-        return /code is (\d{6})/.exec(result.rows[0]?.body ?? '')?.[1] ?? null;
-      });
-    },
+    sandboxAuth,
     logs,
     async settle() {
       const outbox = app.get(OutboxService);

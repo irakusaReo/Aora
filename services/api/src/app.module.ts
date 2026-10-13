@@ -8,13 +8,8 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditService } from './modules/audit/audit.service.js';
 import { BusinessService } from './modules/business/business.service.js';
 import { ConsentController, ConsentService } from './modules/consent/consent.service.js';
-import {
-  AUTH_PROVIDER,
-  OtpAuthProvider,
-  SandboxAuthProvider,
-  SMS_SENDER,
-  type SmsSender,
-} from './modules/identity/auth-provider.js';
+import { AUTH_PROVIDER, SandboxAuthProvider } from './modules/identity/auth-provider.js';
+import { ClerkAuthProvider } from './modules/identity/clerk-auth-provider.js';
 import {
   OperatorGuard,
   SessionGuard,
@@ -23,13 +18,14 @@ import {
 } from './modules/identity/guards.js';
 import { IdentityController } from './modules/identity/identity.controller.js';
 import { IdentityService } from './modules/identity/identity.service.js';
-import { SimulatedSmsSender } from './modules/identity/sms.js';
+import { CronController, CronGuard, DrainAfterResponseInterceptor } from './modules/jobs/jobs.js';
+import { EMAIL_CHANNEL, SimulatedEmailChannel } from './modules/notifications/channel.js';
 import {
-  CronController,
-  CronGuard,
-  InboxGuard,
-  SandboxInboxController,
-} from './modules/jobs/jobs.js';
+  NotificationsController,
+  NotificationsService,
+} from './modules/notifications/notifications.service.js';
+import { ResendEmailChannel } from './modules/notifications/resend-channel.js';
+import { ProviderWebhooksController } from './modules/webhooks/provider-webhooks.controller.js';
 import { LedgerService } from './modules/ledger/ledger.service.js';
 import { OutboxService } from './modules/outbox/outbox.service.js';
 import {
@@ -54,9 +50,9 @@ const SHARED = [
   Database,
   RateLimiter,
   ConsentService,
-  SimulatedSmsSender,
+  SimulatedEmailChannel,
+  NotificationsService,
   CronGuard,
-  InboxGuard,
   AuditService,
   BusinessService,
   TenancyService,
@@ -82,7 +78,8 @@ export const CONTROLLERS = [
   BalancesController,
   ConsentController,
   CronController,
-  SandboxInboxController,
+  NotificationsController,
+  ProviderWebhooksController,
 ];
 
 @Module({})
@@ -93,21 +90,32 @@ export class AppModule implements NestModule {
       controllers: [...CONTROLLERS],
       providers: [
         { provide: APP_CONFIG, useValue: config },
-        // Until an SMS provider's sandbox is connected (checkpoint 2E), codes go to the simulated sender.
-        { provide: SMS_SENDER, useExisting: SimulatedSmsSender },
         {
           provide: AUTH_PROVIDER,
-          inject: [SMS_SENDER],
-          useFactory: (sms: SmsSender) =>
-            config.authProvider === 'fixed'
+          useFactory: () =>
+            config.authProvider === 'sandbox'
               ? new SandboxAuthProvider(config)
-              : new OtpAuthProvider(sms),
+              : new ClerkAuthProvider(config),
         },
+        {
+          // Email goes to Resend when a key is configured (always, on a deployed
+          // environment); otherwise to the simulated channel for tests and local work.
+          provide: EMAIL_CHANNEL,
+          inject: [SimulatedEmailChannel],
+          useFactory: (simulated: SimulatedEmailChannel) =>
+            config.email.resendApiKey
+              ? new ResendEmailChannel({
+                  apiKey: config.email.resendApiKey,
+                  from: config.email.from,
+                })
+              : simulated,
+        },
+        { provide: APP_INTERCEPTOR, useClass: DrainAfterResponseInterceptor },
         { provide: APP_FILTER, useClass: ErrorFilter },
         { provide: APP_INTERCEPTOR, useClass: SandboxLabelInterceptor },
         ...SHARED,
       ],
-      exports: [APP_CONFIG, ...SHARED],
+      exports: [APP_CONFIG, AUTH_PROVIDER, EMAIL_CHANNEL, ...SHARED],
     };
   }
 

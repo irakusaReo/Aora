@@ -44,7 +44,7 @@ Update this block at the end of each approved phase.
 
 Full detail and build order: `docs/product/mvp-scope.md`.
 
-- **Platform:** phone one-time-code sign-in, PIN step-up, tenants and roles, audit, ledger (KES, USDC and per-rail currencies), outbox, reconciliation, versioned tariffs.
+- **Platform:** email-code sign-in through Clerk (the phone number stays required as the financial identity), AORA transaction-PIN step-up, email notifications through Resend, tenants and roles, audit, ledger (KES, USDC and per-rail currencies), outbox, reconciliation, versioned tariffs.
 - **KONY:** merchant onboarding, branches and staff, collections, payouts, refunds, settlement, USDC treasury, developer API. Web and mobile.
 - **KELO:** consumer BNPL marketplace (web and mobile) plus a KELO section in the merchant's KONY workspace. Plan types: Pay in N, monthly financing, layaway; asset financing in the data model only. All credit behind a feature flag.
 - **CHIWO:** consumer sign-up, pay a merchant, send and receive USDC, requests, receipts. Web and mobile.
@@ -98,11 +98,15 @@ Carried over from the Phase 0 working agreement.
 - **Every Vercel environment runs in sandbox mode.** Vercel's "Production" target is **AORA staging**. It is not live and must never be described as live.
 - **Region:** Vercel functions in `fra1`, Neon in `aws-eu-central-1` (Frankfurt), the closest pair available to Kenya. Keep them together.
 - **Database:** pooled connection string at runtime, direct connection string for migrations only. Tenant context is set per transaction (`set_config(..., true)`), never per session. Application roles are created with SQL so they never inherit `BYPASSRLS`.
-- **Background work is cron-triggered, idempotent and time-bounded.** No long-running process. A missed or duplicated cron run must be harmless. On the current Hobby plan cron runs once a day, so jobs are also run by hand with the cron secret (O-10).
+- **Background work is cron-triggered, idempotent and time-bounded.** No long-running process. A missed or duplicated cron run must be harmless. Work is driven by a background drain after requests plus a GitHub Actions schedule calling the secret-protected cron routes (ADR 0013); Vercel's own cron is daily on the Hobby plan.
 - **The API entry file must not use top-level `await`** to start the server: on Vercel that hangs every request.
 - **Provider callbacks** go to the staging (Vercel Production) domain and are always signature-checked. Deployment protection is never a substitute for a signature check.
 - **Secrets** live in Vercel environment variables marked sensitive. `.env.local` is for the owner's machine only. A testnet signer key may be in `.env.local` only for the local sandbox signer.
-- **The fixed sign-in code `000000` and the sandbox authenticator cannot run on a deployed environment.** A startup check refuses them unless the database is on the local machine, and a test proves it. This is not a config flag.
+- **Authentication is Clerk (ADR 0019); AORA's database remains the authority for persons, tenants, roles, permissions, consent and RLS context.** Never use Clerk Organizations or roles for authorization, and never write anything to Clerk metadata. Clerk holds email and name only; the phone number (the financial identity) is collected and held by AORA. Only development-instance keys; a live key is refused.
+- **No fixed sign-in code on a deployed environment.** The sandbox authenticator (tests only) is refused unless the process is on a developer machine with local databases. Clerk's test mode (`+clerk_test` addresses, fixed code) must be off on the staging instance, and the API refuses `+clerk_test` users when deployed. Both have tests. Neither is a config flag.
+- **Email goes through the notifications module (ADR 0020), never straight to Resend.** Emails mask account and phone details, carry nothing that authorises an action, and are marked sandbox.
+- **Migrations never run from the Vercel build.** They run from GitHub Actions or by hand, through the direct connection, and are backward-compatible: expand first, contract in a later release.
+- **Preview deployments have no database** and must never be pointed at staging's.
 - **Ask before** any command that creates a billable resource, changes Vercel Production settings, or deletes anything.
 - Local PostgreSQL remains the database for unit and integration tests and for CI.
 

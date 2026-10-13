@@ -67,6 +67,13 @@ Consumers should not need to understand blockchain addresses or network fees to 
 
 A phone number is an identifier, not sufficient authentication. Account recovery, device changes, SIM-swap risk and sensitive transactions require appropriate safeguards.
 
+### Owner amendment, 2026-10-13
+
+- **Sign-in is by a one-time code sent to the user's email address**, through a managed identity provider (Clerk). Sign-in codes, repayment reminders and transaction alerts are sent by email.
+- **The phone number remains required and remains the user's financial identity**: it is the payment identifier for mobile-money rails, as described above. It is not the sign-in credential.
+- A phone number is not treated as verified because it appears in a profile. How it is verified is an owner decision recorded in `open-questions.md` (O-11); no money is sent to an unconfirmed number.
+- "Phone-number-based financial identity" in the list above is read accordingly. Detail: `docs/adr/0019-clerk-integration.md`, `docs/adr/0020-notifications.md`.
+
 ## 2.2 KONY — merchant operating system
 
 KONY is the default operating workspace for AORA merchants.

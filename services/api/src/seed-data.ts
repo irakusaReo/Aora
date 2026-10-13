@@ -23,18 +23,32 @@ export interface SeedResult {
   readonly tenantA: string;
   readonly tenantB: string;
   readonly accounts: Record<keyof typeof SEED_PHONES, string>;
+  readonly clerkIds: Record<keyof typeof SEED_PHONES, string>;
   /** Platform ledger account for money held by the sandbox simulator provider. */
   readonly providerClearingAccount: string;
 }
 
+/** The identity-provider id each seeded account is linked to (sandbox authenticator only). */
+export function seedSubject(who: keyof typeof SEED_PHONES): string {
+  return `user_sandbox_${who}`;
+}
+
 async function createAccount(
   tx: Tx,
-  phone: string,
+  who: keyof typeof SEED_PHONES,
   operator = false,
 ): Promise<{ id: string; personId: string }> {
   const person = await tx.person.create({ data: {} });
   const account = await tx.user_account.create({
-    data: { person_id: person.id, phone_e164: phone, is_platform_operator: operator },
+    data: {
+      person_id: person.id,
+      phone_e164: SEED_PHONES[who],
+      clerk_user_id: seedSubject(who),
+      // .test is a reserved top-level domain: these addresses can never receive mail.
+      email: `${who}@sandbox.aora.test`,
+      display_name: `Sandbox ${who}`,
+      is_platform_operator: operator,
+    },
   });
   return { id: account.id, personId: person.id };
 }
@@ -50,11 +64,11 @@ export async function seedSandbox(
   const tenancy = new TenancyService(db, new AuditService());
   return db.asPlatform(
     async (tx) => {
-      const adminA = await createAccount(tx, SEED_PHONES.adminA);
-      const financeA = await createAccount(tx, SEED_PHONES.financeA);
-      const cashierA = await createAccount(tx, SEED_PHONES.cashierA);
-      const adminB = await createAccount(tx, SEED_PHONES.adminB);
-      const operator = await createAccount(tx, SEED_PHONES.operator, true);
+      const adminA = await createAccount(tx, 'adminA');
+      const financeA = await createAccount(tx, 'financeA');
+      const cashierA = await createAccount(tx, 'cashierA');
+      const adminB = await createAccount(tx, 'adminB');
+      const operator = await createAccount(tx, 'operator', true);
 
       const businessA = await businesses.createRegistered(tx, {
         name: 'Sandbox Hardware Ltd',
@@ -94,6 +108,13 @@ export async function seedSandbox(
         tenantA,
         tenantB,
         providerClearingAccount,
+        clerkIds: {
+          adminA: seedSubject('adminA'),
+          financeA: seedSubject('financeA'),
+          cashierA: seedSubject('cashierA'),
+          adminB: seedSubject('adminB'),
+          operator: seedSubject('operator'),
+        },
         accounts: {
           adminA: adminA.id,
           financeA: financeA.id,

@@ -77,9 +77,8 @@ All in region `fra1`, next to the Neon database.
 | `CRON_SECRET` | ✓ | ✓ | – | yes | Random, at least 32 characters. Vercel sends it to cron routes |
 | `SANDBOX_SIM_WEBHOOK_SECRET` | ✓ | ✓ | ✓ | yes | Random. Signs the simulator's webhooks |
 | `PUBLIC_API_URL` | ✓ | – | ✓ | no | The staging domain, with `https://` |
-| `SMS_PROVIDER_USERNAME` | ✓ | – | ✓ | no | Africa's Talking sandbox username |
-| `SMS_PROVIDER_API_KEY` | ✓ | – | ✓ | yes | Africa's Talking sandbox API key |
-| `SANDBOX_SMS_INBOX_TOKEN` | ✓ until SMS works | – | – | yes | Random. Lets an operator read simulated one-time codes on staging before the SMS sandbox is connected. Removed afterwards |
+| Clerk variables | ✓ | – | ✓ | see [clerk-setup.md](clerk-setup.md) | Development-instance keys only |
+| Resend variables | ✓ | – | ✓ | see [resend-setup.md](resend-setup.md) | |
 
 Deliberately **not** on Vercel:
 
@@ -130,7 +129,8 @@ Notes: values are piped on standard input so they never appear in a command line
 
 ### Not done yet
 
-- Step 7's dashboard check of Deployment Protection (previews protected, Production domain open).
-- Step 9, the Neon integration for preview branches.
-- Connecting the GitHub repository for automatic deployments.
+- **Deployment Protection: checked on 2026-10-13 with the CLI.** The project is on Standard Protection (`all_except_custom_domains`): previews are protected, the staging domain is reachable for callbacks.
+- **GitHub is connected** (2026-10-13): pushes to `main` deploy to the Production target (staging); pull requests get protected previews.
+- **[you] Add a Deployment Check** so a deployment waits for CI: project Settings → Deployment Checks → Add Checks → GitHub → select the job "Lint, typecheck and test" (and "Migrate staging" once it exists). Not verified on the Hobby plan.
+- Preview deployments have no database by decision (ADR 0013); step 9 (the Neon integration) is not adopted.
 - Preview and Development environment variables.

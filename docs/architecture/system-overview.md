@@ -1,6 +1,6 @@
 # AORA — System Overview
 
-State after Phase 2 checkpoints 2A, 2C and 2D. Sandbox only. Nothing is deployed yet. This document describes what exists, not what is planned; for plans see [delivery-plan.md](delivery-plan.md).
+State after Phase 2. Sandbox only. Staging is https://aora-api.vercel.app (Vercel's Production target; **not live**). This document describes what exists, not what is planned; for plans see [delivery-plan.md](delivery-plan.md).
 
 ## What runs
 
@@ -10,7 +10,7 @@ One codebase, `services/api`, with two processes and one PostgreSQL database.
 |---|---|---|
 | API | `src/main.ts` | Serves `/v1`. Signs users in, creates payment intents, receives webhooks, serves operator endpoints |
 | Worker (local only) | `src/worker.ts` | A loop that drains the outbox and delivers simulator webhooks, for local development |
-| Jobs (deployed) | `GET /v1/internal/cron/*` on the API | The same work as scheduler-triggered, authenticated, idempotent, time-bounded routes: outbox, simulator webhooks, reconciliation. Schedules are in `services/api/vercel.json` ([ADR 0013](../adr/0013-hosting-vercel-neon.md)) |
+| Jobs (deployed) | `GET /v1/internal/cron/*` on the API | Authenticated, idempotent, time-bounded routes: outbox, simulator webhooks, reconciliation. Triggered three ways ([ADR 0013](../adr/0013-hosting-vercel-neon.md)): the API drains the outbox in the background after each request; a GitHub Actions schedule calls the routes every 5 minutes (reconciliation hourly); Vercel's daily cron is a last net |
 
 There is no user interface, no deployment, no chain code and no real provider yet. Hosting will be Vercel and Neon; **Vercel's "Production" target is AORA staging, not live.**
 
@@ -42,7 +42,8 @@ Journal entry for a successful collection of amount *a* in KES:
 | Part | Status |
 |---|---|
 | PostgreSQL schema, row-level security, ledger invariants, outbox, state machine, reconciliation | Real |
-| Authentication | One-time codes are real and random; **delivery is simulated** until the Africa's Talking sandbox is connected. The fixed code exists for local development only and cannot run deployed |
+| Authentication | Clerk session tokens, verified by the API; AORA maps them to its own persons and decides all access. **Implemented and tested with stand-ins; not yet run against a real Clerk instance** |
+| Email | Notifications module with a Resend adapter. **Not yet run against a real Resend account** |
 | PIN step-up, permissions, consent, rate limiting | Real |
 | Payment provider | **Simulated.** AORA's own simulator; it imitates no real provider |
 | Settlement, fees, payouts, refunds | Not built |

@@ -127,14 +127,14 @@ describe('sandbox labelling', () => {
 describe('clock', () => {
   it('stores application timestamps on the same clock as the database', async () => {
     const before = Date.now();
-    await h.http().post('/v1/auth/challenges').send({ phone: '+99900000001' });
+    await h.stepUp(await h.signIn('adminB'));
     const row = await h.owner((client) =>
       client.query<{ skew_ms: string }>(
-        `select extract(epoch from (expires_at - now())) * 1000 as skew_ms
-         from identity.auth_challenge order by created_at desc limit 1`,
+        `select extract(epoch from (until - now())) * 1000 as skew_ms
+         from identity.step_up order by created_at desc limit 1`,
       ),
     );
-    const ttl = h.config.auth.challengeTtlSeconds * 1000;
+    const ttl = h.config.auth.stepUpTtlSeconds * 1000;
     const elapsed = Date.now() - before;
     expect(Math.abs(Number(row.rows[0]?.skew_ms) - ttl)).toBeLessThan(elapsed + 2000);
   });

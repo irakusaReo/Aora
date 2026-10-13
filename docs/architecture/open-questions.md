@@ -34,7 +34,7 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [D-3](#d-3) | Local payment provider for sandbox | Owner | 3 [2] | MVP: Daraja sandbox + simulator |
 | [D-4](#d-4) | Legal entity and licence per product | Owner | 3 [2], 13 [10] | Open |
 | [D-5](#d-5) | Credit licence or lending partner | Owner | 11 | Open |
-| [D-6](#d-6) | Authentication and step-up mechanism | Owner | 1 | MVP resolved; production open (ADR 0011) |
+| [D-6](#d-6) | Authentication and step-up mechanism | Owner | 1 | Resolved: Clerk (ADR 0011, 0019); PIN step-up kept |
 | [D-7](#d-7) | Canonical business identifier and duplicate rule | Owner | 1 | Resolved: ADR 0012 |
 | [D-8](#d-8) | KYC/KYB provider and tier limits | Owner | 3 [2] | Open |
 | [D-9](#d-9) | Hosting region and data residency | Owner | 1 (deploy), 13 [10] | Hosting decided: Vercel + Neon, Frankfurt (ADR 0013). Residency question open |
@@ -45,7 +45,7 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [E-3](#e-3) | Node, TypeScript and test-runner versions | Eng | 1 | Resolved at checkpoint 1A |
 | [E-4](#e-4) | Read-only mainnet fork under the sandbox-only rule | Owner | 5 [4] | Open |
 | [M-1..M-7](#m-flags-raised-by-the-mvp-definition) | Flags raised by the MVP definition | mixed | various | Resolved 2026-10-13 (second ruling) |
-| [O-1..O-10](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO and hosting rulings | Owner | various | O-1 to O-4 decided (defaults); O-5 to O-10 open |
+| [O-1..O-13](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO, hosting, Clerk and Resend rulings | Owner | various | O-1 to O-4 decided; O-10 decided with a terms caveat; others open |
 | [X-1..X-12](#x-requirements-that-cannot-be-tested-without-external-access) | Requirements that cannot be tested without external access | mixed | various | Open |
 
 ## Owner rulings (2026-10-13)
@@ -463,6 +463,16 @@ The MVP definition (owner, 2026-10-13) was checked against the brief and CLAUDE.
 | O-7 | Where are product images stored? | The API cannot carry uploads above 4.5 MB (ADR 0013), and images need a store | Vercel Blob, as the Vercel-native option. **Not yet verified; I will verify limits and pricing and ask before adopting it** | KELO catalogue checkpoint |
 | O-8 | What do the CBK Digital Credit Provider conduct rules require of reminders, disclosure and late charges? | The collections design must follow them | Not yet read. First task of the credit checkpoint: read and cite the regulations, record findings in `docs/compliance/`, then design reminders. Until then the stricter owner rules apply (no contacts access, no third parties, no shaming, capped late charges) | KELO credit checkpoints (d), (e) |
 | O-9 | Is layaway outside the definition of credit in Kenya, and may AORA hold layaway funds? | Decides whether layaway needs the credit flag, and who may hold the money | Treat as "not credit" in the sandbox, hold funds in a labelled sandbox liability account, and get counsel's view before any live use. **Not verified** | Live use only |
-| O-10 | Which Vercel plan? | Per-minute cron needs **Pro**; Hobby allows one run per day (ADR 0013) | **Decided 2026-10-13: Hobby for now.** Cron jobs run daily, so background work on staging is delayed. To be revisited before Phase 3: Pro, or request-driven outbox draining, or an approved external scheduler | Phase 3 payment journeys |
+| O-10 | Which Vercel plan? | Per-minute cron needs **Pro** ($20 per month); Hobby allows one run per day | **Decided: Hobby, with background work driven by request-triggered draining plus a GitHub Actions schedule (ADR 0013), at no cost.** Caveat for the owner: Vercel's terms restrict Hobby to non-commercial, personal use, and AORA is a commercial project. Staying on Hobby risks the account being paused | Owner's call; no engineering block |
 
 Providers the KELO phases will eventually need, listed now and requested later: an ID-verification sandbox, a credit-bureau sandbox, and image storage (O-7).
+
+### Added with the Clerk and Resend rulings (2026-10-13)
+
+Africa's Talking is dropped from the MVP and its credential request is withdrawn. Sign-in is by email code through Clerk; email is sent through Resend (ADRs 0019, 0020).
+
+| ID | Question | Why it matters | Options | Recommended default | Blocks |
+|---|---|---|---|---|---|
+| O-11 | How is a phone number verified in the MVP? | The phone number is the payment identifier and financial identity (brief §2.1), but sign-in no longer proves control of it. Money sent to a wrong or someone else's number is the worst outcome | (a) **Clerk SMS verification.** Clerk restricts SMS to countries on an allowlist that by default contains only the US and Canada; other countries are enabled in the dashboard and charged at "market rate". Kenya's availability and price are **not verified**. (b) **An SMS adapter added later** behind the notifications channel interface. (c) **Confirm the number before any money is sent to it**: the first payout or transfer to a number shows the name the provider returns for it (where the rail offers a name lookup, to verify per rail) and needs a PIN step-up; collections from a number need no verification because the payer approves on their own handset | **(c) for the MVP**, since it needs no SMS provider and guards the one risky direction. Record the number as unverified. Add (a) or (b) before any pilot if a rail has no name lookup | Phase 3C payouts |
+| O-12 | Cross-border processing of personal data | Clerk (email, phone, name, sign-in events) and Resend (email addresses, message content) process personal data outside Kenya. Neon and Vercel host in Frankfurt. Kenya's Data Protection Act has conditions for transferring personal data out of the country | Legal review is needed before any pilot with real people, covering: the lawful basis and safeguards for each transfer; whether consent or a contractual mechanism is required; each processor's data-processing terms and sub-processors; registration with the data protection regulator; data-subject rights, including erasure versus the duty to keep financial records (ADR 0019); breach notification; and where each processor stores data. **None of this has been verified; it is for counsel** | Sandbox only, with test identities, until reviewed. No real customer data in staging | Any pilot |
+| O-13 | Does the owner have a domain to verify in Resend? | Without one, mail can be sent only from Resend's test sender and only to the Resend account owner's own address (ADR 0020) | (a) Verify a domain or subdomain the owner controls (for example `mail.<domain>`). (b) Stay on the test sender | (a), using a subdomain so the root domain's mail is untouched. DNS records are supplied when the domain is named | Staging sign-in for anyone but the owner |

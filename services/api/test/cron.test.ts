@@ -52,7 +52,8 @@ describe('cron jobs', () => {
     expect(first.status).toBe(200);
     expect(first.body).toMatchObject({ job: 'outbox', handled: 1, mode: 'sandbox' });
     expect((await cron('sim-webhooks')).body).toMatchObject({ delivered: 1 });
-    expect((await cron('outbox')).body).toMatchObject({ handled: 1 });
+    // The webhook, and the payment alert it leads to.
+    expect((await cron('outbox')).body).toMatchObject({ handled: 2 });
     expect(await statusOf(h, admin, id)).toBe('succeeded');
     expect(await ledgerFor(h, id)).toEqual({ entries: 1, credited: '8800' });
   });
@@ -83,7 +84,7 @@ describe('cron jobs', () => {
     }
     expect((await cron('outbox')).body.handled).toBe(7);
     expect((await cron('sim-webhooks')).body.delivered).toBe(7);
-    expect((await cron('outbox')).body.handled).toBe(7);
+    expect((await cron('outbox')).body.handled).toBe(14);
     for (const id of ids) expect(await statusOf(h, admin, id)).toBe('succeeded');
   });
 

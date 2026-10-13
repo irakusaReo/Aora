@@ -23,6 +23,8 @@ export interface SessionContext {
   readonly accountId: string;
   readonly isPlatformOperator: boolean;
   readonly stepUpUntil: Date | null;
+  /** Minutes since the sign-in factor was last verified on this session; null if unknown. */
+  readonly firstFactorAgeMinutes: number | null;
   readonly memberships: readonly Membership[];
 }
 

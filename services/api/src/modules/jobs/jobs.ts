@@ -1,14 +1,17 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import {
+  type CallHandler,
   type CanActivate,
   Controller,
   type ExecutionContext,
   Get,
   Inject,
   Injectable,
-  Query,
+  type NestInterceptor,
   UseGuards,
 } from '@nestjs/common';
+import { waitUntil } from '@vercel/functions';
+import { finalize, type Observable } from 'rxjs';
 import type { Request } from 'express';
 import { APP_CONFIG, type AppConfig } from '../../platform/config.js';
 import { Database } from '../../platform/database.js';
@@ -38,17 +41,41 @@ export class CronGuard implements CanActivate {
   }
 }
 
-/** Guards the simulated SMS inbox. With no token configured the route does not exist. */
+/**
+ * Drains the outbox in the background after a request that may have enqueued
+ * work, so an event does not wait for the next scheduled run (ADR 0013).
+ * `waitUntil` keeps the function alive after the response on Vercel; it is
+ * bounded by the job time budget and by the function's maximum duration.
+ * Scheduled runs remain the backstop: this is an optimisation, never the only path.
+ */
 @Injectable()
-export class InboxGuard implements CanActivate {
-  constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
+export class DrainAfterResponseInterceptor implements NestInterceptor {
+  constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
-    if (!this.config.smsInboxToken) throw new AppError('not_found', 'Resource not found.');
-    if (!bearerMatches(context.switchToHttp().getRequest<Request>(), this.config.smsInboxToken)) {
-      throw new AppError('unauthenticated', 'Not authorised.');
-    }
-    return true;
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<Request>();
+    const mayEnqueue =
+      this.config.deployed && request.method !== 'GET' && !request.path.includes('/internal/');
+    return mayEnqueue
+      ? next.handle().pipe(
+          finalize(() => {
+            this.drain();
+          }),
+        )
+      : next.handle();
+  }
+
+  private drain(): void {
+    const deadline = Date.now() + Math.min(this.config.jobs.budgetMs, 20_000);
+    const work = (async (): Promise<void> => {
+      while (Date.now() < deadline && (await this.outbox.runOnce())) {
+        // keep going until idle or out of time
+      }
+    })().catch(() => undefined);
+    waitUntil(work);
   }
 }
 
@@ -124,32 +151,5 @@ export class CronController {
           delete from ops.job_lease where name = 'reconciliation' and holder = ${holder}::uuid`,
       );
     }
-  }
-}
-
-/** Sandbox only: lets an operator read simulated one-time codes while no SMS provider is connected. */
-@Controller('v1/internal/sandbox')
-@UseGuards(InboxGuard)
-export class SandboxInboxController {
-  constructor(@Inject(Database) private readonly db: Database) {}
-
-  @Get('sms')
-  async list(
-    @Query('phone') phone: string | undefined,
-  ): Promise<{ data: { phone: string; body: string; sent_at: string }[] }> {
-    const rows = await this.db.asPlatform((tx) =>
-      tx.sim_sms.findMany({
-        where: phone ? { phone_e164: phone } : {},
-        orderBy: { created_at: 'desc' },
-        take: 20,
-      }),
-    );
-    return {
-      data: rows.map((row) => ({
-        phone: row.phone_e164,
-        body: row.body,
-        sent_at: row.created_at.toISOString(),
-      })),
-    };
   }
 }

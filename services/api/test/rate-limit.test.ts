@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { RateLimiter } from '../src/platform/rate-limit.js';
 import { type Harness, startHarness } from './support/harness.js';
 
 let a: Harness;
@@ -14,41 +15,38 @@ afterAll(async () => {
   await a.close();
 });
 
-const start = (h: Harness, phone: string) => h.http().post('/v1/auth/challenges').send({ phone });
+const consume = (h: Harness, key: string): Promise<'ok' | 'limited'> =>
+  h.app
+    .get(RateLimiter)
+    .consume('pin_step_up_account', key)
+    .then(
+      () => 'ok' as const,
+      () => 'limited' as const,
+    );
 
 describe('rate limiting on a shared store', () => {
   it('allows exactly the limit under concurrent requests split across instances', async () => {
-    const limit = a.config.rateLimits.sign_in_start_phone.limit;
-    const responses = await Promise.all(
-      Array.from({ length: limit * 4 }, (_, i) => start(i % 2 ? a : b, '+99900000001')),
+    const limit = a.config.rateLimits.pin_step_up_account.limit;
+    const results = await Promise.all(
+      Array.from({ length: limit * 4 }, (_, i) => consume(i % 2 ? a : b, 'account-1')),
     );
-    const statuses = responses.map((response) => response.status);
-    expect(statuses.filter((status) => status === 201)).toHaveLength(limit);
-    expect(statuses.filter((status) => status === 429)).toHaveLength(limit * 3);
-    const blocked = responses.find((response) => response.status === 429);
-    expect(blocked?.body.error.code).toBe('too_many_attempts');
+    expect(results.filter((result) => result === 'ok')).toHaveLength(limit);
+    expect(results.filter((result) => result === 'limited')).toHaveLength(limit * 3);
   });
 
-  it('counts each phone number separately', async () => {
-    expect((await start(a, '+99900000002')).status).toBe(201);
-    expect((await start(b, '+99900000001')).status).toBe(429);
-  });
-
-  it('applies to numbers without an account too, so the limit reveals nothing', async () => {
-    const limit = a.config.rateLimits.sign_in_start_phone.limit;
-    const statuses: number[] = [];
-    for (let i = 0; i < limit + 1; i += 1) statuses.push((await start(a, '+99977700000')).status);
-    expect(statuses).toEqual([...Array<number>(limit).fill(201), 429]);
+  it('counts each key separately', async () => {
+    expect(await consume(a, 'account-2')).toBe('ok');
+    expect(await consume(b, 'account-1')).toBe('limited');
   });
 
   it('opens a new window when the old one has passed', async () => {
     await a.owner((client) =>
       client.query(`update ops.rate_limit set window_start = window_start - interval '1 hour'`),
     );
-    expect((await start(a, '+99900000001')).status).toBe(201);
+    expect(await consume(a, 'account-1')).toBe('ok');
   });
 
-  it('stores no phone number or address, only a digest', async () => {
+  it('stores only a digest of the key', async () => {
     const rows = await a.owner((client) =>
       client.query<{ bucket: string }>(`select bucket from ops.rate_limit`),
     );
@@ -60,5 +58,21 @@ describe('rate limiting on a shared store', () => {
     await expect(
       a.db.withTenant(a.seed.tenantA, (tx) => tx.$queryRaw`select * from ops.rate_limit`),
     ).rejects.toThrow(/permission denied/);
+  });
+
+  it('limits PIN attempts through the API', async () => {
+    const token = await a.signIn('adminB');
+    const limit = a.config.rateLimits.pin_step_up_account.limit;
+    const statuses: number[] = [];
+    for (let i = 0; i < limit + 1; i += 1) {
+      const response = await a
+        .http()
+        .post('/v1/auth/step-up')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ pin: '482915' });
+      statuses.push(response.status);
+    }
+    expect(statuses.slice(0, limit).every((status) => status === 409)).toBe(true);
+    expect(statuses[limit]).toBe(429);
   });
 });
