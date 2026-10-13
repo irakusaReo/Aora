@@ -36,6 +36,12 @@ Everything is built and tested against the simulator first. A real Daraja call i
 | P3-12 | **API keys act with a fixed scope, not a role**: `collect` or `full`. A key can never perform an action that needs a PIN step-up (payouts, refunds, member changes, recipient confirmation) | A key has no human behind it to step up. Rule 12 | ADR 0023 |
 | P3-13 | **Outbound webhooks are signed with Ed25519** over `timestamp.body`; the public key is served at `/v1/webhook-signing-key`. HTTPS only; private and loopback addresses are refused when deployed | M-2: one platform key pair in the secret store, no per-merchant secret in the database | ADR 0023 |
 
+### Owner decisions added on 2026-10-13
+
+- **P3-7 extended:** the first payout to a newly confirmed destination is capped and must wait out a cooling-off period. Both values are versioned configuration with sandbox defaults. What confirmation proves is written on the screen and in the audit record: the user's intent, not ownership of the number.
+- **P3-5 extended:** Safaricom's published callback addresses ([providers/daraja.md](../providers/daraja.md)) are an extra allow-list layer, enforced only once a real sandbox callback confirms the sandbox uses them. Callback tokens are redacted from every log line and error report, with a test.
+- **Contract migration approved (this one only):** drop `identity.auth_challenge`, `identity.session` and `sim.sim_sms` after confirming no code references them. It ships on its own, after the release that stops reading them is on staging.
+
 ## 2. Data model
 
 One migration per checkpoint, expand-only. Every table carries `mode` (`sandbox` only) and, where tenant-owned, `tenant_id` with row-level security.
