@@ -98,7 +98,7 @@ Balances stay distinct types and are never summed (rule 5).
 
 Workspace routes need `Aora-Workspace-Id` and a permission; (S) marks PIN step-up.
 
-- **3A-1:** `GET /v1/tariffs/quote` · `GET|POST /v1/workspace/branches` · `PATCH /v1/workspace/branches/{id}` (S) · `GET /v1/payment-intents` (list with gross, fee, net; cashiers see their branch only) · `POST /v1/payment-intents` gains `branch_id`, `reference`, `rail`, `payer_phone`.
+- **3A-1:** `GET /v1/tariffs/quote` · `GET|POST /v1/workspace/branches` · `PATCH /v1/workspace/branches/{id}` · `PATCH /v1/workspace/members/{id}` gains `branch_id` · `GET /v1/payment-intents` (list with gross, fee, net; cashiers see their branch only) · `POST /v1/payment-intents` gains `branch_id`, `reference`, `rail`, `payer_phone`.
 - **3A-2:** `POST /v1/onboarding/applications` · `GET /v1/onboarding/applications/{id}` · `GET|POST /v1/workspace/invitations` (S on POST) · `DELETE /v1/workspace/invitations/{id}` (S) · `GET /v1/me/invitations` · `POST /v1/me/invitations/{id}/accept` · `GET /v1/workspace` · operator: `GET /v1/ops/onboarding-reviews`, `POST /v1/ops/onboarding-reviews/{id}/decision`, `POST /v1/ops/reconciliation-exceptions/{id}/resolution`, `GET /v1/ops/accounts`, `GET /v1/ops/workspaces`, `GET /v1/ops/audit-events`.
 - **3B:** `POST /v1/webhooks/daraja/{kind}/{operationId}/{token}`.
 - **3C:** `GET /v1/settlements` · `GET|POST /v1/payout-recipients` · `POST /v1/payout-recipients/{id}/confirmation` (S) · `POST /v1/payouts/preview` · `POST /v1/payouts` (S) · `GET /v1/payouts`, `GET /v1/payouts/{id}` · `POST /v1/payment-intents/{id}/refunds` (S) · `GET /v1/refunds/{id}` · cron: `GET /v1/internal/cron/settlement`.

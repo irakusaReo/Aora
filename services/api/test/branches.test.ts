@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Harness, startHarness } from './support/harness.js';
-import { type Caller, createIntent, getIntent } from './support/payments.js';
+import { type Caller, createIntent, getIntent, ids } from './support/payments.js';
 
 let h: Harness;
 let admin: Caller;
@@ -63,9 +63,7 @@ describe('branches', () => {
 
   it('shows a workspace only its own branches, at the API and in the database', async () => {
     const mine = await as(admin, 'get', '/v1/workspace/branches');
-    expect(mine.body.data.map((row: { id: string }) => row.id).sort()).toEqual(
-      [counter, kiosk].sort(),
-    );
+    expect(ids(mine).sort()).toEqual([counter, kiosk].sort());
     expect((await as(adminB, 'get', '/v1/workspace/branches')).body.data).toEqual([]);
 
     const rows = await h.db.withTenant(h.seed.tenantB, (tx) => tx.branch.findMany());
@@ -93,8 +91,9 @@ describe('a cashier and their branch', () => {
 
   it('is assigned by an admin, and only to a branch of the same workspace', async () => {
     const members = await as(admin, 'get', '/v1/workspace/members');
-    cashierMembership = members.body.data.find((row: { role: string }) => row.role === 'cashier')
-      .id as string;
+    cashierMembership =
+      (members.body.data as { id: string; role: string }[]).find((row) => row.role === 'cashier')
+        ?.id ?? '';
 
     const other = await as(adminB, 'post', '/v1/workspace/branches').send({ name: 'Stall' });
     const foreign = await as(admin, 'patch', `/v1/workspace/members/${cashierMembership}`).send({
@@ -137,7 +136,7 @@ describe('a cashier and their branch', () => {
 
     const listed = await as(cashier, 'get', '/v1/payment-intents');
     expect(listed.status).toBe(200);
-    expect(listed.body.data.map((row: { id: string }) => row.id)).toEqual([atCounter]);
+    expect(ids(listed)).toEqual([atCounter]);
 
     expect((await getIntent(h, cashier, atCounter)).status).toBe(200);
     expect((await getIntent(h, cashier, atKiosk)).status).toBe(404);
@@ -146,13 +145,9 @@ describe('a cashier and their branch', () => {
 
   it('lets finance and admin see every branch, newest first, and filter by one', async () => {
     const all = await as(finance, 'get', '/v1/payment-intents');
-    expect(all.body.data.map((row: { id: string }) => row.id)).toEqual([
-      noBranch,
-      atKiosk,
-      atCounter,
-    ]);
+    expect(ids(all)).toEqual([noBranch, atKiosk, atCounter]);
     const filtered = await as(finance, 'get', '/v1/payment-intents').query({ branch_id: kiosk });
-    expect(filtered.body.data.map((row: { id: string }) => row.id)).toEqual([atKiosk]);
+    expect(ids(filtered)).toEqual([atKiosk]);
   });
 
   it('pages through the list with a cursor, without repeats or gaps', async () => {
@@ -163,7 +158,7 @@ describe('a cashier and their branch', () => {
       limit: 2,
       cursor: first.body.next_cursor,
     });
-    expect(second.body.data.map((row: { id: string }) => row.id)).toEqual([atCounter]);
+    expect(ids(second)).toEqual([atCounter]);
     expect(second.body.next_cursor).toBeNull();
   });
 

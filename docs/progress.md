@@ -3,7 +3,7 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 2 ([plan](plans/phase-2.md)) is built and verified on staging; the end-of-phase report has not been given yet.
+- **Current phase:** Phase 3 ([plan](plans/phase-3.md)), on branch `phase-3`. Phase 2 closed with its report on 2026-10-13.
 - **Last updated:** 2026-10-13
 
 ## Done
@@ -23,7 +23,12 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - Fixes made from real traffic: provider timestamps bound as bigint; Prisma client generated in the build step (Git-triggered Vercel builds were failing); tokens with no `azp` claim accepted, origin allow-list enforced in AORA's code.
 - 223 tests pass locally. CI's `Lint, typecheck and test` job passes; **`Migrate staging` fails on every push to `main`** until the GitHub secret exists.
 
-## Next
+## Phase 3 checkpoints
+
+- **3A-1 done (branch `phase-3`, not merged):** versioned tariffs with gross, fee and net on every collection ([ADR 0021](adr/0021-fees-settlement-and-payout-ledger.md)); tier limits; branches; cashier limited to their branch; collection list with cursor; fee quote. Migration `…000600_tariffs_branches` (expand-only, **not yet on staging**). 258 tests pass.
+- **Next:** 3A-2 onboarding with ADR 0012 matching and review queue, staff invitation by email, operator API. Then 3A-3 web apps, 3B Daraja, 3C settlement, payouts and refunds, 3D developer API.
+
+## Next (carried from Phase 2)
 
 1. **Owner confirms** the sign-in code arrives (check Spam, `from:onboarding@resend.dev`). If not found, switch delivery back: `POST https://api.clerk.com/v1/templates/email/verification_code/toggle_delivery` with `{"delivered_by_clerk": true}`.
 2. **End-of-phase report for Phase 2**, then stop for approval. It must include the Phase 3 credential request (Daraja sandbox) and any build-order change from Clerk and Resend.
