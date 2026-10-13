@@ -1,0 +1,38 @@
+{
+  "name": "@aora/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AORA API and worker (sandbox only)",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:migrate": "prisma migrate deploy",
+    "db:pull": "prisma db pull",
+    "db:generate": "prisma generate",
+    "db:seed": "node dist/seed.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.1.2",
+    "@nestjs/core": "12.1.2",
+    "@nestjs/platform-express": "12.1.2",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "12.1.2",
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1",
+    "@types/supertest": "7.2.1",
+    "fast-check": "4.10.2",
+    "prisma": "7.10.0",
+    "supertest": "7.3.1",
+    "yaml": "2.9.1"
+  }
+}

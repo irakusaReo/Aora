@@ -3,4 +3,8 @@ packages:
   - 'packages/*'
   - 'services/*'
 
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+
 saveExact: true

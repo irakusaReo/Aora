@@ -8,3 +8,6 @@ skills-lock.json
 # Specification and research documents are edited by hand, not reformatted.
 docs
 CLAUDE.md
+services/*/src/generated
+services/*/prisma/schema.prisma
+.local

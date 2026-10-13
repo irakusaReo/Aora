@@ -1,0 +1,64 @@
+import {
+  type DynamicModule,
+  type MiddlewareConsumer,
+  Module,
+  type NestModule,
+} from '@nestjs/common';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditService } from './modules/audit/audit.service.js';
+import { BusinessService } from './modules/business/business.service.js';
+import { AUTH_PROVIDER, SandboxAuthProvider } from './modules/identity/auth-provider.js';
+import {
+  OperatorGuard,
+  SessionGuard,
+  StepUpGuard,
+  WorkspaceGuard,
+} from './modules/identity/guards.js';
+import { IdentityController } from './modules/identity/identity.controller.js';
+import { IdentityService } from './modules/identity/identity.service.js';
+import { TenancyService } from './modules/tenancy/tenancy.service.js';
+import { APP_CONFIG, type AppConfig } from './platform/config.js';
+import { Database } from './platform/database.js';
+import type { WorkspaceHook } from './seed-data.js';
+import { ErrorFilter } from './platform/errors.js';
+import { HealthController } from './platform/health.controller.js';
+import { RequestContextMiddleware, SandboxLabelInterceptor } from './platform/http.js';
+
+const SHARED = [
+  Database,
+  AuditService,
+  BusinessService,
+  TenancyService,
+  IdentityService,
+  SessionGuard,
+  WorkspaceGuard,
+  OperatorGuard,
+  StepUpGuard,
+];
+
+@Module({})
+export class AppModule implements NestModule {
+  static register(config: AppConfig): DynamicModule {
+    return {
+      module: AppModule,
+      controllers: [HealthController, IdentityController],
+      providers: [
+        { provide: APP_CONFIG, useValue: config },
+        { provide: AUTH_PROVIDER, useFactory: () => new SandboxAuthProvider(config) },
+        { provide: APP_FILTER, useClass: ErrorFilter },
+        { provide: APP_INTERCEPTOR, useClass: SandboxLabelInterceptor },
+        ...SHARED,
+      ],
+      exports: [APP_CONFIG, ...SHARED],
+    };
+  }
+
+  /** What must happen for every new workspace beyond the tenancy rows themselves. */
+  static workspaceHook(): WorkspaceHook {
+    return () => Promise.resolve();
+  }
+
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}

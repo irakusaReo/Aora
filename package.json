@@ -10,11 +10,18 @@
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "build": "pnpm -r build",
+    "db:start": "./scripts/dev-db.sh start",
+    "db:stop": "./scripts/dev-db.sh stop",
+    "db:reset": "./scripts/dev-db.sh reset",
+    "db:migrate": "pnpm -r db:migrate",
+    "db:generate": "pnpm -r db:generate",
+    "postinstall": "pnpm -r db:generate"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

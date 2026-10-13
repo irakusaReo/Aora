@@ -1,0 +1,82 @@
+import {
+  type ArgumentsHost,
+  Catch,
+  type ExceptionFilter,
+  HttpException,
+  Logger,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+
+/** Stable, documented error codes. Changing one is a breaking API change. */
+export type ErrorCode =
+  | 'invalid_request'
+  | 'unauthenticated'
+  | 'forbidden'
+  | 'step_up_required'
+  | 'not_found'
+  | 'idempotency_key_required'
+  | 'idempotency_key_reused'
+  | 'invalid_state_transition'
+  | 'capability_not_supported'
+  | 'invalid_signature'
+  | 'too_many_attempts'
+  | 'internal_error';
+
+const STATUS: Record<ErrorCode, number> = {
+  invalid_request: 400,
+  unauthenticated: 401,
+  forbidden: 403,
+  step_up_required: 403,
+  not_found: 404,
+  idempotency_key_required: 400,
+  idempotency_key_reused: 409,
+  invalid_state_transition: 409,
+  capability_not_supported: 422,
+  invalid_signature: 401,
+  too_many_attempts: 429,
+  internal_error: 500,
+};
+
+export class AppError extends Error {
+  readonly status: number;
+
+  constructor(
+    readonly code: ErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.status = STATUS[code];
+  }
+}
+
+@Catch()
+export class ErrorFilter implements ExceptionFilter {
+  private readonly logger = new Logger('ErrorFilter');
+
+  catch(error: unknown, host: ArgumentsHost): void {
+    const http = host.switchToHttp();
+    const request = http.getRequest<Request>();
+    const response = http.getResponse<Response>();
+    const requestId = request.aora?.requestId ?? 'unknown';
+
+    let code: ErrorCode = 'internal_error';
+    let message = 'Unexpected error.';
+    if (error instanceof AppError) {
+      code = error.code;
+      message = error.message;
+    } else if (error instanceof HttpException) {
+      const status = error.getStatus();
+      code = status === 404 ? 'not_found' : status < 500 ? 'invalid_request' : 'internal_error';
+      message = status === 404 ? 'Resource not found.' : 'The request could not be processed.';
+    }
+    if (code === 'internal_error') {
+      // The error message may quote user input or SQL; log its type and stack origin only.
+      const name = error instanceof Error ? error.name : typeof error;
+      this.logger.error(`request ${requestId} failed with ${name}`);
+    }
+    response
+      .status(STATUS[code])
+      .setHeader('Aora-Mode', 'sandbox')
+      .json({ error: { code, message, request_id: requestId }, mode: 'sandbox' });
+  }
+}

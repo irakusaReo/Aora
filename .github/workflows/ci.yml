@@ -16,7 +16,24 @@ jobs:
   verify:
     name: Lint, typecheck and test
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      # Throwaway database for tests. Trust authentication, no data, sandbox only.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AORA_TEST_PG_HOST: 127.0.0.1
+      AORA_TEST_PG_PORT: '5432'
+      DATABASE_URL_OWNER: postgresql://aora_owner@127.0.0.1:5432/aora_ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -29,6 +46,18 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Create database roles and apply migrations
+        run: |
+          psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -f services/api/prisma/bootstrap.sql
+          psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c "create database aora_ci owner aora_owner"
+          pnpm db:migrate
+
+      - name: Check schema.prisma matches the migrations
+        run: |
+          pnpm -r db:pull
+          git diff --exit-code -- services/api/prisma/schema.prisma
+
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck

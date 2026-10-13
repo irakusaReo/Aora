@@ -1,0 +1,153 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["audit", "business", "identity", "tenancy"]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model audit_event {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occurred_at      DateTime      @default(now()) @db.Timestamptz(6)
+  tenant_id        String?       @db.Uuid
+  actor_kind       String
+  actor_account_id String?       @db.Uuid
+  action           String
+  subject_type     String
+  subject_id       String
+  outcome          String
+  request_id       String?
+  detail           Json          @default("{}")
+  mode             String        @default("sandbox")
+  user_account     user_account? @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace        workspace?    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenant_id, occurred_at], map: "audit_event_tenant_time")
+  @@schema("audit")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model business {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind                String
+  name                String
+  name_normalised     String
+  country             String
+  owner_person_id     String?               @db.Uuid
+  location            Json?
+  location_key        String?
+  mode                String                @default("sandbox")
+  created_at          DateTime              @default(now()) @db.Timestamptz(6)
+  person              person?               @relation(fields: [owner_person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business_identifier business_identifier[]
+  workspace           workspace[]
+
+  @@unique([owner_person_id, name_normalised, location_key], map: "business_unregistered_identity", where: raw("(kind = 'unregistered'::text)"))
+  @@schema("business")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model business_identifier {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id      String    @db.Uuid
+  type             String
+  country          String
+  value_normalised String
+  verified_at      DateTime? @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  business         business  @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([type, country, value_normalised])
+  @@schema("business")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model auth_challenge {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  account_id   String       @db.Uuid
+  purpose      String
+  code_hash    String
+  attempts     Int          @default(0)
+  expires_at   DateTime     @db.Timestamptz(6)
+  consumed_at  DateTime?    @db.Timestamptz(6)
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  user_account user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("identity")
+}
+
+model person {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at   DateTime       @default(now()) @db.Timestamptz(6)
+  business     business[]
+  user_account user_account[]
+
+  @@schema("identity")
+}
+
+model session {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  account_id    String       @db.Uuid
+  token_hash    String       @unique
+  expires_at    DateTime     @db.Timestamptz(6)
+  revoked_at    DateTime?    @db.Timestamptz(6)
+  step_up_until DateTime?    @db.Timestamptz(6)
+  created_at    DateTime     @default(now()) @db.Timestamptz(6)
+  user_account  user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("identity")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_account {
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  person_id            String           @db.Uuid
+  phone_e164           String           @unique
+  is_platform_operator Boolean          @default(false)
+  mode                 String           @default("sandbox")
+  created_at           DateTime         @default(now()) @db.Timestamptz(6)
+  audit_event          audit_event[]
+  auth_challenge       auth_challenge[]
+  session              session[]
+  person               person           @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership           membership[]
+
+  @@schema("identity")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model membership {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String       @db.Uuid
+  account_id   String       @db.Uuid
+  role         String
+  mode         String       @default("sandbox")
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  user_account user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace    workspace    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, account_id])
+  @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model workspace {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id String        @db.Uuid
+  product     String
+  mode        String        @default("sandbox")
+  created_at  DateTime      @default(now()) @db.Timestamptz(6)
+  audit_event audit_event[]
+  membership  membership[]
+  business    business      @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([business_id, product])
+  @@schema("tenancy")
+}

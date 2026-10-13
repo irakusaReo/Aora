@@ -10,3 +10,9 @@ coverage/
 !.env.example
 
 .DS_Store
+
+# Local development database cluster and other machine-local state.
+.local/
+
+# Generated Prisma client (pnpm db:generate).
+services/*/src/generated/
