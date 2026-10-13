@@ -34,7 +34,7 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 
 - Repository: greenfield, started 2026-10-13.
 - Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) on Vercel and Neon, against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`). Checkpoints 2A to 2D are built and staging is deployed at `https://aora-api.vercel.app` (sandbox, not live); 2E (Africa's Talking SMS) waits for the owner's credentials.
+- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`). All checkpoints (2A to 2F, including Clerk and Resend) are built, merged and verified on staging at `https://aora-api.vercel.app` (sandbox, not live). The end-of-phase report is still owed; do not start Phase 3 until Phase 2 is approved.
 - Last approved milestone: Phase 1 (2026-10-13)
 - Live status, next steps and blockers: `docs/progress.md`
 
