@@ -63,7 +63,10 @@ export class ProviderWebhooksController {
       const subject = str(data['subject']);
       const html = str(data['body']);
       if (!to || !subject || !html) {
-        this.logger.warn(`email event ${id} did not have the expected fields`);
+        // Field NAMES only, never values: the content includes the sign-in code.
+        this.logger.warn(
+          `email event ${id} did not have the expected fields; it has: ${Object.keys(data).sort().join(', ')}`,
+        );
         throw new AppError('invalid_request', 'Unrecognised email event.');
       }
       await this.notifications.sendSignInEmail({
