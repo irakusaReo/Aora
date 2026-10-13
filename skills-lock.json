@@ -1,11 +1,65 @@
 {
   "version": 1,
   "skills": {
+    "academic-humanizer": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/academic-humanizer/SKILL.md",
+      "computedHash": "48cc93292d8c2c6307ab5485ec8035c2bf79c61ede4d6f7318d24427ffa579b5"
+    },
+    "assess-interview-candidate": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/assess-interview-candidate/SKILL.md",
+      "computedHash": "ab6b15c625cc83f5b324f1740a7ee37095d5c5bc45a6ca4df892860876add20f"
+    },
+    "pause-and-resume": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/pause-and-resume/SKILL.md",
+      "computedHash": "975ffdce4040cdabd94453ecdad1b5cfebec6b94819f77d52d208156dfba0133"
+    },
+    "run-history-skill-builder": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/run-history-skill-builder/SKILL.md",
+      "computedHash": "758c13c1d948b11e3b4ae91f08d3a14d06c2c9e27d6f4c61ee4d66982cb21906"
+    },
+    "run-history-skill-upgrader": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/run-history-skill-upgrader/SKILL.md",
+      "computedHash": "e90d94e23ef940c9fb7f3e9fb1ca33afb6440f790623fff2bf53d39a049e6ed7"
+    },
+    "session-handoff-prompt": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/session-handoff-prompt/SKILL.md",
+      "computedHash": "6045b39baf2235083d0238c51f93dad0a857e39a45bbcee3e728a4005b2c3011"
+    },
+    "task-clarifier": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/task-clarifier/SKILL.md",
+      "computedHash": "6d4c3831f208b0b35e86ba164bb698a885b1224b942d82bc167c305917d1d6db"
+    },
+    "task-forest": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/task-forest/SKILL.md",
+      "computedHash": "b71ce895ee6c89125b043fe6ca035e100d71d89a36592799d9d11a1b9c8ab7e6"
+    },
     "task-observer": {
       "source": "rebelytics/one-skill-to-rule-them-all",
       "sourceType": "github",
       "skillPath": "SKILL.md",
       "computedHash": "11b95a2413b2c32effd1c5d22ea1e6cf4de93419e2651462e8d7ec838b1faa29"
+    },
+    "user-profile-keeper": {
+      "source": "dongshuyan/compass-skills",
+      "sourceType": "github",
+      "skillPath": "skills/user-profile-keeper/SKILL.md",
+      "computedHash": "eeacdc05c188661fa02c02cf145f4ef0c9ba5d79fb4fff202ccc629ddc4ad173"
     }
   }
 }
