@@ -85,6 +85,18 @@ describe('ClerkAuthProvider', () => {
     expect(await provider().authenticate(make())).toBeNull();
   });
 
+  it("accepts a token with no origin claim: those come from native apps and Clerk's Backend API, never a browser", async () => {
+    // A browser-issued token always carries azp, and it cannot be stripped without
+    // breaking the signature. So absence is not a way round the origin allow-list.
+    expect(await provider().authenticate(token({ azp: undefined }))).toMatchObject({
+      subject: 'user_abc',
+    });
+    expect(await provider().authenticate(token({ azp: '' }))).toBeNull();
+    expect(
+      await provider().authenticate(token({ azp: 'https://kony.aora.test.evil.example' })),
+    ).toBeNull();
+  });
+
   it('treats a never-verified first factor as unknown age', async () => {
     const result = await provider().authenticate(token({ fva: [-1, -1] }));
     expect(result?.firstFactorAgeMinutes).toBeNull();

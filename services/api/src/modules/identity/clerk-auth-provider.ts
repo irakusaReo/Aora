@@ -27,12 +27,22 @@ export class ClerkAuthProvider implements AuthProvider {
   async authenticate(token: string): Promise<AuthenticatedToken | null> {
     try {
       const { clerk } = this.config;
-      const claims = await verifyToken(token, {
-        ...(clerk.jwtKey ? { jwtKey: clerk.jwtKey } : { secretKey: clerk.secretKey ?? '' }),
-        ...(clerk.authorizedParties.length > 0
-          ? { authorizedParties: [...clerk.authorizedParties] }
-          : {}),
-      });
+      const claims = await verifyToken(
+        token,
+        clerk.jwtKey ? { jwtKey: clerk.jwtKey } : { secretKey: clerk.secretKey ?? '' },
+      );
+      // Origin check (the `azp` claim). A token issued to a browser always names
+      // the origin that asked for it, and that origin must be one of ours. A token
+      // with no `azp` did not come from a browser: it was issued to a native app or
+      // by Clerk's Backend API, and the claim cannot be removed without breaking the
+      // signature. Clerk's own option rejects those, so the check is done here.
+      const azp = (claims as { azp?: unknown }).azp;
+      if (
+        azp !== undefined &&
+        (typeof azp !== 'string' || !clerk.authorizedParties.includes(azp))
+      ) {
+        return null;
+      }
       const sessionId = (claims as { sid?: unknown }).sid;
       if (typeof claims.sub !== 'string' || typeof sessionId !== 'string' || sessionId === '') {
         return null;
