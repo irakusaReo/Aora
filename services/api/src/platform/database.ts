@@ -5,6 +5,15 @@ import { APP_CONFIG, type AppConfig } from './config.js';
 
 export type Tx = Prisma.TransactionClient;
 
+/**
+ * Limits for one transaction. The API sits next to the database (ADR 0013), so
+ * a transaction normally takes milliseconds; these bounds stop one from holding
+ * locks for long if something stalls. They are wider than the driver's 5 s
+ * default so that work run from a distant machine (seeding, migration checks)
+ * is not cut off by network latency alone.
+ */
+const TRANSACTION = { maxWait: 10_000, timeout: 20_000 };
+
 function adapter(connectionString: string): PrismaPg {
   return new PrismaPg({ connectionString });
 }
@@ -41,14 +50,17 @@ export class Database implements OnModuleDestroy {
       await tx.$queryRaw`
         select set_config('TimeZone', 'UTC', true), set_config('app.tenant_id', ${tenantId}, true)`;
       return work(tx);
-    });
+    }, TRANSACTION);
   }
 
-  asPlatform<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
-    return this.platform.$transaction(async (tx) => {
-      await tx.$queryRaw`select set_config('TimeZone', 'UTC', true)`;
-      return work(tx);
-    });
+  asPlatform<T>(work: (tx: Tx) => Promise<T>, options: { timeoutMs?: number } = {}): Promise<T> {
+    return this.platform.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`select set_config('TimeZone', 'UTC', true)`;
+        return work(tx);
+      },
+      { ...TRANSACTION, ...(options.timeoutMs ? { timeout: options.timeoutMs } : {}) },
+    );
   }
 
   /** For isolation tests only: the tenant-scoped role with no tenant set. */
@@ -56,7 +68,7 @@ export class Database implements OnModuleDestroy {
     return this.app.$transaction(async (tx) => {
       await tx.$queryRaw`select set_config('TimeZone', 'UTC', true)`;
       return work(tx);
-    });
+    }, TRANSACTION);
   }
 
   async onModuleDestroy(): Promise<void> {

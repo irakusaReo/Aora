@@ -14,7 +14,8 @@
     "db:generate": "prisma generate",
     "db:seed": "node --env-file-if-exists=../../.env.local dist/seed.js",
     "neon:bootstrap": "node --env-file-if-exists=../../.env.local scripts/neon-bootstrap.mjs",
-    "neon:verify": "node --env-file-if-exists=../../.env.local scripts/neon-verify.mjs"
+    "neon:verify": "node --env-file-if-exists=../../.env.local scripts/neon-verify.mjs",
+    "db:migrate:env": "node --env-file-if-exists=../../.env.local scripts/migrate-env.mjs"
   },
   "dependencies": {
     "@nestjs/common": "12.1.2",

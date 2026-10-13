@@ -48,58 +48,61 @@ export async function seedSandbox(
 ): Promise<SeedResult> {
   const businesses = new BusinessService();
   const tenancy = new TenancyService(db, new AuditService());
-  return db.asPlatform(async (tx) => {
-    const adminA = await createAccount(tx, SEED_PHONES.adminA);
-    const financeA = await createAccount(tx, SEED_PHONES.financeA);
-    const cashierA = await createAccount(tx, SEED_PHONES.cashierA);
-    const adminB = await createAccount(tx, SEED_PHONES.adminB);
-    const operator = await createAccount(tx, SEED_PHONES.operator, true);
+  return db.asPlatform(
+    async (tx) => {
+      const adminA = await createAccount(tx, SEED_PHONES.adminA);
+      const financeA = await createAccount(tx, SEED_PHONES.financeA);
+      const cashierA = await createAccount(tx, SEED_PHONES.cashierA);
+      const adminB = await createAccount(tx, SEED_PHONES.adminB);
+      const operator = await createAccount(tx, SEED_PHONES.operator, true);
 
-    const businessA = await businesses.createRegistered(tx, {
-      name: 'Sandbox Hardware Ltd',
-      country: 'KE',
-      registrationType: 'sandbox_registration_number',
-      registrationValue: 'SANDBOX-0001',
-    });
-    const businessB = await businesses.createUnregistered(tx, {
-      name: 'Sandbox Vegetable Stall',
-      ownerPersonId: adminB.personId,
-      location: {
+      const businessA = await businesses.createRegistered(tx, {
+        name: 'Sandbox Hardware Ltd',
         country: 'KE',
-        area: 'Sandbox County',
-        locality: 'Sandbox Town',
-        place: 'Stall 1',
-      },
-    });
+        registrationType: 'sandbox_registration_number',
+        registrationValue: 'SANDBOX-0001',
+      });
+      const businessB = await businesses.createUnregistered(tx, {
+        name: 'Sandbox Vegetable Stall',
+        ownerPersonId: adminB.personId,
+        location: {
+          country: 'KE',
+          area: 'Sandbox County',
+          locality: 'Sandbox Town',
+          place: 'Stall 1',
+        },
+      });
 
-    const providerClearingAccount = await new LedgerService().openAccount(tx, {
-      tenantId: null,
-      type: 'provider_clearing',
-      assetCode: 'KES',
-      qualifier: SANDBOX_PROVIDER,
-    });
+      const providerClearingAccount = await new LedgerService().openAccount(tx, {
+        tenantId: null,
+        type: 'provider_clearing',
+        assetCode: 'KES',
+        qualifier: SANDBOX_PROVIDER,
+      });
 
-    const tenantA = await tenancy.createWorkspace(tx, businessA);
-    const tenantB = await tenancy.createWorkspace(tx, businessB);
-    await onWorkspace(tx, tenantA);
-    await onWorkspace(tx, tenantB);
+      const tenantA = await tenancy.createWorkspace(tx, businessA);
+      const tenantB = await tenancy.createWorkspace(tx, businessB);
+      await onWorkspace(tx, tenantA);
+      await onWorkspace(tx, tenantB);
 
-    await tenancy.addMember(tx, tenantA, adminA.id, 'admin');
-    await tenancy.addMember(tx, tenantA, financeA.id, 'finance');
-    await tenancy.addMember(tx, tenantA, cashierA.id, 'cashier');
-    await tenancy.addMember(tx, tenantB, adminB.id, 'admin');
+      await tenancy.addMember(tx, tenantA, adminA.id, 'admin');
+      await tenancy.addMember(tx, tenantA, financeA.id, 'finance');
+      await tenancy.addMember(tx, tenantA, cashierA.id, 'cashier');
+      await tenancy.addMember(tx, tenantB, adminB.id, 'admin');
 
-    return {
-      tenantA,
-      tenantB,
-      providerClearingAccount,
-      accounts: {
-        adminA: adminA.id,
-        financeA: financeA.id,
-        cashierA: cashierA.id,
-        adminB: adminB.id,
-        operator: operator.id,
-      },
-    };
-  });
+      return {
+        tenantA,
+        tenantB,
+        providerClearingAccount,
+        accounts: {
+          adminA: adminA.id,
+          financeA: financeA.id,
+          cashierA: cashierA.id,
+          adminB: adminB.id,
+          operator: operator.id,
+        },
+      };
+    },
+    { timeoutMs: 120_000 },
+  );
 }

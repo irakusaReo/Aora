@@ -18,6 +18,13 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **2D** — permission map and a hand-written route × role matrix test; member management behind step-up with a last-admin rule enforced in the database; consent records; rate limiting in PostgreSQL.
 - 187 tests pass locally and in CI; lint, typecheck, format and build are clean. `main` is pushed and the first CI run (2026-10-13) passed, including the pooled-connection tests and the schema drift check.
 
+## 2B progress
+
+- **Neon: done (2026-10-13).** Project `aora` (`little-block-25898321`), Frankfurt, PostgreSQL 16, branches `main` (staging) and `development`. Three roles created with SQL; migrations applied without superuser rights; `pnpm neon:verify` passes through the pooler on both branches.
+- **Real check through Neon's pooler:** the built API, run locally against the development branch, refused to start with the fixed code, then signed in with a one-time code, took a payment to `succeeded` using only the cron routes, and reconciled clean.
+- Found and fixed there: transactions now have explicit limits (10 s to start, 20 s to run), because the driver's 5 s default cut off the seed when run from Kenya against Frankfurt.
+- **Vercel: not started.**
+
 ## Next
 
 1. **2B with the owner:** Neon then Vercel, one step at a time (`docs/operations/`). First unknowns to settle on the real platforms: that Vercel builds this NestJS app from `services/api`, and cold-start latency.
@@ -26,12 +33,13 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Blocked
 
-- **2B** waits for Neon and Vercel accounts and CLI logins.
+- **2B** waits for the Vercel account (Pro plan) and CLI login.
 - **2E** waits for Africa's Talking sandbox credentials.
 
 ## Waiting on the owner
 
-- Credential request for Phase 2 (Neon, Vercel, Africa's Talking).
+- Vercel account and login; Africa's Talking sandbox credentials.
+- Whether to delete the old, empty Neon project `Aora` in Ohio (`lingering-grass-59855278`).
 - O-10: confirm the Vercel **Pro** plan (per-minute cron).
 - O-5 (MTN market), O-6 (bank), O-7 (image storage): needed for Phases 4 and 5, not now.
 
