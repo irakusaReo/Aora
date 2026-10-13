@@ -15,6 +15,7 @@ const MODULES = [
   'ledger',
   'outbox',
   'payments',
+  'pricing',
   'tenancy',
 ];
 const MAY_IMPORT = {
@@ -22,11 +23,12 @@ const MAY_IMPORT = {
   business: [],
   ledger: [],
   outbox: [],
+  pricing: [],
   tenancy: ['audit'],
   consent: [],
   identity: ['audit', 'tenancy'],
   notifications: ['outbox'],
-  payments: ['audit', 'ledger', 'notifications', 'outbox'],
+  payments: ['audit', 'ledger', 'notifications', 'outbox', 'pricing', 'tenancy'],
   jobs: ['outbox', 'payments'],
   webhooks: ['identity', 'notifications'],
 };

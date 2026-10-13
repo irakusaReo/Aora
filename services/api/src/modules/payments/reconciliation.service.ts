@@ -148,6 +148,7 @@ export class ReconciliationService {
           });
         }
         // Net credit to the merchant's own accounts for this intent, reversals included.
+        // The merchant is owed gross minus AORA's fee.
         const postings = await tx.posting.findMany({
           where: {
             journal_entry: { operation_type: 'payment_intent', operation_id: intent.id },
@@ -159,7 +160,8 @@ export class ReconciliationService {
             posting.direction === 'credit' ? sum + posting.amount : sum - posting.amount,
           0n,
         );
-        if (credited !== intent.amount) {
+        const owed = intent.amount - intent.fee_amount;
+        if (credited !== owed) {
           await open({
             tenantId: intent.tenant_id,
             type: 'ledger_mismatch',
@@ -168,6 +170,7 @@ export class ReconciliationService {
             detail: {
               ledger_amount_minor: credited.toString(),
               intent_amount_minor: intent.amount.toString(),
+              intent_net_minor: owed.toString(),
             },
           });
         }

@@ -17,13 +17,23 @@ import { AppError } from '../../platform/errors.js';
 import { contextOf, parseBody, sessionOf, tenantOf } from '../../platform/http.js';
 import { SessionGuard, StepUpGuard, WorkspaceGuard } from '../identity/guards.js';
 import { Permit } from './permissions.js';
-import { type MemberView, TenancyService } from './tenancy.service.js';
+import { type BranchView, type MemberView, TenancyService } from './tenancy.service.js';
 
 const role = z.enum(['admin', 'finance', 'cashier']);
 const inviteBody = z.strictObject({ phone: z.string().regex(/^\+[1-9][0-9]{7,14}$/), role });
+// Exactly one change per request: a role, a removal, or a branch assignment (null clears it).
 const updateBody = z
-  .strictObject({ role: role.optional(), status: z.literal('removed').optional() })
-  .refine((value) => (value.role === undefined) !== (value.status === undefined));
+  .strictObject({
+    role: role.optional(),
+    status: z.literal('removed').optional(),
+    branch_id: z.uuid().nullable().optional(),
+  })
+  .refine((value) => Object.values(value).filter((entry) => entry !== undefined).length === 1);
+const branchName = z.string().trim().min(1).max(80);
+const createBranchBody = z.strictObject({ name: branchName });
+const updateBranchBody = z
+  .strictObject({ name: branchName.optional(), status: z.enum(['active', 'closed']).optional() })
+  .refine((value) => value.name !== undefined || value.status !== undefined);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Controller('v1/workspace/members')
@@ -60,6 +70,7 @@ export class MembersController {
     return this.tenancy.updateMember(this.actor(request), id, {
       ...(input.role ? { role: input.role } : {}),
       ...(input.status ? { status: input.status } : {}),
+      ...(input.branch_id !== undefined ? { branch_id: input.branch_id } : {}),
     });
   }
 
@@ -70,6 +81,49 @@ export class MembersController {
       requestId: contextOf(request).requestId,
     };
   }
+}
+
+@Controller('v1/workspace/branches')
+@UseGuards(SessionGuard, WorkspaceGuard)
+export class BranchesController {
+  constructor(@Inject(TenancyService) private readonly tenancy: TenancyService) {}
+
+  @Get()
+  @Permit('branch.read')
+  async list(@Req() request: Request): Promise<{ data: BranchView[] }> {
+    return { data: await this.tenancy.listBranches(tenantOf(request).tenantId) };
+  }
+
+  @Post()
+  @HttpCode(201)
+  @Permit('branch.manage')
+  create(@Body() body: unknown, @Req() request: Request): Promise<BranchView> {
+    const input = parseBody(createBranchBody, body);
+    return this.tenancy.createBranch(actorOf(request), input.name);
+  }
+
+  @Patch(':id')
+  @Permit('branch.manage')
+  update(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: Request,
+  ): Promise<BranchView> {
+    const input = parseBody(updateBranchBody, body);
+    if (!UUID.test(id)) throw new AppError('not_found', 'Branch not found.');
+    return this.tenancy.updateBranch(actorOf(request), id, {
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    });
+  }
+}
+
+function actorOf(request: Request): { tenantId: string; accountId: string; requestId: string } {
+  return {
+    tenantId: tenantOf(request).tenantId,
+    accountId: sessionOf(request).accountId,
+    requestId: contextOf(request).requestId,
+  };
 }
 
 @Controller('v1/ledger')

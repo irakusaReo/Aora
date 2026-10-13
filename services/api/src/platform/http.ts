@@ -16,6 +16,8 @@ export type Role = 'admin' | 'finance' | 'cashier';
 export interface Membership {
   readonly tenantId: string;
   readonly role: Role;
+  /** The branch a member is tied to; a cashier acts and sees within it only. */
+  readonly branchId: string | null;
 }
 
 export interface SessionContext {
@@ -33,6 +35,7 @@ export interface RequestContext {
   session?: SessionContext;
   tenantId?: string;
   role?: Role;
+  branchId?: string | null;
 }
 
 declare global {
@@ -97,10 +100,14 @@ export function sessionOf(request: Request): SessionContext {
   return session;
 }
 
-export function tenantOf(request: Request): { tenantId: string; role: Role } {
-  const { tenantId, role } = contextOf(request);
+export function tenantOf(request: Request): {
+  tenantId: string;
+  role: Role;
+  branchId: string | null;
+} {
+  const { tenantId, role, branchId } = contextOf(request);
   if (!tenantId || !role) {
     throw new AppError('forbidden', 'Workspace access required.');
   }
-  return { tenantId, role };
+  return { tenantId, role, branchId: branchId ?? null };
 }

@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "consent", "identity", "ledger", "notifications", "ops", "outbox", "payments", "sim", "tenancy"]
+  schemas  = ["audit", "business", "consent", "identity", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -147,7 +147,9 @@ model membership {
   mode         String       @default("sandbox")
   created_at   DateTime     @default(now()) @db.Timestamptz(6)
   status       String       @default("active")
+  branch_id    String?      @db.Uuid
   user_account user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branch       branch?      @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction, map: "membership_branch_same_workspace")
   workspace    workspace    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([tenant_id, account_id])
@@ -162,6 +164,7 @@ model workspace {
   product                   String
   mode                      String                      @default("sandbox")
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  tier                      String                      @default("tier_0")
   audit_event               audit_event[]
   consent_record            consent_record[]
   account                   account[]
@@ -173,6 +176,7 @@ model workspace {
   payment_intent            payment_intent[]
   payment_intent_transition payment_intent_transition[]
   reconciliation_exception  reconciliation_exception[]
+  branch                    branch[]
   membership                membership[]
   business                  business                    @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -224,6 +228,8 @@ model asset {
   account        account[]
   posting        posting[]
   payment_intent payment_intent[]
+  tariff_version tariff_version[]
+  tier_limit     tier_limit[]
 
   @@schema("ledger")
 }
@@ -312,13 +318,22 @@ model payment_intent {
   mode                      String                      @default("sandbox")
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
   updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  rail                      String                      @default("simulator")
+  fee_amount                BigInt                      @default(0)
+  tariff_version_id         String?                     @db.Uuid
+  branch_id                 String?                     @db.Uuid
+  reference                 String?
+  net_amount                BigInt?                     @default(dbgenerated("(amount - fee_amount)"))
   asset                     asset                       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  branch                    branch?                     @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction, map: "payment_intent_branch_same_workspace")
   user_account              user_account                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tariff_version            tariff_version?             @relation(fields: [tariff_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace                 workspace                   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   payment_intent_transition payment_intent_transition[]
 
   @@unique([tenant_id, idempotency_key])
   @@index([status, updated_at], map: "payment_intent_status")
+  @@index([tenant_id, created_at(sort: Desc), id], map: "payment_intent_tenant_created")
   @@schema("payments")
 }
 
@@ -567,4 +582,80 @@ model sim_email {
   created_at      DateTime @default(now()) @db.Timestamptz(6)
 
   @@schema("sim")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tariff_band {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tariff_version_id String         @db.Uuid
+  min_amount        BigInt
+  bps               Int            @default(0)
+  flat_amount       BigInt         @default(0)
+  min_fee           BigInt         @default(0)
+  max_fee           BigInt?
+  mode              String         @default("sandbox")
+  tariff_version    tariff_version @relation(fields: [tariff_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tariff_version_id, min_amount])
+  @@schema("pricing")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tariff_version {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operation      String
+  rail           String
+  country        String
+  asset_code     String
+  version        Int
+  name           String
+  rounding       String           @default("half_up")
+  effective_from DateTime         @db.Timestamptz(6)
+  effective_to   DateTime?        @db.Timestamptz(6)
+  mode           String           @default("sandbox")
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  created_txid   BigInt           @default(dbgenerated("txid_current()"))
+  payment_intent payment_intent[]
+  tariff_band    tariff_band[]
+  asset          asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([operation, rail, country, asset_code, version])
+  @@index([operation, rail, country, asset_code, effective_from], map: "tariff_version_lookup")
+  @@schema("pricing")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model branch {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id      String           @db.Uuid
+  name           String
+  status         String           @default("active")
+  mode           String           @default("sandbox")
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  payment_intent payment_intent[]
+  workspace      workspace        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membership     membership[]
+
+  @@unique([id, tenant_id])
+  @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tier_limit {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tier                 String
+  asset_code           String
+  version              Int
+  effective_from       DateTime @db.Timestamptz(6)
+  per_transaction_max  BigInt
+  daily_collection_max BigInt
+  daily_payout_max     BigInt
+  mode                 String   @default("sandbox")
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  asset                asset    @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tier, asset_code, version])
+  @@schema("tenancy")
 }

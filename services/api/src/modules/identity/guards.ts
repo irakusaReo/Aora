@@ -53,6 +53,7 @@ export class WorkspaceGuard implements CanActivate {
     const aora = contextOf(request);
     aora.tenantId = membership.tenantId;
     aora.role = membership.role;
+    aora.branchId = membership.branchId;
     return true;
   }
 }

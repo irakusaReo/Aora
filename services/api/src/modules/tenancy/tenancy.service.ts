@@ -9,8 +9,24 @@ export interface MemberView {
   readonly account_id: string;
   readonly role: string;
   readonly status: string;
+  readonly branch_id: string | null;
   /** Last three digits only: enough to recognise a colleague, not a phone number. Empty if none. */
   readonly phone_hint: string;
+}
+
+export interface BranchView {
+  readonly id: string;
+  readonly name: string;
+  readonly status: string;
+  readonly created_at: string;
+}
+
+/** What a workspace's tier currently allows, in minor units of one asset. */
+export interface TierLimits {
+  readonly tier: string;
+  readonly perTransactionMax: bigint;
+  readonly dailyCollectionMax: bigint;
+  readonly dailyPayoutMax: bigint;
 }
 
 interface Actor {
@@ -43,7 +59,11 @@ export class TenancyService {
     const rows = await tx.membership.findMany({
       where: { account_id: accountId, status: 'active' },
     });
-    return rows.map((row) => ({ tenantId: row.tenant_id, role: row.role as Role }));
+    return rows.map((row) => ({
+      tenantId: row.tenant_id,
+      role: row.role as Role,
+      branchId: row.branch_id,
+    }));
   }
 
   /**
@@ -109,7 +129,7 @@ export class TenancyService {
   async updateMember(
     actor: Actor,
     membershipId: string,
-    change: { role?: Role; status?: 'removed' },
+    change: { role?: Role; status?: 'removed'; branch_id?: string | null },
   ): Promise<MemberView> {
     try {
       return await this.db.asPlatform(async (tx) => {
@@ -118,6 +138,12 @@ export class TenancyService {
           where: { id: membershipId, tenant_id: actor.tenantId },
         });
         if (!current) throw new AppError('not_found', 'Member not found.');
+        if (change.branch_id) {
+          const branch = await tx.branch.findFirst({
+            where: { id: change.branch_id, tenant_id: actor.tenantId, status: 'active' },
+          });
+          if (!branch) throw new AppError('invalid_request', 'Invalid request: branch_id.');
+        }
         const member = await tx.membership.update({
           where: { id: current.id },
           data: change,
@@ -127,12 +153,21 @@ export class TenancyService {
           tenantId: actor.tenantId,
           actorKind: 'user',
           actorAccountId: actor.accountId,
-          action: change.status ? 'tenancy.member.removed' : 'tenancy.member.role_changed',
+          action: change.status
+            ? 'tenancy.member.removed'
+            : change.role
+              ? 'tenancy.member.role_changed'
+              : 'tenancy.member.branch_changed',
           subjectType: 'membership',
           subjectId: member.id,
           outcome: 'success',
           requestId: actor.requestId,
-          detail: { from_role: current.role, to_role: member.role, status: member.status },
+          detail: {
+            from_role: current.role,
+            to_role: member.role,
+            status: member.status,
+            branch_id: member.branch_id,
+          },
         });
         return toView(member);
       });
@@ -148,6 +183,118 @@ export class TenancyService {
       throw error;
     }
   }
+
+  // --- Branches ---
+
+  async listBranches(tenantId: string): Promise<BranchView[]> {
+    const rows = await this.db.withTenant(tenantId, (tx) =>
+      tx.branch.findMany({ orderBy: { created_at: 'asc' } }),
+    );
+    return rows.map(toBranchView);
+  }
+
+  async createBranch(actor: Actor, name: string): Promise<BranchView> {
+    return this.db.asPlatform(async (tx) => {
+      // Checked first, so that a duplicate is a clean answer and not an aborted transaction.
+      const existing = await tx.$queryRaw<{ id: string }[]>`
+        select id from tenancy.branch
+        where tenant_id = ${actor.tenantId}::uuid and lower(btrim(name)) = lower(btrim(${name}))`;
+      if (existing.length > 0) {
+        throw new AppError('conflict', 'A branch with this name already exists.');
+      }
+      const branch = await tx.branch.create({ data: { tenant_id: actor.tenantId, name } });
+      await this.audit.record(tx, {
+        tenantId: actor.tenantId,
+        actorKind: 'user',
+        actorAccountId: actor.accountId,
+        action: 'tenancy.branch.created',
+        subjectType: 'branch',
+        subjectId: branch.id,
+        outcome: 'success',
+        requestId: actor.requestId,
+      });
+      return toBranchView(branch);
+    });
+  }
+
+  async updateBranch(
+    actor: Actor,
+    branchId: string,
+    change: { name?: string; status?: 'active' | 'closed' },
+  ): Promise<BranchView> {
+    return this.db.asPlatform(async (tx) => {
+      // Scoped to the caller's workspace: another tenant's branch is simply not found.
+      const current = await tx.branch.findFirst({
+        where: { id: branchId, tenant_id: actor.tenantId },
+      });
+      if (!current) throw new AppError('not_found', 'Branch not found.');
+      if (change.name) {
+        const clash = await tx.$queryRaw<{ id: string }[]>`
+          select id from tenancy.branch
+          where tenant_id = ${actor.tenantId}::uuid and id <> ${branchId}::uuid
+            and lower(btrim(name)) = lower(btrim(${change.name}))`;
+        if (clash.length > 0) {
+          throw new AppError('conflict', 'A branch with this name already exists.');
+        }
+      }
+      const branch = await tx.branch.update({ where: { id: current.id }, data: change });
+      await this.audit.record(tx, {
+        tenantId: actor.tenantId,
+        actorKind: 'user',
+        actorAccountId: actor.accountId,
+        action: 'tenancy.branch.updated',
+        subjectType: 'branch',
+        subjectId: branch.id,
+        outcome: 'success',
+        requestId: actor.requestId,
+        detail: { from_status: current.status, to_status: branch.status },
+      });
+      return toBranchView(branch);
+    });
+  }
+
+  /** True if the branch belongs to the workspace and is open. Runs with the tenant role. */
+  async isActiveBranch(tx: Tx, tenantId: string, branchId: string): Promise<boolean> {
+    const branch = await tx.branch.findFirst({
+      where: { id: branchId, tenant_id: tenantId, status: 'active' },
+      select: { id: true },
+    });
+    return branch !== null;
+  }
+
+  /**
+   * The limits of the workspace's tier for one asset: the newest version in
+   * effect. Limits are data (lessons §7); with none configured, nothing is allowed.
+   */
+  async limitsFor(tx: Tx, tenantId: string, assetCode: string): Promise<TierLimits | null> {
+    const workspace = await tx.workspace.findUnique({ where: { id: tenantId } });
+    if (!workspace) return null;
+    const limit = await tx.tier_limit.findFirst({
+      where: { tier: workspace.tier, asset_code: assetCode, effective_from: { lte: new Date() } },
+      orderBy: { version: 'desc' },
+    });
+    if (!limit) return null;
+    return {
+      tier: workspace.tier,
+      perTransactionMax: limit.per_transaction_max,
+      dailyCollectionMax: limit.daily_collection_max,
+      dailyPayoutMax: limit.daily_payout_max,
+    };
+  }
+}
+
+function toBranchView(row: {
+  id: string;
+  name: string;
+  status: string;
+  created_at: Date;
+}): BranchView {
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    created_at: row.created_at.toISOString(),
+  };
 }
 
 function toView(row: {
@@ -155,6 +302,7 @@ function toView(row: {
   account_id: string;
   role: string;
   status: string;
+  branch_id: string | null;
   user_account: { phone_e164: string | null };
 }): MemberView {
   return {
@@ -162,6 +310,7 @@ function toView(row: {
     account_id: row.account_id,
     role: row.role,
     status: row.status,
+    branch_id: row.branch_id,
     phone_hint: row.user_account.phone_e164 ? `…${row.user_account.phone_e164.slice(-3)}` : '',
   };
 }

@@ -9,7 +9,10 @@ import type { Role } from '../../platform/http.js';
 export const PERMISSIONS = {
   'payment_intent.create': ['admin', 'finance', 'cashier'],
   'payment_intent.read': ['admin', 'finance', 'cashier'],
+  'tariff.read': ['admin', 'finance', 'cashier'],
   'ledger.read': ['admin', 'finance'],
+  'branch.read': ['admin', 'finance', 'cashier'],
+  'branch.manage': ['admin'],
   'member.read': ['admin', 'finance'],
   'member.manage': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;
