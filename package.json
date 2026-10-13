@@ -26,6 +26,7 @@
     "start:worker": "pnpm --filter @aora/api start:worker",
     "db:seed": "pnpm --filter @aora/api db:seed",
     "neon:bootstrap": "pnpm --filter @aora/api neon:bootstrap",
+    "secrets:generate": "pnpm --filter @aora/api secrets:generate",
     "neon:verify": "pnpm --filter @aora/api neon:verify",
     "db:migrate:staging": "pnpm --filter @aora/api db:migrate:env staging",
     "db:migrate:development": "pnpm --filter @aora/api db:migrate:env development"
