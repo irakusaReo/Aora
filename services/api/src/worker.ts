@@ -24,11 +24,11 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 const deliver = async (rawBody: string, signature: string): Promise<number> => {
-  const response = await fetch(`${config.publicApiUrl}/v1/webhooks/sandbox`, {
+  const response = (await fetch(`${config.publicApiUrl}/v1/webhooks/sandbox`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', [SIM_SIGNATURE_HEADER]: signature },
     body: rawBody,
-  });
+  })) as unknown as { status: number };
   return response.status;
 };
 

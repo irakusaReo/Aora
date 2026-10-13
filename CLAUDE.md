@@ -34,7 +34,7 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 
 - Repository: greenfield, started 2026-10-13.
 - Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) on Vercel and Neon, against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`). Checkpoints 2A, 2C, 2D are built; 2B (Neon, Vercel) and 2E (SMS) wait for the owner's accounts and credentials.
+- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`). Checkpoints 2A to 2D are built and staging is deployed at `https://aora-api.vercel.app` (sandbox, not live); 2E (Africa's Talking SMS) waits for the owner's credentials.
 - Last approved milestone: Phase 1 (2026-10-13)
 - Live status, next steps and blockers: `docs/progress.md`
 
@@ -98,7 +98,8 @@ Carried over from the Phase 0 working agreement.
 - **Every Vercel environment runs in sandbox mode.** Vercel's "Production" target is **AORA staging**. It is not live and must never be described as live.
 - **Region:** Vercel functions in `fra1`, Neon in `aws-eu-central-1` (Frankfurt), the closest pair available to Kenya. Keep them together.
 - **Database:** pooled connection string at runtime, direct connection string for migrations only. Tenant context is set per transaction (`set_config(..., true)`), never per session. Application roles are created with SQL so they never inherit `BYPASSRLS`.
-- **Background work is cron-triggered, idempotent and time-bounded.** No long-running process. A missed or duplicated cron run must be harmless.
+- **Background work is cron-triggered, idempotent and time-bounded.** No long-running process. A missed or duplicated cron run must be harmless. On the current Hobby plan cron runs once a day, so jobs are also run by hand with the cron secret (O-10).
+- **The API entry file must not use top-level `await`** to start the server: on Vercel that hangs every request.
 - **Provider callbacks** go to the staging (Vercel Production) domain and are always signature-checked. Deployment protection is never a substitute for a signature check.
 - **Secrets** live in Vercel environment variables marked sensitive. `.env.local` is for the owner's machine only. A testnet signer key may be in `.env.local` only for the local sandbox signer.
 - **The fixed sign-in code `000000` and the sandbox authenticator cannot run on a deployed environment.** A startup check refuses them unless the database is on the local machine, and a test proves it. This is not a config flag.
@@ -162,6 +163,7 @@ Requires Node 24 (`nvm use`), pnpm through corepack (`corepack enable`), and Pos
 | Neon: create roles | `pnpm neon:bootstrap staging\|development` (needs `NEON_ADMIN_URL_*` in `.env.local`) |
 | Neon: migrate | `pnpm db:migrate:staging`, `pnpm db:migrate:development` (direct connection) |
 | Neon: verify through the pooler | `pnpm neon:verify staging\|development` (pass or fail only) |
+| Deploy to staging | `vercel deploy --prod --yes --scope andres-projects-85e1a425` from the repository root (Vercel "Production" is AORA staging). Ask first |
 | Contract tests | Not available. No smart contracts exist yet (ADR 0015). |
 
 Run `format:check`, `lint`, `typecheck` and `test` before reporting any work as done. CI runs the same four, plus a check that `schema.prisma` matches the migrations.

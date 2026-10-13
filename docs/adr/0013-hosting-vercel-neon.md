@@ -74,6 +74,18 @@ The owner chose the free Hobby plan. Consequences, all following from [V3]:
 
 Give each Vercel preview deployment its own Neon branch through a managed integration [N4]. Previews then run migrations against an isolated copy and can never touch staging data. Use the **Neon-managed** integration: its preview branches are deleted when the Git branch is deleted, while the Vercel-managed integration ties cleanup to Vercel's deployment retention, which "can delay branch deletion by months" [N4]. Billing then stays with Neon. The variable names the integration injects were **not verified** and are checked during setup.
 
+## Measured on the first deployment (2026-10-13)
+
+Staging is `https://aora-api.vercel.app` (Vercel Production target, function in `fra1`, Neon `main`).
+
+- **NestJS runs on Vercel Functions from this monorepo with zero configuration.** The project's root directory is `services/api`; Vercel installs with the repository's pnpm lockfile, runs the package's `build`, and serves `src/main.ts` as one function.
+- **Latency from Nairobi:** first request after a deployment about 1.7 s; warm health check 370–500 ms; warm authenticated read through the pooler 390–530 ms. That is acceptable for sign-in and for provider callbacks. No keep-warm or alternative host is needed.
+- **Three things the deployment taught us, all fixed in the code:**
+  1. **No top-level `await` on `listen`.** With it, every request hung for 60 s and failed with `INTERNAL_FUNCTION_INVOCATION_FAILED`, and no function log appeared. The entry file now starts the server from a function, as Vercel's example does [V1].
+  2. **Vercel's build type-checks with its own resolution of global types**: the result of `fetch` had no `status` there. The two call sites cast the result structurally.
+  3. **The CLI uploads the working directory.** A `.vercelignore` now excludes machine-local state (`.local`, `.env*`, `node_modules`), without which the upload fails on the local database's socket and could otherwise send local files.
+- `vercel link` writes a `VERCEL_OIDC_TOKEN` into `.env.local` and appends broad patterns to `.gitignore`; both were removed.
+
 ## Alternatives considered
 
 - **A container host for the API and worker:** keeps a long-running worker and avoids cold starts. Rejected by the owner's hosting decision; it is the fallback if cold starts prove unacceptable.
@@ -84,7 +96,7 @@ Give each Vercel preview deployment its own Neon branch through a managed integr
 
 - No long-running process. Anything that waits must be a database row with a due time.
 - A missed cron tick delays work by one minute; it loses nothing.
-- **Phase 2 exit check:** measure cold and warm latency of the deployed API from Kenya. If a cold start makes sign-in or a provider callback time out, stop and present options (keep-warm, splitting the function, or a different host for the API) with a recommendation. No other host is chosen silently.
+- **Phase 2 exit check, done:** cold and warm latency were measured from Kenya (see above) and are acceptable.
 - Uploads through the API are limited to 4.5 MB [V2]; product images need direct-to-storage uploads (decision pending, see open questions).
 - Staging on the Vercel "Production" target will confuse anyone who reads "Production" literally. Every guide and dashboard note says so.
 - Data sits in Frankfurt. Whether that satisfies Kenyan data-protection requirements is open question D-9.

@@ -68,6 +68,7 @@ export default tseslint.config(
       '**/src/generated/**',
       '.claude/**',
       '.local/**',
+      '.vercel/**',
     ],
   },
   js.configs.recommended,

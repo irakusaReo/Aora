@@ -23,29 +23,31 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **Neon: done (2026-10-13).** Project `aora` (`little-block-25898321`), Frankfurt, PostgreSQL 16, branches `main` (staging) and `development`. Three roles created with SQL; migrations applied without superuser rights; `pnpm neon:verify` passes through the pooler on both branches.
 - **Real check through Neon's pooler:** the built API, run locally against the development branch, refused to start with the fixed code, then signed in with a one-time code, took a payment to `succeeded` using only the cron routes, and reconciled clean.
 - Found and fixed there: transactions now have explicit limits (10 s to start, 20 s to run), because the driver's 5 s default cut off the seed when run from Kenya against Frankfurt.
-- **Vercel: account created on the Hobby (free) plan.** Cron schedules are therefore daily (ADR 0013, O-10). CLI install, login, project link and first deployment are next.
+- **Vercel: deployed (2026-10-13).** Staging is **https://aora-api.vercel.app** (Vercel Production target; sandbox, not live), project `aora-api`, Hobby plan, function in `fra1`. Cron schedules are daily on Hobby (ADR 0013, O-10); jobs are run by hand with the cron secret meanwhile.
+- **Journey J2 passes on staging**, with one-time codes read from the simulated inbox: fixed code rejected, sign-in, PIN set and step-up, a sensitive action blocked then allowed, role permissions, a payment to `succeeded`, clean reconciliation, sign-out.
+- **Latency from Nairobi:** about 1.7 s on the first request after a deployment, 370–530 ms warm.
+- Fixed during deployment: top-level `await` on `listen` hung every request; a type error that only Vercel's build reported; `.vercelignore` added.
 
 ## Next
 
-1. **2B with the owner:** Neon then Vercel, one step at a time (`docs/operations/`). First unknowns to settle on the real platforms: that Vercel builds this NestJS app from `services/api`, and cold-start latency.
+1. **Finish 2B:** owner checks Deployment Protection in the dashboard; decide whether to connect GitHub for automatic deployments and the Neon preview-branch integration.
 2. **2E:** read Africa's Talking's current documentation, build the `SmsSender` adapter, send a real code on staging, then remove the SMS inbox token.
 3. End-of-phase report, revised build order, Phase 3 credential requests.
 
 ## Blocked
 
-- **2B** waits for the Vercel CLI login.
+- **2B** is done except: connecting GitHub for automatic deployments, the Neon integration for preview branches, and a dashboard check of Deployment Protection.
 - **2E** waits for Africa's Talking sandbox credentials.
 
 ## Waiting on the owner
 
-- Vercel account and login; Africa's Talking sandbox credentials.
+- Africa's Talking sandbox credentials (2E).
 - Whether to delete the old, empty Neon project `Aora` in Ohio (`lingering-grass-59855278`).
 - O-10: Hobby chosen for now; decide how background work is triggered promptly before Phase 3 (Pro, request-driven draining, or an external scheduler).
 - O-5 (MTN market), O-6 (bank), O-7 (image storage): needed for Phases 4 and 5, not now.
 
 ## Known gaps carried forward
 
-- Cold-start latency on Vercel is unmeasured until 2B.
 - Africa's Talking, Daraja, Airtel, MTN and bank behaviour: nothing is assumed; each is read from current documentation in its checkpoint.
 - CBK Digital Credit Provider conduct rules and the legal status of layaway are not yet verified (O-8, O-9).
 

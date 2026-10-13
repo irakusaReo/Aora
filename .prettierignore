@@ -11,3 +11,4 @@ CLAUDE.md
 services/*/src/generated
 services/*/prisma/schema.prisma
 .local
+.vercel

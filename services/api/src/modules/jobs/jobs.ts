@@ -85,12 +85,14 @@ export class CronController {
   @Get('sim-webhooks')
   async deliverSimulatorWebhooks(): Promise<{ job: 'sim-webhooks'; delivered: number }> {
     const delivered = await this.simulator.deliverDueWebhooks(async (rawBody, signature) => {
-      const response = await fetch(`${this.config.publicApiUrl}/v1/webhooks/sandbox`, {
+      // Typed structurally: the hosting platform's build resolves the global
+      // `Response` type differently from a local build, and only `status` is needed.
+      const response = (await fetch(`${this.config.publicApiUrl}/v1/webhooks/sandbox`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', [SIM_SIGNATURE_HEADER]: signature },
         body: rawBody,
         signal: AbortSignal.timeout(10_000),
-      });
+      })) as unknown as { status: number };
       return response.status;
     });
     return { job: 'sim-webhooks', delivered };

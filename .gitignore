@@ -16,3 +16,6 @@ coverage/
 
 # Generated Prisma client (pnpm db:generate).
 services/*/src/generated/
+
+# Vercel CLI project link (machine-local)
+.vercel/

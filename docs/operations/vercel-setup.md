@@ -99,3 +99,38 @@ Defined in `services/api/vercel.json`, so they are reviewed like code. They run 
 | `/v1/internal/cron/reconciliation` | daily, 03:30 UTC | every 15 minutes |
 
 On Hobby a job may start up to 59 minutes after its scheduled time. Any job can also be run by hand with the cron secret, which is how staging is exercised until the plan changes.
+
+## Status (2026-10-13)
+
+- Project `aora-api` (`prj_vyArztPBSRrPO7E6nEE7OzcYdVei`) exists in the team "Andre's projects" (Hobby), root directory `services/api`, framework NestJS, Node 24, function region `fra1`.
+- **Staging URL: https://aora-api.vercel.app** (Vercel Production target). It is sandbox, not live.
+- Production variables set: `AORA_MODE`, `DATABASE_URL_APP`, `DATABASE_URL_PLATFORM`, `CRON_SECRET`, `PIN_PEPPER`, `SANDBOX_SIM_WEBHOOK_SECRET`, `SANDBOX_SMS_INBOX_TOKEN`, `PUBLIC_API_URL`. The cron secret and inbox token are also in the owner's `.env.local` as `STAGING_CRON_SECRET` and `STAGING_SMS_INBOX_TOKEN`, so staging can be exercised by hand.
+- Deployed with `vercel deploy --prod` from the repository root. **Git is not yet connected**, so pushes do not deploy.
+- Journey J2 and the Phase 1 payment path pass against the staging URL.
+
+### What was actually run (verified with the CLI's `--help`, version 63.1.2)
+
+```bash
+vercel api /v10/projects -X POST --scope <team> -f name=aora-api -f rootDirectory=services/api -f framework=nestjs
+```
+
+```bash
+vercel link --yes --project aora-api --scope <team>
+```
+
+```bash
+printf '%s' "$VALUE" | vercel env add NAME production --sensitive --force --scope <team>
+```
+
+```bash
+vercel deploy --prod --yes --scope <team>
+```
+
+Notes: values are piped on standard input so they never appear in a command line; `vercel link` adds a `VERCEL_OIDC_TOKEN` to `.env.local` and extra lines to `.gitignore`, which should be removed; `.vercelignore` keeps local state out of the upload.
+
+### Not done yet
+
+- Step 7's dashboard check of Deployment Protection (previews protected, Production domain open).
+- Step 9, the Neon integration for preview branches.
+- Connecting the GitHub repository for automatic deployments.
+- Preview and Development environment variables.

@@ -1,0 +1,9 @@
+# Never upload machine-local state, secrets or tooling to Vercel.
+.local
+.claude
+.env*
+!.env.example
+**/node_modules
+**/dist
+**/coverage
+skills-lock.json
