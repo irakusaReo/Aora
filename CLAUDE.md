@@ -8,7 +8,7 @@ AORA is a fintech platform launching in Kenya first, with expansion only after v
 
 - **CHIWO**: consumer payments and money movement
 - **KONY**: merchant operating system (acceptance, reconciliation, cash flow, treasury)
-- **KELO**: credit and financing. Qualifying KELO merchants get a KONY workspace automatically.
+- **KELO**: a consumer buy-now-pay-later marketplace with a merchant side (owner amendment, 2026-10-13). Merchants who enlist get a KONY workspace automatically. Merchant cash advances are deferred until after the MVP.
 - **NAM Vault**: investment and vault domain, embedded in CHIWO and KONY. Never a standalone app.
 
 On-chain: Base only. Stablecoin: native USDC on Base only.
@@ -24,6 +24,8 @@ On-chain: Base only. Stablecoin: native USDC on Base only.
 | `docs/adr/` | Accepted and proposed architecture decisions |
 | `docs/architecture/delivery-plan.md` | Phases, entry and exit criteria |
 | `docs/product/mvp-scope.md` | What the sandbox MVP must do, in build order |
+| `docs/product/kelo-experience.md` | KELO UX rules. Read before building any KELO screen |
+| `docs/operations/` | Setup guides and runbooks (Neon, Vercel) |
 | `docs/progress.md` | Done, next, blocked. Read this first when resuming |
 
 If these documents conflict, the master brief wins. Record the conflict in `open-questions.md` instead of silently choosing.
@@ -31,12 +33,26 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 ## Current state
 
 - Repository: greenfield, started 2026-10-13.
-- Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) running in staging against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 1 built, awaiting owner approval** (`docs/plans/phase-1.md`). Do not start Phase 2 until it is approved.
-- Last approved milestone: Phase 0 (2026-10-13)
+- Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) on Vercel and Neon, against provider sandboxes and Base Sepolia.
+- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`)
+- Last approved milestone: Phase 1 (2026-10-13)
 - Live status, next steps and blockers: `docs/progress.md`
 
 Update this block at the end of each approved phase.
+
+## MVP scope in one screen
+
+Full detail and build order: `docs/product/mvp-scope.md`.
+
+- **Platform:** phone one-time-code sign-in, PIN step-up, tenants and roles, audit, ledger (KES, USDC and per-rail currencies), outbox, reconciliation, versioned tariffs.
+- **KONY:** merchant onboarding, branches and staff, collections, payouts, refunds, settlement, USDC treasury, developer API. Web and mobile.
+- **KELO:** consumer BNPL marketplace (web and mobile) plus a KELO section in the merchant's KONY workspace. Plan types: Pay in N, monthly financing, layaway; asset financing in the data model only. All credit behind a feature flag.
+- **CHIWO:** consumer sign-up, pay a merchant, send and receive USDC, requests, receipts. Web and mobile.
+- **NAM Vault:** one product inside CHIWO and KONY, backed by an AORA vault contract on Base Sepolia.
+- **Rails:** M-Pesa (Daraja, Kenya), Airtel Money (Kenya), MTN MoMo (one non-Kenyan market, sandbox only), one bank. Simulator until credentials arrive.
+- **Contracts:** at most three AORA contracts, Base Sepolia only, Foundry, non-upgradeable.
+- **Apps:** `kony-web`, `chiwo-web`, `kelo-web`, `internal-ops` (Next.js); `kony-mobile`, `chiwo-mobile`, `kelo-mobile` (Expo). Business logic stays in the API.
+- **Out of scope:** card acceptance, a real fiat-to-USDC conversion provider, production custody, live money, mainnet, merchant cash advances, device-lock integration, in-store QR for KELO.
 
 ## Non-negotiable rules
 
@@ -49,7 +65,7 @@ Update this block at the end of each approved phase.
 7. **Use explicit state machines** for payments, transfers, deposits, withdrawals, orders and provisioning. Include `status_unknown` and `reconciliation_required` states. A transaction hash or a signature does not mean the operation is complete.
 8. **No personal data on-chain.** That includes phone numbers, KYC/KYB data, and hashes that could be linked back to them.
 9. **Secrets never go in code, config files, database fields or logs.** This covers private keys, seed phrases and API keys. `.env.example` contains placeholders only.
-10. **Sandbox only.** Do not connect live providers, move real funds, or deploy contracts to Base mainnet. Provider sandboxes and Base Sepolia testnet transactions are permitted and must be labelled sandbox. Base mainnet remains forbidden. Every sandbox record and screen is visibly labelled as sandbox.
+10. **Sandbox only.** Do not connect live providers, move real funds, or deploy contracts to Base mainnet. Provider sandboxes and Base Sepolia testnet transactions are permitted and must be labelled sandbox. Base mainnet remains forbidden, for contracts and for transfers. Every sandbox record and screen is visibly labelled as sandbox.
 11. **Never invent provider capabilities.** If the repo does not document how an M-Pesa, bank, wallet or investment provider behaves, stub it behind the adapter interface and log it in `open-questions.md`.
 12. **Authorization is enforced server-side.** Every query applies role checks and tenant isolation. Sensitive financial actions require step-up authentication. Access to a KONY workspace never by itself grants payment, financing, investment or payout authority.
 
@@ -63,16 +79,51 @@ Update this block at the end of each approved phase.
   (d) the phase ends.
 - **Commit at each checkpoint once tests pass,** using conventional commit messages. Never commit `.env.local`.
 - **Keep `docs/progress.md` current:** what's done, what's next and what's blocked. A fresh session must be able to resume from `CLAUDE.md` and `progress.md` alone.
-- **Credentials:** when a credential, account or external value is needed, ask using the CREDENTIAL REQUEST format in `docs/progress.md`. Batch requests at the start of a phase. Never print, log or commit a value. Refuse anything that looks like a live or production key.
+- **Credentials:** follow the credential protocol below, exactly.
 
 ## Engineering practices
 
 Carried over from the Phase 0 working agreement.
 
 - **Build the smallest working slice.** Do not create empty directories or speculative abstractions from the target tree in §11.2. Add them when a phase needs them.
-- **Write tests first for financial invariants:** journal balance, precision, idempotency, state transitions and tenant isolation.
-- **Pricing and tariffs are data.** Provider fees, free bands, caps and FX rates are versioned configuration with effective dates, never hardcoded constants.
+- **Write tests strictly first** for ledger invariants, state machines, idempotency, tenant isolation and every smart contract: the failing test is committed to the working tree before the code that satisfies it. For other code, tests written alongside are fine.
+- **Pricing, tariffs and credit terms are data.** Provider fees, free bands, caps, FX rates, plan types, tenors, deposits, limits, late charges and category rules are versioned configuration with effective dates, never hardcoded constants.
+- **KELO never shows a spending limit as a balance or as cash,** and stores purchase data only, never health information.
+- **No provider behaviour from memory.** Read the provider's current documentation in the phase that integrates it, and record source and date.
 - **Docs move with code.** Update the relevant architecture doc or ADR in the same change as the code.
+
+## Hosting and deployed environments (ADR 0013)
+
+- **Hosting is Vercel plus Neon.** Do not add another host, queue, cache or database without asking.
+- **Every Vercel environment runs in sandbox mode.** Vercel's "Production" target is **AORA staging**. It is not live and must never be described as live.
+- **Region:** Vercel functions in `fra1`, Neon in `aws-eu-central-1` (Frankfurt), the closest pair available to Kenya. Keep them together.
+- **Database:** pooled connection string at runtime, direct connection string for migrations only. Tenant context is set per transaction (`set_config(..., true)`), never per session. Application roles are created with SQL so they never inherit `BYPASSRLS`.
+- **Background work is cron-triggered, idempotent and time-bounded.** No long-running process. A missed or duplicated cron run must be harmless.
+- **Provider callbacks** go to the staging (Vercel Production) domain and are always signature-checked. Deployment protection is never a substitute for a signature check.
+- **Secrets** live in Vercel environment variables marked sensitive. `.env.local` is for the owner's machine only. A testnet signer key may be in `.env.local` only for the local sandbox signer.
+- **The fixed sign-in code `000000` and the sandbox authenticator cannot run on a deployed environment.** A startup check refuses them unless the database is on the local machine, and a test proves it. This is not a config flag.
+- **Ask before** any command that creates a billable resource, changes Vercel Production settings, or deletes anything.
+- Local PostgreSQL remains the database for unit and integration tests and for CI.
+
+## Credential protocol
+
+When a credential, account or external value is needed, ask in exactly this format:
+
+```text
+CREDENTIAL REQUEST
+- What: <name>
+- Why: <the feature and phase that need it>
+- Where to get it: <official portal or documentation, with steps; mark anything uncertain "to verify">
+- Environment: sandbox or test only, never live or production
+- Variable names: <EXACT_ENV_VAR_NAMES>, also added to .env.example as placeholders
+- How to provide it: I add the values to .env.local myself (or to Vercel for deployed environments) and reply "done". Never ask me to paste secrets into the chat.
+```
+
+- At the start of each phase, batch every credential that phase needs into one request.
+- After "done", verify each value is present and well-formed without printing, logging or committing it. Run a sandbox connectivity check and report only pass or fail.
+- Refuse any value that looks like a live or production key, and say so.
+- If a secret is pasted into the chat by mistake, write it nowhere and ask for it to be rotated.
+- While waiting, continue the work that does not need the credential, using the simulator.
 
 ## Definition of done (summary of brief §16)
 

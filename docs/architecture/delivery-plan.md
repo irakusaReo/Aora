@@ -1,6 +1,6 @@
 # AORA — Delivery Plan
 
-- **Status:** Approved by the owner on 2026-10-13, with the MVP overlay in §4. Phase 0 is complete; Phase 1 is in progress.
+- **Status:** Phases 0 and 1 are complete and approved. **From Phase 2 on, the build order and phase numbering in [mvp-scope.md](../product/mvp-scope.md) §2 supersede §2 and §4 of this document** (owner rulings of 2026-10-13: hosting, mobile, real rails, contracts, KELO as a marketplace). The entry and exit rules at the top of §2, and the test lists, still apply to the corresponding work.
 - **Date:** 2026-10-13
 - **Sources:** [master brief](master-development-brief.md) §14, [competitive lessons](../product/kony-competitive-lessons.md), [open questions](open-questions.md), [ADRs](../adr/)
 

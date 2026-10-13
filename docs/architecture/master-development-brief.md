@@ -106,6 +106,18 @@ Core capabilities include:
 
 KELO must not treat a credit limit as cash or as a USDC balance. Financing records and obligations remain distinct from payment and investment accounting.
 
+### Owner amendment, 2026-10-13
+
+KELO is redefined. It is a **consumer buy-now-pay-later (BNPL) marketplace with a merchant side**, not a merchant-credit product.
+
+- **Consumer side:** a marketplace (web and mobile) where consumers browse merchants' goods and services and buy them on instalment terms, and "Pay with KELO" at merchant checkout through KONY payment links and the developer API. A consumer uses KELO with the same AORA identity as CHIWO. A spending limit is never shown as a balance or as cash.
+- **Merchant side:** merchants enlist a store, list goods and services, manage inventory or capacity and prices, choose the plans offered per listing, fulfil orders and handle returns. They monitor this from a KELO section of their KONY workspace. Enlisting triggers the KELO-to-KONY provisioning workflow (§4.5).
+- **Plan types** are configuration: Pay in N, monthly financing, layaway (no credit extended), and asset financing as a future type.
+- **Merchant working-capital financing** (the capabilities listed above this amendment, as applied to merchants) is deferred until after the MVP. The eligibility and reason-code engine is kept reusable for it.
+- All credit features stay behind a feature flag until the legal model is confirmed.
+
+Where this amendment conflicts with the text above it in §2.3, the amendment wins. Detail: `docs/adr/0017-kelo-marketplace-domain.md`, `docs/adr/0018-plan-types-and-credit-pricing.md`, `docs/product/kelo-experience.md`.
+
 ## 2.4 NAM Vault — embedded investment and vault capability
 
 NAM Vault is a shared capability within CHIWO and KONY.
@@ -382,6 +394,42 @@ When a qualifying merchant is created or approved in KELO:
 The process must be idempotent and recoverable. Existing KELO merchants must be eligible for safe linking or migration.
 
 Automatic KONY access does not automatically authorize payments, financing, investment orders, wallet withdrawals or changes to settlement instructions.
+
+## 4.6 KELO consumer purchase journeys (owner amendment, 2026-10-13)
+
+Added by the owner on 2026-10-13. These journeys follow the same rules as §4.1 to §4.5.
+
+**Merchant enlistment**
+
+1. A merchant enlists a store on KELO and passes the vetting its categories require.
+2. Enlisting triggers §4.5: the merchant receives or is linked to a KONY workspace.
+3. The merchant lists goods or services, sets prices and stock or capacity, and chooses the plans offered per listing.
+4. Listings pass review before they are visible.
+
+**Instalment purchase (Pay in N or monthly financing)**
+
+1. The consumer signs in with their AORA identity and chooses a listing and a plan.
+2. KELO shows the price, any deposit, every instalment date and amount, fees or interest, the total repayable and the late-charge policy before acceptance.
+3. KELO makes an eligibility decision and shows its reasons.
+4. The consumer consents to the versioned terms and pays the first instalment or deposit.
+5. The merchant confirms and fulfils the order; delivery is confirmed.
+6. The merchant is settled according to the category's settlement rule, less the merchant discount fee.
+7. The consumer repays on the schedule. Each repayment is posted to the ledger and reconciled.
+
+**Layaway**
+
+1. The consumer chooses a layaway plan. No credit is extended.
+2. The consumer pays instalments before receiving the item. The funds are held and are not the merchant's until fulfilment.
+3. When the plan is fully paid, the merchant fulfils and is settled.
+4. Cancellation follows the configured refund rules.
+
+**Returns and disputes**
+
+1. A return or an open dispute pauses repayments on the affected amount.
+2. A refund reduces the outstanding balance through compensating ledger entries.
+3. Money already settled to the merchant is clawed back according to configured rules.
+
+An order, its credit agreement and its payments are separate, linked state machines. An order is never shown as complete because a payment succeeded.
 
 # 5. KONY Merchant Operating System: Competitive Strategy
 

@@ -1,0 +1,99 @@
+# Vercel Setup
+
+How to deploy AORA to Vercel. Follow the steps in order. Background and sources: [ADR 0013](../adr/0013-hosting-vercel-neon.md).
+
+> **Vercel's "Production" environment is AORA STAGING.** Nothing deployed here is live. Every environment runs with `AORA_MODE=sandbox`, and the code refuses any other value.
+
+- Commands marked **(to verify)** were not confirmed against Vercel's documentation; check them with `vercel <command> --help` before running.
+- **[you]** steps need you. **[Claude]** steps can be run for you once the CLI is logged in. Claude asks before anything billable, anything that changes Production settings, and anything that deletes.
+- Never paste a secret into the chat.
+
+## What you end up with
+
+| Vercel project | Root directory | When |
+|---|---|---|
+| `aora-api` | `services/api` | Phase 2 |
+| `aora-kony-web` | `apps/kony-web` | Phase 3 |
+| `aora-internal-ops` | `apps/internal-ops` | Phase 3 |
+| `aora-kelo-web` | `apps/kelo-web` | Phase 5 |
+| `aora-chiwo-web` | `apps/chiwo-web` | Phase 8 |
+
+All in region `fra1`, next to the Neon database.
+
+## Steps
+
+1. **[you] Create a Vercel account and team** at https://vercel.com, signed in with the GitHub account that owns `irakusaReo/Aora`.
+
+2. **[you] Choose the plan. Pro is required.** The outbox, webhook delivery and chain monitoring need a cron job every minute; the Hobby plan allows one run per day. **Upgrading is billable**, so this step is yours.
+
+3. **[you] Install the CLI** (version 48.4.0 or newer is required for NestJS).
+
+   ```bash
+   npm install -g vercel
+   ```
+
+4. **[you] Log in.**
+
+   ```bash
+   vercel login
+   ```
+
+5. **[you] Push the repository to GitHub** if it is not already there. Vercel deploys from Git.
+
+6. **[Claude, after asking] Create and link the API project** from the repository root. Choose the team, create a project named `aora-api`, and set its root directory to `services/api`.
+
+   ```bash
+   vercel link --repo
+   ```
+
+7. **[you] Check three project settings** in the dashboard for `aora-api`:
+   - **Settings → Functions → Function Regions:** only `fra1` (also set in `services/api/vercel.json`).
+   - **Settings → Deployment Protection:** **Standard Protection** with Vercel Authentication. This protects previews and leaves the Production (staging) domain reachable, which provider callbacks need.
+   - **Settings → Build and Deployment → Root Directory:** `services/api`.
+
+8. **[Claude] Set the environment variables** below. Values are read from `.env.local` and sent to Vercel without being printed. Secrets are added as **sensitive**. **(exact `vercel env` syntax to verify)**
+
+9. **[you] Connect Neon to Vercel for preview databases.** In the Neon Console: **Integrations → Vercel** (the Neon-managed integration), select the `aora-api` project, and enable a branch per preview deployment. Do **not** let it overwrite the Production variables set in step 8. The variable names it injects are to verify at this step.
+
+10. **[Claude, after asking] Deploy to staging.** This deploys to the Vercel Production target, which is AORA staging.
+
+    ```bash
+    vercel deploy --prod
+    ```
+
+11. **[Claude] Verify.** Health check, cron jobs listed and authorised, a sign-in on the real URL, cold and warm latency measured from this machine. Reports pass or fail and the timings.
+
+12. **[you] Set provider callback URLs** when each provider is integrated: always the staging domain, `https://<staging-domain>/v1/webhooks/<rail>`. Never a preview URL.
+
+## Environment variables for `aora-api`
+
+"Production" below means the Vercel target, which is AORA staging.
+
+| Variable | Production (staging) | Preview | Development | Sensitive | Value |
+|---|---|---|---|---|---|
+| `AORA_MODE` | ✓ | ✓ | ✓ | no | `sandbox` |
+| `DATABASE_URL_APP` | ✓ | from Neon integration | ✓ | yes | Pooled string, role `aora_app` |
+| `DATABASE_URL_PLATFORM` | ✓ | from Neon integration | ✓ | yes | Pooled string, role `aora_platform` |
+| `CRON_SECRET` | ✓ | ✓ | – | yes | Random, at least 32 characters. Vercel sends it to cron routes |
+| `SANDBOX_SIM_WEBHOOK_SECRET` | ✓ | ✓ | ✓ | yes | Random. Signs the simulator's webhooks |
+| `PUBLIC_API_URL` | ✓ | – | ✓ | no | The staging domain, with `https://` |
+| `SMS_PROVIDER_USERNAME` | ✓ | – | ✓ | no | Africa's Talking sandbox username |
+| `SMS_PROVIDER_API_KEY` | ✓ | – | ✓ | yes | Africa's Talking sandbox API key |
+| `SANDBOX_SMS_INBOX_TOKEN` | ✓ until SMS works | – | – | yes | Random. Lets an operator read simulated one-time codes on staging before the SMS sandbox is connected. Removed afterwards |
+
+Deliberately **not** on Vercel:
+
+- `DATABASE_URL_OWNER`. Migrations run from a trusted machine or CI through the direct connection; the deployed API can never change the schema.
+- Any signer key. The testnet key for the local sandbox signer stays in `.env.local` on the owner's machine (open question M-1).
+
+The fixed sign-in code and the sandbox authenticator cannot start on Vercel whatever the variables say; see `security-and-tenancy.md`.
+
+## Cron jobs
+
+Defined in `services/api/vercel.json`, so they are reviewed like code. They run only on the Production (staging) deployment.
+
+| Path | Schedule |
+|---|---|
+| `/v1/internal/cron/outbox` | every minute |
+| `/v1/internal/cron/sim-webhooks` | every minute |
+| `/v1/internal/cron/reconciliation` | every 15 minutes |

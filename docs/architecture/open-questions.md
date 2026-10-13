@@ -18,7 +18,7 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [G-5](#g-5) | §17 first assignment and gap analysis | Eng | 0 | Resolved |
 | [G-6](#g-6) | §15 required documentation on day one | Eng | none | Resolved |
 | [C-1](#c-1) | First vertical slice: brief §17 vs Phase 0 instruction | Owner | 1 | Resolved: money path first |
-| [C-2](#c-2) | "Financial event anchoring" has no defined scope | Owner | 5 [4] | MVP: none (no AORA contracts); production open |
+| [C-2](#c-2) | "Financial event anchoring" has no defined scope | Owner | 5 [4] | Resolved: batch commitments in `AnchorRegistry` (ADR 0015) |
 | [C-3](#c-3) | Testnet config vs "no chain-selection abstraction" | Eng | 5 [4] | Resolved: Base Sepolia permitted |
 | [C-4](#c-4) | USDC contract address provenance | Eng | 5 [4] | Resolved 2026-10-13 |
 | [R-1](#r-1) | Ledger is built after the things that post to it | Eng | 1 | Resolved: approved |
@@ -37,14 +37,15 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [D-6](#d-6) | Authentication and step-up mechanism | Owner | 1 | MVP resolved; production open (ADR 0011) |
 | [D-7](#d-7) | Canonical business identifier and duplicate rule | Owner | 1 | Resolved: ADR 0012 |
 | [D-8](#d-8) | KYC/KYB provider and tier limits | Owner | 3 [2] | Open |
-| [D-9](#d-9) | Hosting region and data residency | Owner | 1 (deploy), 13 [10] | Open |
+| [D-9](#d-9) | Hosting region and data residency | Owner | 1 (deploy), 13 [10] | Hosting decided: Vercel + Neon, Frankfurt (ADR 0013). Residency question open |
 | [D-10](#d-10) | NAM product types and investment provider | Owner | 7 [6] | Open |
 | [D-11](#d-11) | Base RPC provider | Owner | 5 [4] | Open |
 | [E-1](#e-1) | Tenant isolation mechanism | Eng | 1 | Resolved: approved |
 | [E-2](#e-2) | How sandbox records are labelled | Eng | 1 | Resolved: approved |
 | [E-3](#e-3) | Node, TypeScript and test-runner versions | Eng | 1 | Resolved at checkpoint 1A |
 | [E-4](#e-4) | Read-only mainnet fork under the sandbox-only rule | Owner | 5 [4] | Open |
-| [M-1..M-7](#m-flags-raised-by-the-mvp-definition) | Flags raised by the MVP definition | mixed | various | Open |
+| [M-1..M-7](#m-flags-raised-by-the-mvp-definition) | Flags raised by the MVP definition | mixed | various | Resolved 2026-10-13 (second ruling) |
+| [O-1..O-10](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO and hosting rulings | Owner | various | O-1 to O-4 decided (defaults); O-5 to O-10 open |
 | [X-1..X-12](#x-requirements-that-cannot-be-tested-without-external-access) | Requirements that cannot be tested without external access | mixed | various | Open |
 
 ## Owner rulings (2026-10-13)
@@ -66,6 +67,20 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 - **D-1, D-2 (testnet only):** signer interface backed by a local development signer with a testnet key from `.env.local`, forbidden outside sandbox and enforced at startup. Production decisions remain open.
 
 New items raised by the MVP definition are in section [M](#m-flags-raised-by-the-mvp-definition).
+
+## Owner rulings (2026-10-13, second set)
+
+- **Phase 1 approved.** Tests are written strictly first for ledger invariants, state machines, idempotency, tenant isolation and every smart contract.
+- **Hosting:** Vercel plus Neon (ADR 0013). This answers the hosting half of D-9; whether Frankfurt satisfies Kenyan data-protection rules is still open.
+- **Scope:** native mobile apps, four real rails and AORA smart contracts join the MVP (ADRs 0014, 0015, 0016). C-2 is resolved by the anchoring registry.
+- **KELO** is a consumer BNPL marketplace with a merchant side (brief amendment; ADRs 0017, 0018). R-2's open point is settled: a store whose vetting is approved is "qualifying".
+- **SMS provider:** Africa's Talking. Credentials not yet provided.
+- **The fixed sign-in code** must be impossible on a deployed environment, enforced by a startup check and a test.
+- **M-1:** approved, adapted. Deployed environments keep secrets in Vercel environment variables marked sensitive. A testnet key in `.env.local` is allowed only for the local sandbox signer on the owner's machine.
+- **M-2:** approved. API keys stored as hashes only; webhooks signed with a platform key pair held in the secret store.
+- **M-3, M-4:** approved as labelled sandbox assumptions. They decide nothing about production custody.
+- **M-5, M-6, M-7:** proposed readings accepted. Credit stays behind its flag; conversion is simulator-only and labelled; provider behaviour comes only from current documentation.
+- **ADR 0011** (production authentication): still pending.
 
 ---
 
@@ -425,3 +440,29 @@ The MVP definition (owner, 2026-10-13) was checked against the brief and CLAUDE.
 | M-5 | KELO credit is built before the licence or partner decision | Lessons §4; D-5 | Sandbox only, behind a feature flag that is off by default; no lender named | Owner | 11 |
 | M-6 | Simulated fiat-to-USDC conversion | Brief §3.3 (conversion only with an approved provider and legal model) | Simulator only, labelled "simulated conversion, no real rate"; rate and fee come from versioned sandbox data | Owner | 6 |
 | M-7 | Named providers (Safaricom Daraja, Africa's Talking) | CLAUDE.md rule 11 | Their behaviour is taken only from their current documentation, read in the phase that integrates them, and recorded with source and date. Nothing is assumed in advance | Eng | 2, 3 |
+
+---
+
+## O. Owner defaults and questions from the KELO and hosting rulings
+
+### Decided by the owner (defaults; may change)
+
+| ID | Decision | Consequence for the build |
+|---|---|---|
+| O-1 | Merchant working-capital financing (cash advances) is deferred until after the MVP | The eligibility and reason-code engine is product-neutral so it can be reused (ADR 0018) |
+| O-2 | Sandbox funding model: KELO pays the merchant upfront, less a merchant discount fee, once fulfilment is confirmed; the consumer repays KELO. Production model (own book, partner lender, or both) is pending | Every agreement names a lender of record; a `LenderAdapter` lets a partner plug in (ADR 0017) |
+| O-3 | One merchant per order | No multi-merchant baskets |
+| O-4 | BNPL is consumer credit and likely needs a CBK Digital Credit Provider licence or a licensed partner. Every credit feature stays behind a feature flag. Layaway is probably not credit | Flag `kelo_credit`; layaway is built outside it; see O-8, O-9 |
+
+### Open, each with a recommended default
+
+| ID | Question | Why it matters | Recommended default | Blocks |
+|---|---|---|---|---|
+| O-5 | Which MTN market for the sandbox integration? | Sets the country and currency records the MTN adapter is modelled on | **Ghana.** The research ranks it the second export market and moves Uganda down for its withdrawal tax. Not a launch decision | Rails checkpoint for MTN |
+| O-6 | Which bank sandbox can you obtain? | The bank adapter needs one real provider | Candidates, all **to verify**: Equity (Jenga), KCB (Buni), Co-operative Bank, Stanbic, I&M. Pick whichever grants sandbox access fastest | Rails checkpoint for the bank |
+| O-7 | Where are product images stored? | The API cannot carry uploads above 4.5 MB (ADR 0013), and images need a store | Vercel Blob, as the Vercel-native option. **Not yet verified; I will verify limits and pricing and ask before adopting it** | KELO catalogue checkpoint |
+| O-8 | What do the CBK Digital Credit Provider conduct rules require of reminders, disclosure and late charges? | The collections design must follow them | Not yet read. First task of the credit checkpoint: read and cite the regulations, record findings in `docs/compliance/`, then design reminders. Until then the stricter owner rules apply (no contacts access, no third parties, no shaming, capped late charges) | KELO credit checkpoints (d), (e) |
+| O-9 | Is layaway outside the definition of credit in Kenya, and may AORA hold layaway funds? | Decides whether layaway needs the credit flag, and who may hold the money | Treat as "not credit" in the sandbox, hold funds in a labelled sandbox liability account, and get counsel's view before any live use. **Not verified** | Live use only |
+| O-10 | Which Vercel plan? | Per-minute cron needs **Pro**; Hobby allows one run per day (ADR 0013) | Pro, one seat, from the first deployment | Phase 2 deployment |
+
+Providers the KELO phases will eventually need, listed now and requested later: an ID-verification sandbox, a credit-bureau sandbox, and image storage (O-7).

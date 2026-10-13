@@ -1,89 +1,105 @@
 # AORA — Sandbox MVP Scope
 
-- **Source:** owner's MVP definition, 2026-10-13.
-- **Goal:** a test user can complete every journey below end to end in a staging environment, against real provider sandboxes where they exist and the AORA simulator where they do not. The ledger balances and reconciliation comes back clean.
+- **Source:** owner's MVP definition and rulings of 2026-10-13 (including the hosting, mobile, rails, contracts and KELO marketplace rulings). This version replaces the earlier one.
+- **Goal:** a test user can complete every journey below end to end on **staging** (Vercel "Production" target, Neon `main`), against real provider sandboxes where credentials exist and the AORA simulator where they do not, with Base Sepolia for anything on-chain. The ledger balances and reconciliation comes back clean.
 - **Hard limits:** no real money, no Base mainnet, no live or production keys. Every record, response and screen is labelled sandbox. All CLAUDE.md rules apply.
 
-Phase numbers are those of [delivery-plan.md](../architecture/delivery-plan.md).
+From Phase 2 on, the phase numbers below are the authoritative ones.
 
-## 1. Journeys, in build order
+## 1. In scope
 
-| # | Journey | MVP area | Phase | Real sandbox or simulator |
-|---|---|---|---|---|
-| J1 | Sign in; create a sandbox payment intent; webhook; ledger entry; clean reconciliation | Platform | 1 | Simulator |
-| J2 | Sign in with phone and one-time code; approve a sensitive action with a PIN; admin, finance and cashier see only what their role allows; every action is in the audit log | Platform | 2 | SMS provider sandbox |
-| J3 | Onboard a registered and an unregistered merchant through tiers; add a branch and staff | KONY | 3A | Simulator KYB |
-| J4 | Collect an M-Pesa payment by STK push; see it in history with gross, fee and net; see it in the settlement view | KONY | 3A | Daraja sandbox |
-| J5 | Operator works a reconciliation exception; looks up a user and a merchant; reads the audit trail | Ops console | 3A (grows each phase) | n/a |
-| J6 | Pay out with a fee preview; refund a collection, linked to the original | KONY | 3B | Daraja sandbox B2C; refund path to verify |
-| J7 | Create an API key; call `/v1` with idempotency; receive a signed webhook; replay it | KONY developer API | 3B | n/a |
-| J8 | A KELO merchant is approved and a KONY workspace appears automatically; operator sees provisioning status | KELO, Ops | 4 | n/a |
-| J9 | Receive USDC on Base Sepolia into merchant treasury; send USDC with a second user's approval | KONY | 5–6 | Base Sepolia |
-| J10 | See KES and USDC balances that agree with the ledger, the provider and the chain | Platform | 6 | Daraja sandbox, Base Sepolia |
-| J11 | Fund the one NAM product; see funding, order and holding as separate linked states; read disclosures; withdraw | NAM | 7 | Simulator investment provider |
-| J12 | Sign up as a consumer; pay a KONY merchant by M-Pesa; send and receive USDC; send a payment request; see history and a receipt | CHIWO | 8 | Daraja sandbox, Base Sepolia |
-| J13 | Use NAM Vault inside CHIWO | NAM | 9 | Simulator |
-| J14 | Use NAM Vault inside KONY as a business investor | NAM | 10 | Simulator |
-| J15 | Apply for credit; get a decision with reason codes; see total cost of credit; consent; receive a sandbox disbursement; repay from a share of incoming payments | KELO | 11 | Simulator lender; Daraja sandbox for inflows |
-| J16 | Reset staging to seeded demo data and run every journey above | Staging | MVP gate | All |
+1. **Shared platform** — phone one-time-code sign-in (Africa's Talking sandbox), PIN step-up, tenants and roles (admin, finance, cashier), consent records, audit log, double-entry ledger, outbox and cron jobs, reconciliation with an exception queue, versioned tariffs, rate limiting.
+2. **KONY** (web and mobile) — tiered onboarding for registered and unregistered businesses; branches, staff and roles; collections; transaction history with gross, fee and net; settlement view; payouts with fee preview; refunds; USDC treasury on Base Sepolia (receive, and send with approval); developer API (`/v1`, API keys, idempotency, signed webhooks with replay, OpenAPI).
+3. **Rails** — M-Pesa via Daraja (Kenya), Airtel Money (Kenya), MTN MoMo (one non-Kenyan market, sandbox only), one bank. Simulator fallback for each.
+4. **KELO** (web and mobile; merchant side inside KONY) — store enlistment with automatic KONY provisioning; catalogue with three listing types, taxonomy, search and moderation; marketplace; "Pay with KELO" through payment links and the developer API; plan types Pay in N, monthly financing and layaway; eligibility with reason codes; disclosure and consent; repayments; returns and disputes; merchant settlement and dashboard. Credit behind the `kelo_credit` flag.
+5. **CHIWO** (web and mobile) — consumer sign-up; pay a KONY merchant; send and receive USDC on Base Sepolia; payment requests, history and receipts.
+6. **NAM Vault** (inside CHIWO and KONY) — one product on the AORA vault contract; funding, order and holding as separate linked states; disclosures; withdrawal; no yield claims.
+7. **Smart contracts** — `NamUsdcVault` and `AnchorRegistry` on Base Sepolia (ADR 0015).
+8. **Internal ops console** — reconciliation exceptions, provisioning status, listing review queue, user and merchant lookup, audit trail.
+9. **Staging** — seeded demo data across all twelve KELO categories, health checks, a reset runbook.
 
-Staging is first deployed in Phase 3A, because provider callbacks need a public HTTPS address, and is redeployed at the end of every later phase.
+## 2. Out of scope
 
-## 2. What moved because of the MVP
+Card acceptance; a real fiat-to-USDC conversion provider (simulator, labelled); production custody; live money; mainnet; merchant working-capital financing; asset-financing device locks (data model only); KELO in-store QR; multi-merchant orders; app-store distribution.
 
-| Item | Was | Now | Why |
+## 3. Build order
+
+Constraints applied: hosting first; rails one per checkpoint after Daraja; contracts before the NAM vault backend; mobile after the web flow for a journey is stable; KELO in checkpoints (a) to (h).
+
+| Phase | Checkpoints | Delivers |
+|---|---|---|
+| **2 Hosting foundation and sign-in** | 2A lint rule, Neon-ready database access, cron job routes · 2B Neon staging and first Vercel deployment · 2C one-time-code sign-in, PIN step-up · 2D permissions, consent, rate limiting | The API on a real URL with real sign-in |
+| **3 KONY core (web)** | 3A onboarding, branches, staff, tariffs, shared packages, `kony-web`, `internal-ops` · 3B Daraja collection end to end · 3C settlement view, payouts (Daraja B2C), refunds · 3D developer API | A merchant collects, pays out and refunds through M-Pesa sandbox |
+| **4 More rails** | 4A Airtel Money KE · 4B MTN MoMo (market per O-5) · 4C bank (per O-6) | Multi-rail under one merchant identity |
+| **5 KELO commerce** | 5A (a) enlistment, provisioning, catalogue, moderation · 5B (b) consumer marketplace in `kelo-web` · 5C (c) layaway | KELO demoable without credit |
+| **6 Chain and contracts** | 6A Base Sepolia config, transfer verification, local signer · 6B contracts: specs, tests, deploy, verify · 6C KONY USDC treasury, three-way reconciliation, anchoring job | USDC and the two contracts on testnet |
+| **7 NAM Vault** | 7A vault backend on the contract · 7B NAM in `kony-web` | One vault product for businesses |
+| **8 CHIWO (web)** | 8A sign-up, pay a merchant · 8B USDC send and receive, requests, receipts · 8C NAM in `chiwo-web` | The consumer product |
+| **9 KELO credit** | 9A (d) plans, checkout, underwriting behind the flag · 9B (e) repayments and collections · 9C (f) returns and disputes · 9D (g) merchant dashboard in KONY | BNPL end to end |
+| **10 Mobile** | 10A `kony-mobile` · 10B `chiwo-mobile` · 10C (h) `kelo-mobile` and KELO merchant screens in `kony-mobile` | Native apps for the stable journeys |
+| **11 MVP gate** | Seed data in all twelve categories, health checks, reset runbook, every journey on staging | The MVP |
+
+**On layaway before credit:** I agree, and the order above does it (5C before 9A). Layaway needs orders, holding accounts, settlement on fulfilment and refunds, which credit also needs, but no credit decision, no licence question and no bureau or ID provider. One caution: it means AORA's sandbox holds consumers' money before delivery, which is a custody-like assumption (open question O-9) and must be labelled like M-4.
+
+**Why CHIWO comes after KELO commerce:** KELO consumers use the same AORA identity that Phase 2 builds, and pay by M-Pesa through Phase 3's rail, so KELO does not wait for CHIWO. Repaying "from a CHIWO balance" arrives with Phase 9, after CHIWO exists.
+
+## 4. Journeys and exit tests
+
+Each journey is done when its automated test passes locally and in CI and its script passes on staging. "Sim" marks a simulator fallback that must be reported as simulated.
+
+### Platform, KONY, CHIWO, NAM
+
+| # | Journey | Phase | Exit tests |
 |---|---|---|---|
-| Payouts with fee preview, refunds, developer API (keys, signed webhooks, replay) | Phase 12 | Phase 3B | In the MVP definition |
-| Internal ops console (web) | No phase (R-8) | Starts in 3A, extended each phase | In the MVP definition |
-| Staging deployment | Phase 13 | First deploy in 3A; MVP gate after Phase 11 | In the MVP definition |
-| Role `finance` | Not planned | Phase 1 schema, Phase 2 permissions | In the MVP definition |
-| Remaining "KONY commercial depth" (analytics, sweeps, split settlement, payment links, status page, vertical workflows) | Phase 12 | Phase 12, after the MVP | Not in the MVP definition |
+| J1 | Sign in; create a payment intent; webhook; ledger entry; clean reconciliation | 1 (done) | Delivery plan §3.4 |
+| J2 | Sign in on staging with phone and one-time code; set a PIN; approve a sensitive action with it; each role sees only what it may | 2 | Code is single-use, expires, locks after failures and is never the fixed code on a deployed environment; PIN stored only as a slow hash; sensitive action fails without a fresh PIN; route × role matrix is default-deny; each state-changing request writes one audit event; rate limits hold across instances |
+| J3 | Onboard a registered and an unregistered merchant; add a branch and staff | 3A | ADR 0012 matching; ambiguous match goes to review; tier limits from configuration; cashier limited to collecting |
+| J4 | Collect by M-Pesa STK push; see gross, fee and net; see settlement | 3B | Behaviour per Daraja's current documentation; callback idempotent; timeout gives `status_unknown` and an inquiry, never a second push; fee from the tariff version in effect; gross − fee = net exactly |
+| J5 | Operator works an exception; looks up a user and a merchant; reads the audit trail | 3A onward | Each exception type listed, inspected and resolved with an audited reason; operator role required |
+| J6 | Pay out with a fee preview; refund a collection | 3C | Previewed fee equals charged fee; payout needs step-up and `finance` or `admin`; unknown payout never retried automatically; refund cannot exceed the original and posts a compensating entry |
+| J7 | Create an API key; call `/v1` idempotently; receive a signed webhook; replay it | 3D | Key shown once and stored hashed; signature verifies with the published public key; replay causes no second effect |
+| J8 | Collect on Airtel, on MTN and through the bank, under one merchant | 4 | Shared adapter contract suite passes per rail; each record carries its country and asset; a sandbox test currency is shown as one; no cross-currency total |
+| J9 | Receive USDC into merchant treasury; send with a second user's approval | 6 | Startup fails on wrong chain ID, address or decimals; other tokens never credited; credit only after the confirmation policy; unknown submission never resubmitted; development signer refuses to start outside sandbox |
+| J10 | Balances agree across ledger, providers and chain; a ledger period is anchored | 6C | Three-way reconciliation clean on seeded data and flags each injected difference; the anchored root recomputes from the ledger; no personal data in any transaction |
+| J11 | Fund the NAM product; see funding, order and holding separately; read disclosures; withdraw | 7 | Holding follows contract state only; withdrawal not complete until confirmed; vault invariants hold; no yield figure anywhere |
+| J12 | Consumer signs up; pays a merchant by M-Pesa; sends and receives USDC; sends a payment request; gets a receipt | 8 | Personal and business contexts never mix; fees and timing shown before authorising; a request cannot be paid twice |
+| J13 | NAM Vault inside CHIWO and inside KONY | 7B, 8C | Personal and business investor contexts separate; cashier cannot see or act |
 
-## 3. Exit tests per journey
+### KELO
 
-Each journey is done when its automated test passes locally and in CI, and its manual script passes in staging.
+| # | Journey | Phase | Exit tests |
+|---|---|---|---|
+| K1 | A merchant enlists a store, receives a KONY workspace and lists an item | 5A | Brief §13.4 list (exactly one workspace, retries create no duplicate, crash recovery, backfill, restricted stays restricted, no financial authority granted); category vetting from configuration; a prohibited item cannot be submitted; a listing is invisible until reviewed; taxonomy has no category in code |
+| K2 | A consumer buys electronics on Pay in N through the M-Pesa sandbox; the merchant is settled on delivery; the consumer finishes repaying; the ledger balances | 9A–9B | Flag off → no credit route reachable; schedule shown before acceptance equals the schedule charged, to the minor unit; instalments sum exactly to the total; consent stores the terms version; stock is reserved and cannot be oversold under concurrent orders; merchant settled only after delivery confirmation, net of the discount fee; every repayment posted once; receivable reaches zero; trial balance zero; reconciliation clean |
+| K3 | A consumer finances a solar home system with monthly financing and a deposit | 9A–9B | Deposit rule from the template; fees or interest disclosed and equal to what is charged; agreement unaffected by a later configuration change; limit shown with its drivers and never as cash; early repayment has no penalty |
+| K4 | A consumer completes a layaway purchase of a holiday package | 5C | No credit decision or agreement exists; payments sit in "layaway funds held", not with the merchant; capacity reserved for the session; fulfilment and merchant settlement only after the last payment; cancellation refunds follow the configured rule exactly |
+| K5 | A return partway through a plan pauses repayments and reduces the balance | 9C | No reminder or late charge on the paused amount; balance reduced only by compensating entries; overpayment refunded; clawback from the merchant follows the configured rule and never hides a shortfall |
+| K6 | A declined application shows its reasons | 9A | Decision stores reason codes and an input snapshot; the consumer sees plain-language reasons and what would change the outcome; nothing is charged; no order is placed |
+| K7 | The merchant follows BNPL sales, orders, returns, fees and settlements in KONY | 9D | Figures equal the ledger; the merchant never sees a consumer's limit, decision or credit profile |
+| K8 | The same KELO journeys on mobile | 10C | Same exit tests through the app; idempotency key survives an app restart; session token only in secure storage |
 
-| # | Exit tests |
-|---|---|
-| J1 | Delivery plan §3.4 |
-| J2 | Code is single-use, expires, and locks after repeated failures; PIN is stored only as a slow hash; a sensitive action fails without a fresh PIN; authorization matrix (route × role) is default-deny; every state-changing request writes one audit event |
-| J3 | Registered merchant matched by registration number, unregistered by owner + name + location (ADR 0012); ambiguous match goes to review; tier limits come from configuration and are enforced; cashier is limited to collecting |
-| J4 | STK push request and callback handled per Daraja's documented behaviour; callback is idempotent; timeout gives `status_unknown` and a status query, never a second push; fee uses the tariff version effective at the time; gross − fee = net exactly; journal balances |
-| J5 | Each exception type can be listed, inspected and resolved with an audited reason; operator role required; no cross-tenant data without it |
-| J6 | Fee shown before confirmation equals fee charged; payout needs step-up and the `finance` or `admin` role; unknown payout status is never retried automatically; refund cannot exceed the original and posts a compensating entry |
-| J7 | Key shown once and stored hashed; same idempotency key returns the same result; webhook signature verifies with the published public key; replay delivers the same event ID and causes no second effect at a correct receiver |
-| J8 | Brief §13.4 list (exactly one workspace, no duplicates on retry, crash recovery, backfill, correct admin, restricted stays restricted, no financial authority granted) |
-| J9 | Startup fails on wrong chain ID, address or decimals; a transfer of any other token is not credited; credit only after the confirmation policy; send requires a different approver and step-up; unknown submission is not resubmitted; development signer refuses to start outside sandbox |
-| J10 | Three-way reconciliation is clean on seeded data and flags each injected difference; collections, settled, available, USDC, holdings and credit are separate figures |
-| J11 | Funding confirmed ≠ order confirmed ≠ holding; holding follows the provider's state only; withdrawal not complete until confirmed; no yield or return figure anywhere |
-| J12 | Consumer and business contexts never mix; fees and timing shown before authorising; receipt matches the ledger entry; payment request cannot be paid twice |
-| J13, J14 | Personal and business investor contexts are separate; cashier cannot see or act; unsettled funds and credit are never offered as a funding source |
-| J15 | Feature flag off → no credit endpoint reachable; every decision stores reason codes and inputs; total cost shown before consent; consent stores the terms version; each repayment deduction is posted and visible; credit limit never shown as cash |
-| J16 | Reset script is idempotent; health checks green; every journey script passes; ledger trial balance is zero; reconciliation has no open exceptions |
+Demo data covers all twelve categories. K2 (electronics), K3 (solar) and K4 (holidays) are the three tested in depth.
 
-## 4. Conflicts and stretches flagged, not resolved
+### Gate
 
-Tracked as M-1 to M-7 in [open-questions.md](../architecture/open-questions.md#m-flags-raised-by-the-mvp-definition). I am following the "proposed reading" for each until you say otherwise.
+| # | Journey | Exit tests |
+|---|---|---|
+| G1 | Reset staging to seeded data and run every journey | Reset is idempotent; health checks green; all journey scripts pass; trial balance zero; no open reconciliation exception; contract addresses match `contracts/deployments/` |
 
-- **F-1 (M-1) Testnet key in `.env.local`.** Brief §3.8 says never store private keys in plaintext configuration; CLAUDE.md rule 9 says secrets never go in config files. Your ruling permits a testnet-only key. For staging I propose the platform's secret store rather than a file.
-- **F-2 (M-2) API keys and webhook secrets.** Rule 9 says API keys never go in database fields. A developer API has to recognise the keys it issued. Proposed: store only hashes of AORA-issued keys, and sign webhooks with a platform key pair so no per-merchant secret is stored.
-- **F-3 (M-3) Pooled testnet wallet.** "Send and receive USDC" for consumers and merchants with one development signer means AORA controls all testnet USDC. That looks like custody. It is a sandbox convenience and must be labelled; it does not decide ADR 0010.
-- **F-4 (M-4) Payouts imply AORA holds merchant fiat.** Same point on the fiat side.
-- **F-5 (M-5) KELO credit before the licence decision.** Sandbox only, feature flag off by default.
-- **F-6 (M-6) Simulated fiat-to-USDC conversion.** Brief §3.3 requires an approved provider and legal model for real conversion. The simulator must say it is simulated and show no real rate.
-- **F-7 (M-7) Named providers.** Nothing about Daraja or the SMS provider is assumed; their documentation is read and cited in the phase that integrates them. If the Daraja sandbox does not offer something the MVP lists (for example a refund or reversal call), that journey step falls back to the simulator and is reported as simulated.
+## 5. Flags carried from the first MVP definition
 
-No conflict was found in: tenants and roles, audit log, ledger, outbox, tariffs, NAM "no yield claims", out-of-scope list.
+M-1 to M-7 are resolved (see [open-questions.md](../architecture/open-questions.md)). New owner defaults and open questions are O-1 to O-10 there. Nothing in this scope conflicts with the amended brief or CLAUDE.md beyond those recorded items.
 
-## 5. Credentials expected, by phase
+## 6. Credentials by phase
 
-Requested in one batch at the start of each phase, in the format in `docs/progress.md`.
+Requested in one batch at the start of each phase, in the CLAUDE.md format.
 
 | Phase | Needed |
 |---|---|
-| 1 | Nothing external. (GitHub push needs the `workflow` token scope; see progress.) |
-| 2 | SMS provider sandbox credentials |
-| 3A | Daraja sandbox app credentials and test shortcode values; public HTTPS tunnel or staging URL for callbacks; staging cloud account |
-| 3B | Daraja sandbox B2C credentials, if separate (to verify) |
-| 5 | Base Sepolia RPC URL; testnet signer key funded with Base Sepolia ETH and testnet USDC |
-| Others | None expected |
+| 2 | Neon account and project; Vercel account on the Pro plan and project; Africa's Talking sandbox username and API key |
+| 3 | Daraja sandbox app credentials, test shortcode and passkey values, B2C sandbox credentials (exact list to verify from Daraja's documentation) |
+| 4 | Airtel Africa developer sandbox credentials; MTN MoMo sandbox subscription key and API user; the chosen bank's sandbox credentials |
+| 5 | Image storage (O-7), if adopted |
+| 6 | Base Sepolia RPC URL; a testnet signer key funded with Base Sepolia ETH and testnet USDC (local only); block-explorer API key |
+| 9 | ID-verification sandbox; credit-bureau sandbox |
+| 10 | Expo account or EAS token, only when binaries are built |
