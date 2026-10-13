@@ -23,7 +23,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **Neon: done (2026-10-13).** Project `aora` (`little-block-25898321`), Frankfurt, PostgreSQL 16, branches `main` (staging) and `development`. Three roles created with SQL; migrations applied without superuser rights; `pnpm neon:verify` passes through the pooler on both branches.
 - **Real check through Neon's pooler:** the built API, run locally against the development branch, refused to start with the fixed code, then signed in with a one-time code, took a payment to `succeeded` using only the cron routes, and reconciled clean.
 - Found and fixed there: transactions now have explicit limits (10 s to start, 20 s to run), because the driver's 5 s default cut off the seed when run from Kenya against Frankfurt.
-- **Vercel: not started.**
+- **Vercel: account created on the Hobby (free) plan.** Cron schedules are therefore daily (ADR 0013, O-10). CLI install, login, project link and first deployment are next.
 
 ## Next
 
@@ -33,14 +33,14 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Blocked
 
-- **2B** waits for the Vercel account (Pro plan) and CLI login.
+- **2B** waits for the Vercel CLI login.
 - **2E** waits for Africa's Talking sandbox credentials.
 
 ## Waiting on the owner
 
 - Vercel account and login; Africa's Talking sandbox credentials.
 - Whether to delete the old, empty Neon project `Aora` in Ohio (`lingering-grass-59855278`).
-- O-10: confirm the Vercel **Pro** plan (per-minute cron).
+- O-10: Hobby chosen for now; decide how background work is triggered promptly before Phase 3 (Pro, request-driven draining, or an external scheduler).
 - O-5 (MTN market), O-6 (bank), O-7 (image storage): needed for Phases 4 and 5, not now.
 
 ## Known gaps carried forward

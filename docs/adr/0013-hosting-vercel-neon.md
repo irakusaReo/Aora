@@ -56,6 +56,16 @@ Each route checks the `CRON_SECRET` bearer value in constant time. Because Verce
 
 The API also drains the outbox opportunistically right after a request commits, so a payment does not wait up to a minute for the next tick. This relies on Fluid compute's background processing [V1]; the exact API is confirmed when it is implemented.
 
+## Owner decision on the plan (2026-10-13): Hobby for now
+
+The owner chose the free Hobby plan. Consequences, all following from [V3]:
+
+- Cron schedules in `services/api/vercel.json` are **once per day** (a more frequent expression fails the deployment on Hobby), and may fire up to 59 minutes late.
+- Background work therefore does **not** run promptly on staging. An outbox event waits until the daily run unless something else triggers the job. The jobs themselves are unchanged: each still processes everything due, so nothing is lost, only delayed.
+- This is enough to prove the build, sign-in, PIN, permissions and the database. It is **not** enough for the payment journeys, where a webhook or a status inquiry must be processed within seconds or minutes.
+- Before Phase 3 (real M-Pesa callbacks) one of these is needed, in order of preference: upgrade to Pro and restore the per-minute schedules in the table above; or drain the outbox in the background of each request, so traffic itself drives the work (needs the Fluid compute background API verified); or an external scheduler calling the cron routes, which is another service and needs the owner's approval.
+- Whether Hobby's terms allow this project's use was not verified.
+
 ## Which Vercel plan is needed
 
 **Pro.** The outbox drain, webhook delivery and chain monitoring need per-minute cron; Hobby allows one run per day [V3]. Function duration is not the constraint: every job is bounded well under 300 s. Whether Hobby's terms permit this kind of project was not verified.

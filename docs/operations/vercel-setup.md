@@ -24,7 +24,7 @@ All in region `fra1`, next to the Neon database.
 
 1. **[you] Create a Vercel account and team** at https://vercel.com, signed in with the GitHub account that owns `irakusaReo/Aora`.
 
-2. **[you] Choose the plan. Pro is required.** The outbox, webhook delivery and chain monitoring need a cron job every minute; the Hobby plan allows one run per day. **Upgrading is billable**, so this step is yours.
+2. **[you] Choose the plan.** Decided 2026-10-13: **Hobby (free)** for now. Hobby allows each cron job once per day, so background work on staging is delayed until the daily run; see ADR 0013. Pro (billable) restores per-minute jobs and is needed before real payment callbacks in Phase 3, unless another trigger is approved.
 
 3. **[you] Install the CLI** (version 48.4.0 or newer is required for NestJS).
 
@@ -92,8 +92,10 @@ The fixed sign-in code and the sandbox authenticator cannot start on Vercel what
 
 Defined in `services/api/vercel.json`, so they are reviewed like code. They run only on the Production (staging) deployment.
 
-| Path | Schedule |
-|---|---|
-| `/v1/internal/cron/outbox` | every minute |
-| `/v1/internal/cron/sim-webhooks` | every minute |
-| `/v1/internal/cron/reconciliation` | every 15 minutes |
+| Path | Schedule on Hobby (current) | Schedule on Pro |
+|---|---|---|
+| `/v1/internal/cron/outbox` | daily, 03:00 UTC | every minute |
+| `/v1/internal/cron/sim-webhooks` | daily, 03:05 UTC | every minute |
+| `/v1/internal/cron/reconciliation` | daily, 03:30 UTC | every 15 minutes |
+
+On Hobby a job may start up to 59 minutes after its scheduled time. Any job can also be run by hand with the cron secret, which is how staging is exercised until the plan changes.

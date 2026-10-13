@@ -4,15 +4,15 @@
   "crons": [
     {
       "path": "/v1/internal/cron/outbox",
-      "schedule": "* * * * *"
+      "schedule": "0 3 * * *"
     },
     {
       "path": "/v1/internal/cron/sim-webhooks",
-      "schedule": "* * * * *"
+      "schedule": "5 3 * * *"
     },
     {
       "path": "/v1/internal/cron/reconciliation",
-      "schedule": "*/15 * * * *"
+      "schedule": "30 3 * * *"
     }
   ]
 }
