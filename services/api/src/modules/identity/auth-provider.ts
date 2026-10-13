@@ -1,98 +1,113 @@
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { AppConfig } from '../../platform/config.js';
-import { fixedCodeAllowed } from '../../platform/deployment.js';
+import { sandboxAuthAllowed } from '../../platform/deployment.js';
+
+/** What a verified request token says. Nothing about roles or tenants: those are AORA's alone. */
+export interface AuthenticatedToken {
+  /** The identity provider's id for the user. */
+  readonly subject: string;
+  /** The provider's session id. Step-ups are bound to it. */
+  readonly sessionId: string;
+  /** Minutes since the sign-in factor was last verified on this session, or null if unknown. */
+  readonly firstFactorAgeMinutes: number | null;
+}
+
+export interface ProviderProfile {
+  readonly email: string | null;
+  readonly phoneE164: string | null;
+  readonly displayName: string | null;
+}
 
 /**
- * Verifies that a person controls a phone number. Only credential verification
- * sits behind this interface; accounts, sessions, roles and the step-up policy
- * stay in AORA (ADR 0011).
+ * Proves who is calling. Only authentication sits behind this interface;
+ * persons, tenants, roles, permissions, consent and the step-up policy stay in
+ * AORA (ADR 0019).
  */
 export interface AuthProvider {
   readonly name: string;
-  /** Starts a challenge and returns opaque state to store with it. Never the code itself. */
-  startChallenge(input: { phoneE164: string; purpose: ChallengePurpose }): Promise<string>;
-  verifyChallenge(input: { state: string; code: string }): Promise<boolean>;
+  /** Verifies a request token. Returns null for anything that is not a valid, current token. */
+  authenticate(token: string): Promise<AuthenticatedToken | null>;
+  /** The user's contact profile, for the first time AORA meets them. */
+  fetchProfile(subject: string): Promise<ProviderProfile | null>;
 }
-
-export type ChallengePurpose = 'sign_in' | 'pin_setup';
 
 export const AUTH_PROVIDER = Symbol('AUTH_PROVIDER');
 
 /**
- * DEVELOPMENT ONLY. Accepts one fixed code and sends nothing, so automated
- * tests and local work need no SMS. It refuses to exist anywhere but a
- * developer machine with a local database: the check below looks at the real
+ * TESTS AND LOCAL WORK ONLY. Mints and verifies its own signed tokens so
+ * automated tests need no identity provider. It refuses to exist anywhere but
+ * a developer machine with a local database: the check looks at the real
  * process environment and cannot be switched off by configuration.
  */
 export class SandboxAuthProvider implements AuthProvider {
-  static readonly FIXED_CODE = '000000';
-  readonly name = 'fixed';
+  readonly name = 'sandbox';
+  private readonly secret = randomBytes(32);
+  private readonly profiles = new Map<string, ProviderProfile>();
 
   constructor(config: AppConfig, env: Record<string, string | undefined> = process.env) {
-    const local = fixedCodeAllowed({
+    const local = sandboxAuthAllowed({
       ...env,
       DATABASE_URL_APP: config.databaseUrlApp,
       DATABASE_URL_PLATFORM: config.databaseUrlPlatform,
     });
     if ((config.mode as string) !== 'sandbox' || config.deployed || !local) {
-      throw new Error('The fixed sign-in code is forbidden outside a local development machine.');
+      throw new Error(
+        'The sandbox authenticator is forbidden outside a local development machine.',
+      );
     }
   }
 
-  startChallenge(): Promise<string> {
-    return Promise.resolve(sealCode(SandboxAuthProvider.FIXED_CODE));
+  issue(
+    subject: string,
+    options: {
+      sessionId?: string;
+      firstFactorAgeMinutes?: number | null;
+      expiresInSeconds?: number;
+    } = {},
+  ): string {
+    const body = Buffer.from(
+      JSON.stringify({
+        sub: subject,
+        sid: options.sessionId ?? `sess_${randomUUID()}`,
+        fva: options.firstFactorAgeMinutes === undefined ? 0 : options.firstFactorAgeMinutes,
+        exp: Date.now() + (options.expiresInSeconds ?? 3600) * 1000,
+        jti: randomUUID(),
+      }),
+    ).toString('base64url');
+    return `sbx.${body}.${this.sign(body)}`;
   }
 
-  verifyChallenge(input: { state: string; code: string }): Promise<boolean> {
-    return Promise.resolve(codeMatches(input.state, input.code));
-  }
-}
-
-/** Delivers a text message. Implementations: the simulated sender, and one per SMS provider. */
-export interface SmsSender {
-  readonly name: string;
-  send(phoneE164: string, body: string): Promise<void>;
-}
-
-export const SMS_SENDER = Symbol('SMS_SENDER');
-
-/**
- * Phone number plus a random one-time code delivered by SMS. The code exists
- * in memory only long enough to be sent; what is stored is a salted HMAC.
- */
-export class OtpAuthProvider implements AuthProvider {
-  readonly name = 'otp';
-
-  constructor(private readonly sms: SmsSender) {}
-
-  async startChallenge(input: { phoneE164: string; purpose: ChallengePurpose }): Promise<string> {
-    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
-    const what = input.purpose === 'sign_in' ? 'sign-in' : 'PIN';
-    await this.sms.send(
-      input.phoneE164,
-      `AORA SANDBOX: your ${what} code is ${code}. It expires in 5 minutes. Never share it.`,
-    );
-    return sealCode(code);
+  setProfile(subject: string, profile: ProviderProfile): void {
+    this.profiles.set(subject, profile);
   }
 
-  verifyChallenge(input: { state: string; code: string }): Promise<boolean> {
-    return Promise.resolve(codeMatches(input.state, input.code));
+  authenticate(token: string): Promise<AuthenticatedToken | null> {
+    const [prefix, body, signature] = token.split('.');
+    if (prefix !== 'sbx' || !body || !signature) return Promise.resolve(null);
+    const expected = Buffer.from(this.sign(body));
+    const given = Buffer.from(signature);
+    if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
+      return Promise.resolve(null);
+    }
+    const claims = JSON.parse(Buffer.from(body, 'base64url').toString()) as {
+      sub: string;
+      sid: string;
+      fva: number | null;
+      exp: number;
+    };
+    if (claims.exp <= Date.now()) return Promise.resolve(null);
+    return Promise.resolve({
+      subject: claims.sub,
+      sessionId: claims.sid,
+      firstFactorAgeMinutes: claims.fva,
+    });
   }
-}
 
-function sealCode(code: string): string {
-  const salt = randomBytes(16).toString('hex');
-  return `${salt}:${digest(salt, code)}`;
-}
+  fetchProfile(subject: string): Promise<ProviderProfile | null> {
+    return Promise.resolve(this.profiles.get(subject) ?? null);
+  }
 
-function codeMatches(state: string, code: string): boolean {
-  const [salt, expected] = state.split(':');
-  if (!salt || !expected) return false;
-  const actual = Buffer.from(digest(salt, code), 'hex');
-  const wanted = Buffer.from(expected, 'hex');
-  return actual.length === wanted.length && timingSafeEqual(actual, wanted);
-}
-
-function digest(salt: string, code: string): string {
-  return createHmac('sha256', salt).update(code).digest('hex');
+  private sign(body: string): string {
+    return createHmac('sha256', this.secret).update(body).digest('base64url');
+  }
 }

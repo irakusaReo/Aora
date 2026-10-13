@@ -33,7 +33,16 @@ beforeAll(async () => {
     });
   }
   await h.settle();
-  await h.http().post('/v1/auth/sessions').send({ challenge_id: 'x', code: '654321' });
+  await h
+    .http()
+    .put('/v1/auth/pin')
+    .set('Authorization', `Bearer ${admin}`)
+    .send({ pin: '654321' });
+  await h
+    .http()
+    .post('/v1/auth/step-up')
+    .set('Authorization', `Bearer ${admin}`)
+    .send({ pin: '135790' });
   await h
     .http()
     .post('/v1/webhooks/sandbox')
@@ -59,10 +68,13 @@ describe('logs', () => {
     const forbidden = [
       ...tokens,
       h.config.simWebhookSecret,
+      h.config.pinPepper,
+      h.config.clerk.webhookSigningSecret,
+      '135790',
+      'sandbox.aora.test',
       h.config.databaseUrlApp,
       h.config.databaseUrlPlatform,
       ...Object.values(SEED_PHONES),
-      '000000',
       '654321',
       'leak-me',
       '"pin"',
@@ -92,7 +104,7 @@ describe('source tree', () => {
     ];
     const offenders = files(root)
       .filter((path) => /\.(ts|sql|json|yaml|yml|prisma|sh)$/.test(path))
-      .filter((path) => !/(hygiene|auth|deployed-guard)\.test\.ts$/.test(path))
+      .filter((path) => !/(hygiene|auth|deployed-guard|clerk-provider)\.test\.ts$/.test(path))
       .filter((path) => patterns.some((pattern) => pattern.test(readFileSync(path, 'utf8'))));
     expect(offenders).toEqual([]);
   });

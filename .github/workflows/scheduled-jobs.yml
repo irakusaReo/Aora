@@ -1,0 +1,52 @@
+name: Scheduled jobs (staging)
+
+# Backstop for background work on AORA staging (ADR 0013). The API drains its
+# outbox after each request; this workflow wakes delayed work (status inquiries,
+# reminders) and runs reconciliation. GitHub's schedule is best effort and can
+# run minutes late, so nothing may depend on it being punctual.
+#
+# Each call is authenticated with the staging cron secret. The jobs are
+# idempotent and time-bounded, so a late, missed or repeated run is harmless.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: scheduled-jobs-staging
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    name: Run due jobs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      API: https://aora-api.vercel.app
+      CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
+    steps:
+      - name: Outbox, simulator webhooks, outbox again
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::STAGING_CRON_SECRET is not set as a repository secret."
+            exit 1
+          fi
+          for job in outbox sim-webhooks outbox; do
+            curl --fail --silent --show-error --max-time 60 \
+              -H "Authorization: Bearer $CRON_SECRET" "$API/v1/internal/cron/$job"
+            echo
+          done
+
+      - name: Reconciliation (once an hour)
+        run: |
+          minute=$(date -u +%M)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$minute" -lt 5 ]; then
+            curl --fail --silent --show-error --max-time 120 \
+              -H "Authorization: Bearer $CRON_SECRET" "$API/v1/internal/cron/reconciliation"
+            echo
+          else
+            echo "Not the top of the hour; skipping."
+          fi

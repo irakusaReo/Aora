@@ -1,15 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SandboxAuthProvider } from '../src/modules/identity/auth-provider.js';
 import { type Harness, startHarness } from './support/harness.js';
 
-// PIN state machine (docs/plans/phase-2.md §5):
-//   unset -> set (needs a fresh one-time code)
-//   set + correct PIN -> step-up granted, attempts reset
-//   set + wrong PIN   -> attempts + 1 -> locked at the limit
-//   locked            -> refuses even the correct PIN until it expires or the PIN is reset
+// PIN state machine (ADR 0019):
+//   unset -> set            needs a FRESH sign-in factor on the session (Clerk's fva claim)
+//   set + correct PIN       -> that session is stepped-up; attempts reset
+//   set + wrong PIN         -> attempts + 1 -> locked at the limit
+//   locked                  -> refuses even the correct PIN until it expires or the PIN is reset
 
 let h: Harness;
-const CODE = SandboxAuthProvider.FIXED_CODE;
 const PIN = '482915';
 
 beforeAll(async () => {
@@ -18,59 +16,43 @@ beforeAll(async () => {
 afterAll(() => h.close());
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
-
-async function setPin(token: string, pin: string, code = CODE) {
-  const challenge = await h.http().post('/v1/auth/pin/challenges').set(auth(token));
-  expect(challenge.status).toBe(201);
-  return h
-    .http()
-    .put('/v1/auth/pin')
-    .set(auth(token))
-    .send({ pin, challenge_id: challenge.body.challenge_id, code });
-}
-
+const setPin = (token: string, pin: string) =>
+  h.http().put('/v1/auth/pin').set(auth(token)).send({ pin });
 const stepUp = (token: string, pin: string) =>
   h.http().post('/v1/auth/step-up').set(auth(token)).send({ pin });
+const addMember = (token: string, phone: string) =>
+  h
+    .http()
+    .post('/v1/workspace/members')
+    .set(auth(token))
+    .set('Aora-Workspace-Id', h.seed.tenantA)
+    .send({ phone, role: 'cashier' });
 
 describe('PIN', () => {
   it('cannot be used for step-up before it is set', async () => {
-    const token = await h.signIn('adminB');
-    const response = await stepUp(token, PIN);
+    const response = await stepUp(await h.signIn('adminB'), PIN);
     expect(response.status).toBe(409);
     expect(response.body.error.code).toBe('pin_not_set');
   });
 
-  it('can be set only with a fresh one-time code', async () => {
-    const token = await h.signIn('adminA');
-    expect((await setPin(token, PIN, '111111')).status).toBe(401);
-    expect((await stepUp(token, PIN)).status).toBe(409);
+  it('can be set only on a session whose sign-in factor was verified recently', async () => {
+    const stale = await h.signIn('adminA', { firstFactorAgeMinutes: 45 });
+    const refused = await setPin(stale, PIN);
+    expect(refused.status).toBe(403);
+    expect(refused.body.error.code).toBe('reverification_required');
 
-    const withoutChallenge = await h
-      .http()
-      .put('/v1/auth/pin')
-      .set(auth(token))
-      .send({ pin: PIN, challenge_id: 'f3b0c7a2-0000-4000-8000-000000000000', code: CODE });
-    expect(withoutChallenge.status).toBe(401);
+    const unknown = await h.signIn('adminA', { firstFactorAgeMinutes: null });
+    expect((await setPin(unknown, PIN)).status).toBe(403);
+    expect((await stepUp(stale, PIN)).status).toBe(409);
 
-    const signInChallenge = await h
-      .http()
-      .post('/v1/auth/challenges')
-      .send({ phone: '+99900000001' });
-    const wrongPurpose = await h
-      .http()
-      .put('/v1/auth/pin')
-      .set(auth(token))
-      .send({ pin: PIN, challenge_id: signInChallenge.body.challenge_id, code: CODE });
-    expect(wrongPurpose.status).toBe(401);
-
-    expect((await setPin(token, PIN)).status).toBe(200);
+    const fresh = await h.signIn('adminA', { firstFactorAgeMinutes: 1 });
+    expect((await setPin(fresh, PIN)).status).toBe(200);
   });
 
   it('refuses weak PINs', async () => {
     const token = await h.signIn('financeA');
     for (const weak of ['111111', '123456', '654321', '12345', '1234567', 'abcdef', '']) {
-      const response = await setPin(token, weak);
-      expect(response.status, weak).toBe(400);
+      expect((await setPin(token, weak)).status, weak).toBe(400);
     }
   });
 
@@ -82,18 +64,23 @@ describe('PIN', () => {
     expect(new Date(ok.body.step_up_until).getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('grants the step-up to that session only', async () => {
+  it('binds the step-up to the session that entered the PIN', async () => {
     const first = await h.signIn('adminA');
-    await h.signIn('adminA');
+    const second = await h.signIn('adminA');
     await stepUp(first, PIN);
-    const sessions = await h.owner((client) =>
-      client.query(
-        `select count(*) filter (where step_up_until > now()) as stepped, count(*) as total
-         from identity.session where account_id = $1 and created_at > now() - interval '5 seconds'`,
-        [h.seed.accounts.adminA],
-      ),
-    );
-    expect(Number(sessions.rows[0]?.stepped)).toBeLessThan(Number(sessions.rows[0]?.total));
+    expect((await addMember(first, '+99900000071')).status).toBe(201);
+    const other = await addMember(second, '+99900000072');
+    expect(other.status).toBe(403);
+    expect(other.body.error.code).toBe('step_up_required');
+  });
+
+  it('survives the session token being refreshed, because it is bound to the session id', async () => {
+    const session = `sess_refresh_${String(Date.now())}`;
+    const before = await h.signIn('adminA', { sessionId: session });
+    await stepUp(before, PIN);
+    const refreshed = await h.signIn('adminA', { sessionId: session, firstFactorAgeMinutes: 20 });
+    expect(refreshed).not.toBe(before);
+    expect((await addMember(refreshed, '+99900000073')).status).toBe(201);
   });
 
   it('locks after the attempt limit and then refuses even the correct PIN', async () => {
@@ -124,11 +111,17 @@ describe('PIN', () => {
     expect(row.rows[0]?.pin_failed_attempts).toBe(0);
   });
 
-  it('can be reset with a one-time code while locked, which clears the lock', async () => {
+  it('can be reset with a fresh sign-in factor while locked, which clears the lock and old step-ups', async () => {
     const token = await h.signIn('cashierA');
     for (let i = 0; i < h.config.auth.maxPinAttempts; i += 1) await stepUp(token, '900002');
     expect((await stepUp(token, PIN)).status).toBe(429);
     expect((await setPin(token, '739182')).status).toBe(200);
+    const stepUps = await h.owner((client) =>
+      client.query(`select count(*) as n from identity.step_up where account_id = $1`, [
+        h.seed.accounts.cashierA,
+      ]),
+    );
+    expect(stepUps.rows[0]?.n).toBe('0');
     expect((await stepUp(token, PIN)).status).toBe(401);
     expect((await stepUp(token, '739182')).status).toBe(200);
   });
@@ -160,13 +153,5 @@ describe('PIN', () => {
       'identity.pin.set',
       'identity.pin.verified',
     ]);
-  });
-});
-
-describe('sign-out', () => {
-  it('revokes the session', async () => {
-    const token = await h.signIn('adminB');
-    expect((await h.http().delete('/v1/auth/session').set(auth(token))).status).toBe(204);
-    expect((await h.http().get('/v1/me').set(auth(token))).status).toBe(401);
   });
 });

@@ -7,6 +7,7 @@ import { AppError } from '../../platform/errors.js';
 import { SANDBOX_PROVIDER } from '../../seed-data.js';
 import { AuditService } from '../audit/audit.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { type OutboxEvent, OutboxService } from '../outbox/outbox.service.js';
 import { supports } from './adapter.js';
 import { ReconciliationService } from './reconciliation.service.js';
@@ -99,6 +100,7 @@ export class PaymentsService implements OnModuleInit {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(SimulatorProvider) private readonly provider: SimulatorProvider,
     @Inject(ReconciliationService) private readonly reconciliation: ReconciliationService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit(): void {
@@ -461,6 +463,21 @@ export class PaymentsService implements OnModuleInit {
           amount: intent.amount,
         },
       ],
+    });
+    // Transaction alert to the person who took the payment, in the same transaction:
+    // it exists if and only if the payment succeeded, and is sent once.
+    const asset = await tx.asset.findUniqueOrThrow({ where: { code: intent.asset_code } });
+    await this.notifications.notify(tx, {
+      dedupeKey: `payment.received:${intent.id}`,
+      accountId: intent.created_by,
+      tenantId: intent.tenant_id,
+      type: 'payment.received',
+      params: {
+        amount_minor: intent.amount.toString(),
+        currency: intent.asset_code,
+        exponent: asset.exponent,
+        reference: intent.id,
+      },
     });
     return 'succeeded';
   }

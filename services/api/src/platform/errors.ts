@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'unauthenticated'
   | 'forbidden'
   | 'step_up_required'
+  | 'reverification_required'
   | 'not_found'
   | 'idempotency_key_required'
   | 'idempotency_key_reused'
@@ -29,6 +30,7 @@ const STATUS: Record<ErrorCode, number> = {
   unauthenticated: 401,
   forbidden: 403,
   step_up_required: 403,
+  reverification_required: 403,
   not_found: 404,
   idempotency_key_required: 400,
   idempotency_key_reused: 409,

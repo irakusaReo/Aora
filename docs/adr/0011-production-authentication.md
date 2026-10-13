@@ -1,6 +1,6 @@
 # ADR 0011 — Authentication for production
 
-- **Status:** Proposed — **Decision pending owner input**
+- **Status:** Accepted (owner ruling, 2026-10-13): **option C, a managed identity provider, Clerk.** Integration detail is in [ADR 0019](0019-clerk-integration.md). The comparison below is kept as the record of what was weighed.
 - **Date:** 2026-10-13
 - **Related:** brief §2.1, §7.2; CLAUDE.md rules 9, 12; open question [D-6](../architecture/open-questions.md#d-6)
 

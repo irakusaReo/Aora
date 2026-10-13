@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "consent", "identity", "ledger", "ops", "outbox", "payments", "sim", "tenancy"]
+  schemas  = ["audit", "business", "consent", "identity", "ledger", "notifications", "ops", "outbox", "payments", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -105,10 +105,11 @@ model session {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model user_account {
   id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   person_id            String           @db.Uuid
-  phone_e164           String           @unique
+  phone_e164           String?          @unique
   is_platform_operator Boolean          @default(false)
   mode                 String           @default("sandbox")
   created_at           DateTime         @default(now()) @db.Timestamptz(6)
@@ -116,11 +117,20 @@ model user_account {
   pin_set_at           DateTime?        @db.Timestamptz(6)
   pin_failed_attempts  Int              @default(0)
   pin_locked_until     DateTime?        @db.Timestamptz(6)
+  clerk_user_id        String?          @unique
+  email                String?
+  display_name         String?
+  phone_verified_at    DateTime?        @db.Timestamptz(6)
+  status               String           @default("active")
+  closed_at            DateTime?        @db.Timestamptz(6)
+  provider_updated_at  BigInt           @default(0)
   audit_event          audit_event[]
   consent_record       consent_record[]
   auth_challenge       auth_challenge[]
   session              session[]
+  step_up              step_up[]
   person               person           @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  notification         notification[]
   payment_intent       payment_intent[]
   membership           membership[]
 
@@ -158,6 +168,7 @@ model workspace {
   account_balance           account_balance[]
   journal_entry             journal_entry[]
   posting                   posting[]
+  notification              notification[]
   outbox_event              outbox_event[]
   payment_intent            payment_intent[]
   payment_intent_transition payment_intent_transition[]
@@ -477,5 +488,83 @@ model sim_sms {
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([phone_e164, created_at], map: "sim_sms_phone")
+  @@schema("sim")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model provider_event {
+  id          String   @id
+  provider    String
+  type        String
+  received_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("identity")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model step_up {
+  session_ref  String       @id
+  account_id   String       @db.Uuid
+  until        DateTime     @db.Timestamptz(6)
+  mode         String       @default("sandbox")
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  user_account user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([account_id], map: "step_up_account")
+  @@schema("identity")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model delivery_event {
+  id              String        @id
+  notification_id String?       @db.Uuid
+  type            String
+  received_at     DateTime      @default(now()) @db.Timestamptz(6)
+  notification    notification? @relation(fields: [notification_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("notifications")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model notification {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dedupe_key          String           @unique
+  account_id          String           @db.Uuid
+  tenant_id           String?          @db.Uuid
+  channel             String
+  type                String
+  params              Json             @default("{}")
+  locale              String           @default("en")
+  status              String           @default("queued")
+  recipient_masked    String?
+  subject             String?
+  provider            String?
+  provider_message_id String?          @unique
+  failure_code        String?
+  attempts            Int              @default(0)
+  mode                String           @default("sandbox")
+  created_at          DateTime         @default(now()) @db.Timestamptz(6)
+  sent_at             DateTime?        @db.Timestamptz(6)
+  last_event_at       DateTime?        @db.Timestamptz(6)
+  delivery_event      delivery_event[]
+  user_account        user_account     @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([account_id, created_at], map: "notification_account")
+  @@schema("notifications")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sim_email {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotency_key String   @unique
+  to_address      String
+  subject         String
+  html            String
+  body_text       String
+  mode            String   @default("sandbox")
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
   @@schema("sim")
 }

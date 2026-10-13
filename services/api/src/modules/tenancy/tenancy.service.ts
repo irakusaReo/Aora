@@ -9,7 +9,7 @@ export interface MemberView {
   readonly account_id: string;
   readonly role: string;
   readonly status: string;
-  /** Last three digits only: enough to recognise a colleague, not a phone number. */
+  /** Last three digits only: enough to recognise a colleague, not a phone number. Empty if none. */
   readonly phone_hint: string;
 }
 
@@ -44,6 +44,20 @@ export class TenancyService {
       where: { account_id: accountId, status: 'active' },
     });
     return rows.map((row) => ({ tenantId: row.tenant_id, role: row.role as Role }));
+  }
+
+  /**
+   * Removes a closed account from every workspace. A workspace's last admin is
+   * left in place, because the database refuses to leave a workspace without
+   * one; that workspace then needs an operator.
+   */
+  async removeAllMemberships(tx: Tx, accountId: string): Promise<void> {
+    await tx.$executeRaw`
+      update tenancy.membership m set status = 'removed'
+      where m.account_id = ${accountId}::uuid and m.status = 'active'
+        and (m.role <> 'admin' or exists (
+          select from tenancy.membership o
+          where o.tenant_id = m.tenant_id and o.id <> m.id and o.role = 'admin' and o.status = 'active'))`;
   }
 
   async listMembers(tenantId: string): Promise<MemberView[]> {
@@ -141,13 +155,13 @@ function toView(row: {
   account_id: string;
   role: string;
   status: string;
-  user_account: { phone_e164: string };
+  user_account: { phone_e164: string | null };
 }): MemberView {
   return {
     id: row.id,
     account_id: row.account_id,
     role: row.role,
     status: row.status,
-    phone_hint: `…${row.user_account.phone_e164.slice(-3)}`,
+    phone_hint: row.user_account.phone_e164 ? `…${row.user_account.phone_e164.slice(-3)}` : '',
   };
 }

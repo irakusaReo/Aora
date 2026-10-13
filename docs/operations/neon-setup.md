@@ -94,4 +94,3 @@ Staging is reset by the runbook written for the MVP gate, not by hand. Deleting 
 
 Steps 1 to 9 are complete for both branches: roles created with SQL, four migrations applied through the direct connection, and `pnpm neon:verify` passes through the pooler on `main` and `development`. The development branch holds seeded sandbox data; staging is empty until the first deployment.
 
-An older, empty project named `Aora` (`lingering-grass-59855278`, Ohio, PostgreSQL 18) also exists in the organisation. It is unused. Deleting it is the owner's decision.

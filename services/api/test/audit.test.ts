@@ -8,33 +8,43 @@ beforeAll(async () => {
 afterAll(() => h.close());
 
 describe('audit trail', () => {
-  it('records sign-in and rejected codes, without the code or token', async () => {
+  it('records PIN events and account creation, without the PIN or the token', async () => {
     const token = await h.signIn('adminA');
-    const challenge = await h.http().post('/v1/auth/challenges').send({ phone: '+99900000001' });
     await h
       .http()
-      .post('/v1/auth/sessions')
-      .send({ challenge_id: challenge.body.challenge_id, code: '424242' });
+      .put('/v1/auth/pin')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ pin: '482915' });
+    await h
+      .http()
+      .post('/v1/auth/step-up')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ pin: '424242' });
 
     const events = await h.owner((client) =>
-      client.query<{ action: string; outcome: string; detail: unknown; row: string }>(
-        `select action, outcome, detail, audit_event::text as row from audit.audit_event
+      client.query<{ action: string; outcome: string; row: string }>(
+        `select action, outcome, audit_event::text as row from audit.audit_event
          where actor_account_id = $1 order by occurred_at`,
         [h.seed.accounts.adminA],
       ),
     );
     expect(events.rows.map((row) => [row.action, row.outcome])).toEqual([
-      ['identity.session.created', 'success'],
-      ['identity.sign_in.code_rejected', 'denied'],
+      ['identity.pin.set', 'success'],
+      ['identity.pin.rejected', 'denied'],
     ]);
     for (const row of events.rows) {
       expect(row.row).not.toContain(token);
       expect(row.row).not.toContain('424242');
+      expect(row.row).not.toContain('482915');
     }
   });
 
   it('cannot be updated, deleted or truncated, even by the schema owner', async () => {
-    await h.signIn('adminA');
+    await h
+      .http()
+      .put('/v1/auth/pin')
+      .set('Authorization', `Bearer ${await h.signIn('adminB')}`)
+      .send({ pin: '482915' });
     const attempt = (sql: string): Promise<unknown> => h.owner((client) => client.query(sql));
     await expect(attempt(`update audit.audit_event set outcome = 'failure'`)).rejects.toThrow(
       /append-only/,

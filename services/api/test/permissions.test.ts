@@ -97,11 +97,12 @@ describe('route × role matrix', () => {
       )
       .map((route) => route.key)
       .sort();
+    // Webhook routes are authenticated by signature inside the handler, not by a guard.
     expect(open).toEqual([
       'GET /v1/health',
       'GET /v1/terms/:key',
-      'POST /v1/auth/challenges',
-      'POST /v1/auth/sessions',
+      'POST /v1/webhooks/clerk',
+      'POST /v1/webhooks/resend',
       'POST /v1/webhooks/sandbox',
     ]);
   });

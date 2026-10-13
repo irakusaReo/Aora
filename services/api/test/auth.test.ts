@@ -1,6 +1,5 @@
 import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { SandboxAuthProvider } from '../src/modules/identity/auth-provider.js';
 import {
   OperatorGuard,
   SessionGuard,
@@ -9,7 +8,6 @@ import {
 } from '../src/modules/identity/guards.js';
 import { Permit } from '../src/modules/tenancy/permissions.js';
 import { loadConfig } from '../src/platform/config.js';
-import { SEED_PHONES } from '../src/seed-data.js';
 import { type Harness, startHarness } from './support/harness.js';
 
 // Probe routes that exist only in this test, to exercise the guards in isolation.
@@ -47,14 +45,6 @@ beforeAll(async () => {
 });
 afterAll(() => h.close());
 
-const CODE = SandboxAuthProvider.FIXED_CODE;
-
-async function challenge(phone: string): Promise<string> {
-  const response = await h.http().post('/v1/auth/challenges').send({ phone });
-  expect(response.status).toBe(201);
-  return response.body.challenge_id as string;
-}
-
 describe('configuration', () => {
   it('refuses to load in any mode other than sandbox, without echoing values', () => {
     const env = {
@@ -69,126 +59,57 @@ describe('configuration', () => {
   });
 });
 
-describe('sign-in', () => {
-  it('creates a session and labels the response sandbox', async () => {
-    const id = await challenge(SEED_PHONES.adminA);
-    const response = await h
-      .http()
-      .post('/v1/auth/sessions')
-      .send({ challenge_id: id, code: CODE });
-    expect(response.status).toBe(201);
-    expect(response.body.mode).toBe('sandbox');
-    expect(response.headers['aora-mode']).toBe('sandbox');
-    expect(response.body.token).toMatch(/^[A-Za-z0-9_-]{40,}$/);
-
-    const me = await h.http().get('/v1/me').set('Authorization', `Bearer ${response.body.token}`);
-    expect(me.status).toBe(200);
-    expect(me.body.memberships).toEqual([{ workspace_id: h.seed.tenantA, role: 'admin' }]);
+describe('request authentication', () => {
+  it('rejects missing, malformed, forged and expired tokens', async () => {
+    expect((await h.http().get('/v1/me')).status).toBe(401);
+    expect((await h.http().get('/v1/me').set('Authorization', 'Bearer nope')).status).toBe(401);
+    expect((await h.http().get('/v1/me').set('Authorization', 'Basic abc')).status).toBe(401);
+    const good = await h.signIn('adminA');
+    expect((await h.http().get('/v1/me').set('Authorization', `Bearer ${good}x`)).status).toBe(401);
+    const expired = h.sandboxAuth.issue(h.seed.clerkIds.adminA, { expiresInSeconds: -5 });
+    expect((await h.http().get('/v1/me').set('Authorization', `Bearer ${expired}`)).status).toBe(
+      401,
+    );
   });
 
-  it('stores only a hash of the session token and of the code', async () => {
+  it('resolves a valid token to the AORA account and its memberships, labelled sandbox', async () => {
+    const me = await h
+      .http()
+      .get('/v1/me')
+      .set('Authorization', `Bearer ${await h.signIn('adminA')}`);
+    expect(me.status).toBe(200);
+    expect(me.headers['aora-mode']).toBe('sandbox');
+    expect(me.body).toEqual({
+      account_id: h.seed.accounts.adminA,
+      is_platform_operator: false,
+      memberships: [{ workspace_id: h.seed.tenantA, role: 'admin' }],
+      mode: 'sandbox',
+    });
+  });
+
+  it('never stores a request token', async () => {
     const token = await h.signIn('financeA');
+    await h.http().get('/v1/me').set('Authorization', `Bearer ${token}`);
     const found = await h.owner((client) =>
       client.query(
-        `select (select count(*) from identity.session where token_hash = $1) as raw_tokens,
-                (select count(*) from identity.auth_challenge where code_hash like '%' || $2 || '%') as raw_codes`,
-        [token, CODE],
+        `select (select count(*) from identity.session) as sessions,
+                (select count(*) from identity.step_up where session_ref = $1) as tokens_as_refs`,
+        [token],
       ),
     );
-    expect(found.rows[0]).toEqual({ raw_tokens: '0', raw_codes: '0' });
+    expect(found.rows[0]).toEqual({ sessions: '0', tokens_as_refs: '0' });
   });
 
-  it('rejects a wrong code, and a code that was already used', async () => {
-    const id = await challenge(SEED_PHONES.adminA);
-    const wrong = await h
-      .http()
-      .post('/v1/auth/sessions')
-      .send({ challenge_id: id, code: '111111' });
-    expect(wrong.status).toBe(401);
-    expect(wrong.body.error.code).toBe('unauthenticated');
-
-    const first = await h.http().post('/v1/auth/sessions').send({ challenge_id: id, code: CODE });
-    expect(first.status).toBe(201);
-    const second = await h.http().post('/v1/auth/sessions').send({ challenge_id: id, code: CODE });
-    expect(second.status).toBe(401);
-  });
-
-  it('locks a challenge after too many wrong codes, even for the right code', async () => {
-    const id = await challenge(SEED_PHONES.adminA);
-    for (let i = 0; i < h.config.auth.maxChallengeAttempts; i += 1) {
-      await h.http().post('/v1/auth/sessions').send({ challenge_id: id, code: '999999' });
-    }
-    const locked = await h.http().post('/v1/auth/sessions').send({ challenge_id: id, code: CODE });
-    expect(locked.status).toBe(429);
-    expect(locked.body.error.code).toBe('too_many_attempts');
-  });
-
-  it('rejects an expired challenge', async () => {
-    const id = await challenge(SEED_PHONES.adminA);
-    await h.owner((client) =>
-      client.query(
-        `update identity.auth_challenge set expires_at = now() - interval '1 second' where id = $1`,
-        [id],
-      ),
-    );
-    const response = await h
-      .http()
-      .post('/v1/auth/sessions')
-      .send({ challenge_id: id, code: CODE });
-    expect(response.status).toBe(401);
-  });
-
-  it('does not reveal whether a phone number is registered', async () => {
-    const known = await h.http().post('/v1/auth/challenges').send({ phone: SEED_PHONES.adminA });
-    const unknown = await h.http().post('/v1/auth/challenges').send({ phone: '+99912345678' });
-    expect(unknown.status).toBe(known.status);
-    expect(Object.keys(unknown.body).sort()).toEqual(Object.keys(known.body).sort());
-    const attempt = await h
-      .http()
-      .post('/v1/auth/sessions')
-      .send({ challenge_id: unknown.body.challenge_id, code: CODE });
-    expect(attempt.status).toBe(401);
-  });
-
-  it('rejects malformed input with a stable error envelope', async () => {
-    const response = await h.http().post('/v1/auth/challenges').send({ phone: '0712345678' });
-    expect(response.status).toBe(400);
+  it('returns a stable error envelope', async () => {
+    const response = await h.http().get('/v1/me');
     expect(response.body).toEqual({
       error: {
-        code: 'invalid_request',
+        code: 'unauthenticated',
         message: expect.any(String),
         request_id: response.headers['aora-request-id'],
       },
       mode: 'sandbox',
     });
-  });
-});
-
-describe('sessions', () => {
-  it('rejects missing, unknown, expired and revoked tokens', async () => {
-    expect((await h.http().get('/v1/me')).status).toBe(401);
-    expect((await h.http().get('/v1/me').set('Authorization', 'Bearer nope')).status).toBe(401);
-
-    const expired = await h.signIn('adminA');
-    const revoked = await h.signIn('adminA');
-    await h.owner(async (client) => {
-      const sessions = await client.query<{ id: string }>(
-        `select id from identity.session order by created_at desc limit 2`,
-      );
-      await client.query(`update identity.session set revoked_at = now() where id = $1`, [
-        sessions.rows[0]?.id,
-      ]);
-      await client.query(
-        `update identity.session set expires_at = now() - interval '1 second' where id = $1`,
-        [sessions.rows[1]?.id],
-      );
-    });
-    expect((await h.http().get('/v1/me').set('Authorization', `Bearer ${expired}`)).status).toBe(
-      401,
-    );
-    expect((await h.http().get('/v1/me').set('Authorization', `Bearer ${revoked}`)).status).toBe(
-      401,
-    );
   });
 });
 
@@ -204,7 +125,7 @@ describe('step-up', () => {
     expect((await h.http().post('/probe/sensitive').set(auth)).status).toBe(201);
 
     await h.owner((client) =>
-      client.query(`update identity.session set step_up_until = now() - interval '1 second'`),
+      client.query(`update identity.step_up set until = now() - interval '1 second'`),
     );
     expect((await h.http().post('/probe/sensitive').set(auth)).status).toBe(403);
   });

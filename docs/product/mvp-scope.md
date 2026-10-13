@@ -8,7 +8,7 @@ From Phase 2 on, the phase numbers below are the authoritative ones.
 
 ## 1. In scope
 
-1. **Shared platform** — phone one-time-code sign-in (Africa's Talking sandbox), PIN step-up, tenants and roles (admin, finance, cashier), consent records, audit log, double-entry ledger, outbox and cron jobs, reconciliation with an exception queue, versioned tariffs, rate limiting.
+1. **Shared platform** — email-code sign-in through Clerk, with the phone number kept as the financial identity; AORA transaction-PIN step-up; email notifications through Resend (sign-in codes, transaction alerts, repayment reminders); tenants and roles (admin, finance, cashier), consent records, audit log, double-entry ledger, outbox and cron jobs, reconciliation with an exception queue, versioned tariffs, rate limiting.
 2. **KONY** (web and mobile) — tiered onboarding for registered and unregistered businesses; branches, staff and roles; collections; transaction history with gross, fee and net; settlement view; payouts with fee preview; refunds; USDC treasury on Base Sepolia (receive, and send with approval); developer API (`/v1`, API keys, idempotency, signed webhooks with replay, OpenAPI).
 3. **Rails** — M-Pesa via Daraja (Kenya), Airtel Money (Kenya), MTN MoMo (one non-Kenyan market, sandbox only), one bank. Simulator fallback for each.
 4. **KELO** (web and mobile; merchant side inside KONY) — store enlistment with automatic KONY provisioning; catalogue with three listing types, taxonomy, search and moderation; marketplace; "Pay with KELO" through payment links and the developer API; plan types Pay in N, monthly financing and layaway; eligibility with reason codes; disclosure and consent; repayments; returns and disputes; merchant settlement and dashboard. Credit behind the `kelo_credit` flag.
@@ -28,7 +28,7 @@ Constraints applied: hosting first; rails one per checkpoint after Daraja; contr
 
 | Phase | Checkpoints | Delivers |
 |---|---|---|
-| **2 Hosting foundation and sign-in** | 2A lint rule, Neon-ready database access, cron job routes · 2B Neon staging and first Vercel deployment · 2C one-time-code sign-in, PIN step-up · 2D permissions, consent, rate limiting | The API on a real URL with real sign-in |
+| **2 Hosting foundation and sign-in** | 2A lint rule, Neon-ready database access, cron job routes · 2B Neon staging and first Vercel deployment · 2C PIN step-up · 2D permissions, consent, rate limiting · 2E Clerk · 2F notifications and Resend | The API on a real URL with real sign-in |
 | **3 KONY core (web)** | 3A onboarding, branches, staff, tariffs, shared packages, `kony-web`, `internal-ops` · 3B Daraja collection end to end · 3C settlement view, payouts (Daraja B2C), refunds · 3D developer API | A merchant collects, pays out and refunds through M-Pesa sandbox |
 | **4 More rails** | 4A Airtel Money KE · 4B MTN MoMo (market per O-5) · 4C bank (per O-6) | Multi-rail under one merchant identity |
 | **5 KELO commerce** | 5A (a) enlistment, provisioning, catalogue, moderation · 5B (b) consumer marketplace in `kelo-web` · 5C (c) layaway | KELO demoable without credit |
@@ -52,7 +52,7 @@ Each journey is done when its automated test passes locally and in CI and its sc
 | # | Journey | Phase | Exit tests |
 |---|---|---|---|
 | J1 | Sign in; create a payment intent; webhook; ledger entry; clean reconciliation | 1 (done) | Delivery plan §3.4 |
-| J2 | Sign in on staging with phone and one-time code; set a PIN; approve a sensitive action with it; each role sees only what it may | 2 | Code is single-use, expires, locks after failures and is never the fixed code on a deployed environment; PIN stored only as a slow hash; sensitive action fails without a fresh PIN; route × role matrix is default-deny; each state-changing request writes one audit event; rate limits hold across instances |
+| J2 | Sign in on staging with an email code (Clerk, delivered through Resend); set a PIN; approve a sensitive action with it; each role sees only what it may | 2 | Clerk session token verified on every request; no fixed code works on a deployed environment (sandbox authenticator refused, `+clerk_test` users refused); PIN change needs a fresh sign-in factor; PIN stored only as a slow hash; sensitive action fails without a fresh PIN; route × role matrix is default-deny; each state-changing request writes one audit event; rate limits hold across instances |
 | J3 | Onboard a registered and an unregistered merchant; add a branch and staff | 3A | ADR 0012 matching; ambiguous match goes to review; tier limits from configuration; cashier limited to collecting |
 | J4 | Collect by M-Pesa STK push; see gross, fee and net; see settlement | 3B | Behaviour per Daraja's current documentation; callback idempotent; timeout gives `status_unknown` and an inquiry, never a second push; fee from the tariff version in effect; gross − fee = net exactly |
 | J5 | Operator works an exception; looks up a user and a merchant; reads the audit trail | 3A onward | Each exception type listed, inspected and resolved with an audited reason; operator role required |
@@ -96,7 +96,7 @@ Requested in one batch at the start of each phase, in the CLAUDE.md format.
 
 | Phase | Needed |
 |---|---|
-| 2 | Neon account and project; Vercel account on the Pro plan and project; Africa's Talking sandbox username and API key |
+| 2 | Neon project (done); Vercel project (done); Clerk development-instance keys and webhook signing secret; Resend API key and webhook secret; a sending domain if available; two GitHub Actions secrets (staging cron secret, staging migration connection string) |
 | 3 | Daraja sandbox app credentials, test shortcode and passkey values, B2C sandbox credentials (exact list to verify from Daraja's documentation) |
 | 4 | Airtel Africa developer sandbox credentials; MTN MoMo sandbox subscription key and API user; the chosen bank's sandbox credentials |
 | 5 | Image storage (O-7), if adopted |

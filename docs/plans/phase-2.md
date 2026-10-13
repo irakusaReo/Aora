@@ -161,3 +161,19 @@ Each route: constant-time check of the bearer secret; a time budget (default 45 
 ## 10. Not in this phase
 
 Merchant onboarding, tariffs, any real payment rail, any web or mobile app, API keys, chain code, KELO.
+
+## 11. Change of plan (owner rulings, 2026-10-13): Clerk and Resend
+
+Checkpoint 2E (Africa's Talking) is replaced by **2E (Clerk)** and **2F (notifications and Resend)**. Decisions and sources: [ADR 0019](../adr/0019-clerk-integration.md), [ADR 0020](../adr/0020-notifications.md).
+
+**What this supersedes above:** §3 (the guard now covers the sandbox authenticator and Clerk test identities), the one-time-code and SMS parts of §4 to §6, the sign-in rate limits, and the SMS inbox route. The PIN state machine in §5 stands, with "one-time code verified" replaced by "sign-in factor verified recently on the session".
+
+**Data model** (`…000500_clerk_notifications`, expand only): `user_account` gains `clerk_user_id`, `email`, `display_name`, `phone_verified_at`, `status`, `closed_at`, `provider_updated_at`, and `phone_e164` becomes optional; new `identity.step_up` (bound to the provider session id) and `identity.provider_event`; new schema `notifications` (`notification`, `delivery_event`); `sim.sim_email`. `auth_challenge`, `session` and `sim_sms` are retired and dropped in a later release.
+
+**Endpoints now:** `GET /v1/me`, `PUT /v1/auth/pin`, `POST /v1/auth/step-up`, `GET /v1/notifications`, `POST /v1/webhooks/clerk`, `POST /v1/webhooks/resend`, plus those of §6 that are not sign-in. Removed: `/v1/auth/challenges`, `/v1/auth/sessions`, `/v1/auth/session`, `/v1/auth/pin/challenges`, `/v1/internal/sandbox/sms`.
+
+**Tests added, written before the code:** `clerk-provider.test.ts` (the real Clerk verifier against a local key pair; live keys refused), `identity-sync.test.ts` (just-in-time provisioning under concurrency, webhook idempotency and ordering, phone conflicts, deletion keeps financial records, Clerk test identities refused when deployed), `pin.test.ts` (rewritten for sessions and factor age), `notifications.test.ts` (once-only sending, masking, sandbox labelling, delivery status, sign-in codes stored nowhere, the Resend adapter against a local server).
+
+**Exit criteria added:** journey J2 and the payment path pass on staging **through Clerk, with a real sign-in email delivered by Resend**; the assumed field names of Clerk's email event are confirmed; test mode is off on the staging instance.
+
+**Deployment order when credentials arrive:** set the Clerk and Resend variables in Vercel; run the staging migration; merge the branch (which deploys); create the two webhooks; confirm a sign-in email arrives while Clerk still delivers it; only then turn "Delivered by Clerk" off.

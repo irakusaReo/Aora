@@ -23,11 +23,12 @@ export function isLocalDatabaseUrl(value: string | undefined): boolean {
 }
 
 /**
- * The fixed sign-in code is a development convenience. It is allowed only when
- * the process is not on a hosting platform AND every database it uses is on
- * this machine. A deployed environment can satisfy neither.
+ * The sandbox authenticator mints its own tokens and is for automated tests and
+ * local work only. It is allowed only when the process is not on a hosting
+ * platform AND every database it uses is on this machine. A deployed
+ * environment can satisfy neither.
  */
-export function fixedCodeAllowed(env: Env): boolean {
+export function sandboxAuthAllowed(env: Env): boolean {
   return (
     !isDeployed(env) &&
     isLocalDatabaseUrl(env['DATABASE_URL_APP']) &&

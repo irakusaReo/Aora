@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { SandboxAuthProvider } from '../src/modules/identity/auth-provider.js';
 import { loadConfig } from '../src/platform/config.js';
-import { fixedCodeAllowed } from '../src/platform/deployment.js';
+import { sandboxAuthAllowed } from '../src/platform/deployment.js';
 
-// The fixed sign-in code must be impossible on any deployed environment. The
-// rule is derived from where the process runs and what database it talks to,
-// not from a flag that could be set wrongly.
+// The sandbox authenticator mints its own tokens, so it must be impossible on
+// any deployed environment. The rule is derived from where the process runs and
+// what database it talks to, not from a flag that could be set wrongly.
 
 const local = {
   AORA_MODE: 'sandbox',
@@ -13,12 +13,12 @@ const local = {
   DATABASE_URL_PLATFORM: 'postgresql://aora_platform@localhost:54329/aora_dev',
   SANDBOX_SIM_WEBHOOK_SECRET: 'x'.repeat(32),
   PIN_PEPPER: 'p'.repeat(32),
-  AUTH_PROVIDER: 'fixed',
+  AUTH_PROVIDER: 'sandbox',
 };
 
-describe('fixed sign-in code', () => {
+describe('sandbox authenticator', () => {
   it('is allowed on a developer machine with a local database', () => {
-    expect(fixedCodeAllowed(local)).toBe(true);
+    expect(sandboxAuthAllowed(local)).toBe(true);
     expect(() => new SandboxAuthProvider(loadConfig(local), local)).not.toThrow();
   });
 
@@ -29,8 +29,8 @@ describe('fixed sign-in code', () => {
     ['VERCEL_URL', 'aora.vercel.app'],
   ])('is refused when %s is set', (name, value) => {
     const env = { ...local, [name]: value };
-    expect(fixedCodeAllowed(env)).toBe(false);
-    expect(() => loadConfig(env)).toThrow(/fixed sign-in code/i);
+    expect(sandboxAuthAllowed(env)).toBe(false);
+    expect(() => loadConfig(env)).toThrow(/sandbox authenticator is forbidden/i);
   });
 
   it.each([
@@ -43,8 +43,8 @@ describe('fixed sign-in code', () => {
   ])('is refused when a database is not on this machine: %s', (url) => {
     for (const key of ['DATABASE_URL_APP', 'DATABASE_URL_PLATFORM'] as const) {
       const env = { ...local, [key]: url };
-      expect(fixedCodeAllowed(env)).toBe(false);
-      expect(() => loadConfig(env)).toThrow(/fixed sign-in code/i);
+      expect(sandboxAuthAllowed(env)).toBe(false);
+      expect(() => loadConfig(env)).toThrow(/sandbox authenticator is forbidden/i);
     }
   });
 
@@ -53,14 +53,19 @@ describe('fixed sign-in code', () => {
     expect(() => new SandboxAuthProvider(config, { ...local, VERCEL: '1' })).toThrow(/forbidden/i);
   });
 
-  it('is not the default: with no AUTH_PROVIDER the one-time-code provider is used', () => {
+  it('is not the default: with no AUTH_PROVIDER, Clerk is used and its keys are required', () => {
     const rest: Record<string, string> = { ...local };
     delete rest['AUTH_PROVIDER'];
-    expect(loadConfig(rest).authProvider).toBe('otp');
-    expect(loadConfig({ ...rest, VERCEL: '1', CRON_SECRET: 'c'.repeat(32) }).authProvider).toBe(
-      'otp',
-    );
-    // A deployed environment must also have a cron secret, or its jobs would be open.
-    expect(() => loadConfig({ ...rest, VERCEL: '1' })).toThrow(/CRON_SECRET/);
+    expect(() => loadConfig(rest)).toThrow(/CLERK_SECRET_KEY/);
+  });
+
+  it('cannot mint a token that another instance would accept', async () => {
+    const a = new SandboxAuthProvider(loadConfig(local), local);
+    const b = new SandboxAuthProvider(loadConfig(local), local);
+    const token = a.issue('user_x');
+    expect(await a.authenticate(token)).toMatchObject({ subject: 'user_x' });
+    expect(await b.authenticate(token)).toBeNull();
+    expect(await a.authenticate(a.issue('user_x', { expiresInSeconds: -1 }))).toBeNull();
+    expect(await a.authenticate(`${token}x`)).toBeNull();
   });
 });

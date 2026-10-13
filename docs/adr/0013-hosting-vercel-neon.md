@@ -56,6 +56,47 @@ Each route checks the `CRON_SECRET` bearer value in constant time. Because Verce
 
 The API also drains the outbox opportunistically right after a request commits, so a payment does not wait up to a minute for the next tick. This relies on Fluid compute's background processing [V1]; the exact API is confirmed when it is implemented.
 
+## Decisions of 2026-10-13 (third set)
+
+### Deployments from GitHub
+
+- The repository is connected to the `aora-api` project. A push to `main` deploys to Vercel's Production target (AORA staging); a pull request gets a preview, which Standard Protection keeps behind Vercel Authentication.
+- **Holding a deployment until CI passes.** Vercel's Deployment Checks can import GitHub Actions results and hold a production deployment until the required checks pass before assigning it to the production domains [V10]. The required check is the CI job "Lint, typecheck and test", and once the migration job exists, that too. It is added in the project's Deployment Checks settings (a dashboard step for the owner; whether it is available on the Hobby plan is not verified). Until it is configured, what protects staging is narrower: a build that fails is never promoted, but a build that compiles and misbehaves would be.
+- **Migrations never run from the Vercel build.** The deployed API does not hold the owner connection string. Migrations run in GitHub Actions, on `main` only, after tests pass, through the **direct** connection string held as a GitHub Actions secret, and can also be run by hand (`pnpm db:migrate:staging`).
+- **Migrations are backward-compatible: expand, then contract.** A migration may add (tables, nullable columns, indexes) in the same release as the code that starts using it. Anything that removes or tightens (dropping a column, adding `NOT NULL`, renaming) ships in a later release, after no deployed code depends on the old shape. This is because the new schema is live before, and briefly alongside, the old code.
+
+### Preview databases: none, for now
+
+Pull-request previews of the API get **no database**. A Neon branch is a copy-on-write clone of its parent's data [N6], so a preview branch could inherit staging's schema, roles and data. But the bar set by the owner is not met:
+
+1. The Neon integration provisions a connection for the project's default role, which is a member of `neon_superuser` and bypasses row-level security [N3]. AORA's API needs two specific roles' connection strings (`aora_app`, `aora_platform`), which the integration does not produce. How role passwords carry over to a branch is not stated in Neon's documentation [N6].
+2. A preview would not have the pull request's own migrations, because migrations are not allowed to run in the Vercel build.
+3. A clone of staging carries staging's personal data into every preview.
+
+So previews have no `DATABASE_URL_*` variables and the API refuses to start there. **A preview can never fall back to the staging database**, because those variables exist only on the Production target. Meeting the bar later needs a GitHub Actions job per pull request that creates a branch from a seeded template, applies migrations, and sets the preview's variables; that is worth building when preview testing of the API is actually needed (probably with the web apps in Phase 3).
+
+### Background jobs: request-triggered draining plus a free scheduled backstop
+
+Targets: outbox events within about a minute in normal operation; reconciliation at least hourly; reminders on time.
+
+| Option | Meets targets | Cost |
+|---|---|---|
+| Vercel Pro cron (per minute) | Yes | **$20 per month**, including one seat and $20 of usage credit [V11] |
+| Drain the outbox after each request | Events caused by a request: yes, within seconds. Delayed events (status inquiries, reminders): no, nothing wakes them | Free |
+| External scheduler calling the cron routes | Depends on its frequency | GitHub Actions, already in use: free for this repository's usage, at most every 5 minutes and not punctual |
+| **Draining after requests, plus a GitHub Actions schedule** | **Yes for the first two targets; reminders within about 5 to 15 minutes of their time** | **Free** |
+
+**Chosen: the combination, at no cost.**
+
+- After any request that enqueues work (and after webhook intake), the API drains the outbox in the background using `waitUntil` from `@vercel/functions`, which Vercel documents for running work after the response on Fluid compute, bounded by the function's maximum duration [V12]. Its use from a NestJS server is confirmed on staging rather than from an example in the documentation.
+- A GitHub Actions workflow calls the cron routes with the cron secret: outbox and simulator webhooks every 5 minutes, reconciliation hourly. It is the backstop for delayed events and for anything a background drain missed.
+- Vercel's own daily cron entries stay as a third net.
+- **Honest limit:** GitHub's schedule is best effort and can run minutes late. If reminders must be punctual to the minute, or status inquiries must fire within a minute of becoming due, that needs Pro cron. Nothing here commits the owner to a paid plan.
+
+### The Hobby plan's terms
+
+Vercel's documentation says the Hobby plan is restricted to "non-commercial, personal use only", and that commercial usage includes any deployment "used for financial gain of anyone involved in producing the project" [V11]. AORA is a commercial project even in its sandbox phase. **This is a terms question for the owner, not an engineering one**: staying on Hobby risks the account being paused. Pro costs $20 per month [V11].
+
 ## Owner decision on the plan (2026-10-13): Hobby for now
 
 The owner chose the free Hobby plan. Consequences, all following from [V3]:
@@ -72,7 +113,7 @@ The owner chose the free Hobby plan. Consequences, all following from [V3]:
 
 ## Recommendation on preview databases
 
-Give each Vercel preview deployment its own Neon branch through a managed integration [N4]. Previews then run migrations against an isolated copy and can never touch staging data. Use the **Neon-managed** integration: its preview branches are deleted when the Git branch is deleted, while the Vercel-managed integration ties cleanup to Vercel's deployment retention, which "can delay branch deletion by months" [N4]. Billing then stays with Neon. The variable names the integration injects were **not verified** and are checked during setup.
+*Superseded on 2026-10-13 by "Preview databases: none, for now" above.* The earlier recommendation was: give each Vercel preview deployment its own Neon branch through a managed integration [N4]. Previews then run migrations against an isolated copy and can never touch staging data. Use the **Neon-managed** integration: its preview branches are deleted when the Git branch is deleted, while the Vercel-managed integration ties cleanup to Vercel's deployment retention, which "can delay branch deletion by months" [N4]. Billing then stays with Neon. The variable names the integration injects were **not verified** and are checked during setup.
 
 ## Measured on the first deployment (2026-10-13)
 
@@ -117,3 +158,7 @@ Staging is `https://aora-api.vercel.app` (Vercel Production target, function in 
 - [N3] Neon, "Manage roles" — https://neon.com/docs/manage/roles
 - [N4] Neon, "Vercel integration overview" — https://neon.com/docs/guides/vercel-overview
 - [N5] Neon, "Neon CLI: login" — https://neon.com/docs/reference/cli-auth
+- [N6] Neon, "Branching" — https://neon.com/docs/introduction/branching
+- [V10] Vercel, "Deployment Checks" — https://vercel.com/docs/deployment-checks
+- [V11] Vercel, pricing and Hobby plan — https://vercel.com/pricing , https://vercel.com/docs/plans/hobby , https://vercel.com/docs/limits/fair-use-guidelines
+- [V12] Vercel, "Functions API Reference" (`waitUntil`) — https://vercel.com/docs/functions/functions-api-reference

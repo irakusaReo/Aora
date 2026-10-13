@@ -25,8 +25,10 @@ const MAY_IMPORT = {
   tenancy: ['audit'],
   consent: [],
   identity: ['audit', 'tenancy'],
-  payments: ['audit', 'ledger', 'outbox'],
+  notifications: ['outbox'],
+  payments: ['audit', 'ledger', 'notifications', 'outbox'],
   jobs: ['outbox', 'payments'],
+  webhooks: ['identity', 'notifications'],
 };
 const GENERATED_CLIENT = {
   group: ['**/generated/prisma/**'],
