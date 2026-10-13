@@ -77,7 +77,20 @@ A feature is done only when all of these hold:
 
 ## Commands
 
-To be filled in during the Phase 0 scaffold: install, dev, test, lint, typecheck, migrate, and contract tests.
+Requires Node 24 (`.nvmrc`) and the pnpm version in `package.json` `packageManager`.
+
+| Task | Command |
+|---|---|
+| Install | `pnpm install` (CI: `pnpm install --frozen-lockfile`) |
+| Lint | `pnpm lint` |
+| Typecheck | `pnpm typecheck` |
+| Test | `pnpm test` (watch: `pnpm test:watch`) |
+| Format | `pnpm format` (check: `pnpm format:check`) |
+| Dev server | Not available yet. Added in Phase 1 with the first service. |
+| Migrate | Not available yet. Added in Phase 1 with the database. |
+| Contract tests | Not available yet. Added when the first contract is specified (ADR 0006). |
+
+Run `format:check`, `lint`, `typecheck` and `test` before reporting any work as done. CI runs the same four.
 
 ## End-of-phase report format
 

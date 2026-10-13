@@ -179,7 +179,7 @@ Native USDC on Base has the following token contract address:
 
 `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`
 
-Source: Circle's official supported-chain documentation. <Cite refs={["turn501488search1","turn501488search2"]}/>
+Source: Circle's official supported-chain documentation.
 
 The contract address must be stored in verified, environment-specific chain configuration. Do not copy it into unrelated modules or allow arbitrary user-supplied token contracts to become trusted assets.
 
@@ -385,7 +385,7 @@ Automatic KONY access does not automatically authorize payments, financing, inve
 
 # 5. KONY Merchant Operating System: Competitive Strategy
 
-KONY should learn from established merchant payment platforms, including the opportunities identified in the Kopo Kopo teardown, without simply cloning a payment dashboard.
+KONY should learn from established merchant payment platforms, including the opportunities identified in [the KONY competitive lessons](../product/kony-competitive-lessons.md), without simply cloning a payment dashboard.
 
 The competitive objective is to connect payment acceptance to business operations, reconciliation, cash-flow visibility, financing and investment access.
 

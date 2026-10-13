@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+node_modules
+dist
+coverage
+.claude
+skills-lock.json
+
+# Specification and research documents are edited by hand, not reformatted.
+docs
+CLAUDE.md
