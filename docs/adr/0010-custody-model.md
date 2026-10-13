@@ -43,6 +43,10 @@ Brief §6.5: "Do not assume that AORA can custody customer funds… merely becau
 2. Fiat option (F1–F3) for Kenya at launch.
 3. The legal entity responsible in each case (D-4).
 
+## Interim ruling for the testnet MVP (2026-10-13)
+
+The production decision is still pending. The sandbox MVP uses an AORA-controlled Base Sepolia wallet (ADR 0009 interim ruling) and an AORA-controlled sandbox collection account at the payment provider's sandbox. Both are labelled sandbox assumptions on every balance view. Neither is a custody decision.
+
 ## Consequences of leaving this open
 
 - Phases 1–4 are **not** blocked: the sandbox slice uses a simulator, and its chart of accounts is labelled as a sandbox assumption.

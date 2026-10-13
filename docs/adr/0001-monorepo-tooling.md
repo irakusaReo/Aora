@@ -1,6 +1,6 @@
 # ADR 0001 — Monorepo tooling and package manager
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §11; open questions [E-3](../architecture/open-questions.md#e-3)
 
@@ -18,6 +18,11 @@ The brief (§11.1) fixes a TypeScript stack across web, mobile and backend in on
 - **Vitest** as the test runner for all TypeScript packages. Its compatibility with NestJS decorator metadata is unproven here and is the first check in Phase 1; Jest is the fallback (E-3).
 - Workspace globs are added when the first package of that kind is created. The initial globs are `packages/*` and `services/*` only.
 - Dependencies are exact-pinned (`save-exact`). Dependency lifecycle scripts are not run unless explicitly allow-listed.
+
+## Amendments
+
+- 2026-10-13: GitHub Actions are pinned to commit SHAs (owner ruling). pnpm is pinned at 12.11.2; its minimum-release-age policy is left on, so a dependency published in the last few days is not installed without an explicit, reviewed exemption.
+- 2026-10-13: If Vitest cannot run NestJS at checkpoint 1A, the test runner switches to Jest without further approval and the outcome is recorded here (owner ruling on E-3).
 
 ## Alternatives considered
 

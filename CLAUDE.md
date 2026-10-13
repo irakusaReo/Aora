@@ -22,14 +22,19 @@ On-chain: Base only. Stablecoin: native USDC on Base only.
 | `docs/research/kopo-kopo-teardown.md` | Background market research. Context, not requirements. |
 | `docs/architecture/open-questions.md` | Unresolved decisions. Check here before assuming anything. |
 | `docs/adr/` | Accepted and proposed architecture decisions |
+| `docs/architecture/delivery-plan.md` | Phases, entry and exit criteria |
+| `docs/product/mvp-scope.md` | What the sandbox MVP must do, in build order |
+| `docs/progress.md` | Done, next, blocked. Read this first when resuming |
 
 If these documents conflict, the master brief wins. Record the conflict in `open-questions.md` instead of silently choosing.
 
 ## Current state
 
-- Repository: greenfield, started 2026-10-13. There is no existing code, KELO system or merchant data.
-- Current phase: **Phase 0 — bootstrap and planning**
-- Last approved milestone: none
+- Repository: greenfield, started 2026-10-13.
+- Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) running in staging against provider sandboxes and Base Sepolia.
+- Current phase: **Phase 1 — foundation and ledger core, via the first vertical slice** (`docs/plans/phase-1.md`)
+- Last approved milestone: Phase 0 (2026-10-13)
+- Live status, next steps and blockers: `docs/progress.md`
 
 Update this block at the end of each approved phase.
 
@@ -44,15 +49,26 @@ Update this block at the end of each approved phase.
 7. **Use explicit state machines** for payments, transfers, deposits, withdrawals, orders and provisioning. Include `status_unknown` and `reconciliation_required` states. A transaction hash or a signature does not mean the operation is complete.
 8. **No personal data on-chain.** That includes phone numbers, KYC/KYB data, and hashes that could be linked back to them.
 9. **Secrets never go in code, config files, database fields or logs.** This covers private keys, seed phrases and API keys. `.env.example` contains placeholders only.
-10. **Sandbox only.** Do not connect live providers, move real funds, or deploy contracts to Base mainnet. Every sandbox record and screen is visibly labelled as sandbox.
+10. **Sandbox only.** Do not connect live providers, move real funds, or deploy contracts to Base mainnet. Provider sandboxes and Base Sepolia testnet transactions are permitted and must be labelled sandbox. Base mainnet remains forbidden. Every sandbox record and screen is visibly labelled as sandbox.
 11. **Never invent provider capabilities.** If the repo does not document how an M-Pesa, bank, wallet or investment provider behaves, stub it behind the adapter interface and log it in `open-questions.md`.
 12. **Authorization is enforced server-side.** Every query applies role checks and tenant isolation. Sensitive financial actions require step-up authentication. Access to a KONY workspace never by itself grants payment, financing, investment or payout authority.
 
 ## How we work
 
-- **Phase gates.** Work on one roadmap phase at a time (brief §14). At the end of a phase, stop and report. Do not start the next phase until I approve.
-- **Plan before code.** For any task that touches money, the ledger, the chain or auth, first write a short plan (files, data model, state transitions, tests) and wait for my approval.
-- **Ask when blocked** on a decision that is mine to make: legal model, custody, provider choice or pricing. Do not guess. Propose options with a recommendation.
+- **Plan once per phase.** Write `docs/plans/phase-N.md` covering the data model, state machines, endpoints, tests and files. If I have already approved the phase's scope in a prompt, proceed after writing the plan. Otherwise, wait for my approval.
+- **Inside an approved plan, keep working without asking.** Stop only when:
+  (a) you need a credential or external account from me,
+  (b) you reach a decision marked "owner" in `open-questions.md`,
+  (c) you need to deviate materially from the plan, or
+  (d) the phase ends.
+- **Commit at each checkpoint once tests pass,** using conventional commit messages. Never commit `.env.local`.
+- **Keep `docs/progress.md` current:** what's done, what's next and what's blocked. A fresh session must be able to resume from `CLAUDE.md` and `progress.md` alone.
+- **Credentials:** when a credential, account or external value is needed, ask using the CREDENTIAL REQUEST format in `docs/progress.md`. Batch requests at the start of a phase. Never print, log or commit a value. Refuse anything that looks like a live or production key.
+
+## Engineering practices
+
+Carried over from the Phase 0 working agreement.
+
 - **Build the smallest working slice.** Do not create empty directories or speculative abstractions from the target tree in §11.2. Add them when a phase needs them.
 - **Write tests first for financial invariants:** journal balance, precision, idempotency, state transitions and tenant isolation.
 - **Pricing and tariffs are data.** Provider fees, free bands, caps and FX rates are versioned configuration with effective dates, never hardcoded constants.

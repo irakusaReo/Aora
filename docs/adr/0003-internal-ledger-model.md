@@ -1,6 +1,6 @@
 # ADR 0003 — Internal ledger model
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §3.5, §8, §13.1; CLAUDE.md rules 3–6; open questions [R-1](../architecture/open-questions.md#r-1), [D-4](../architecture/open-questions.md#d-4)
 

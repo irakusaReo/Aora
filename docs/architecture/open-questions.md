@@ -4,47 +4,68 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 
 - **Owner** is who decides: `Owner` (product/legal/commercial, yours to make) or `Eng` (engineering proposal, needs your approval only).
 - **Blocks** uses the phase numbers in [delivery-plan.md](delivery-plan.md), with the brief's §14 number in brackets where they differ.
-- Every item is `Open` until you answer it. When an item closes, record the answer here and link the ADR.
+- The index shows each item's status. Rulings are recorded in [Owner rulings](#owner-rulings-2026-10-13); the original analysis below is kept for the record.
 - Nothing in this file states a provider's API behaviour, limits or prices. Anything of that kind is marked **to verify**.
 
 ## Index
 
-| ID | Question | Owner | Blocks |
-|---|---|---|---|
-| [G-1](#g-1) | Phase 0 "repository discovery" on an empty repo | Eng | 0 |
-| [G-2](#g-2) | "Existing KELO merchants" and "safe migration" | Eng | 4 [3] |
-| [G-3](#g-3) | "Preserve working functionality" clauses | Eng | none |
-| [G-4](#g-4) | "Unless the existing repository justifies another choice" | Eng | 1 |
-| [G-5](#g-5) | §17 first assignment and gap analysis | Eng | 0 |
-| [G-6](#g-6) | §15 required documentation on day one | Eng | none |
-| [C-1](#c-1) | First vertical slice: brief §17 vs Phase 0 instruction | Owner | 1 |
-| [C-2](#c-2) | "Financial event anchoring" has no defined scope | Owner | 5 [4] |
-| [C-3](#c-3) | Testnet config vs "no chain-selection abstraction" | Eng | 5 [4] |
-| [C-4](#c-4) | USDC contract address provenance | Eng | 5 [4] |
-| [R-1](#r-1) | Ledger is built after the things that post to it | Eng | 1 |
-| [R-2](#r-2) | No phase builds KELO | Owner | 4 [3], 11 |
-| [R-3](#r-3) | No phase builds CHIWO | Owner | 9 [7] |
-| [R-4](#r-4) | Outbox and workers are needed before Phase 3 | Eng | 1 |
-| [R-5](#r-5) | Pricing data and developer API conventions arrive in Phase 9 | Eng | 3 [2] |
-| [R-6](#r-6) | On-chain reconciliation precedes the ledger | Eng | 5 [4] |
-| [R-7](#r-7) | No phase says when user interfaces are built | Owner | 3 [2] |
-| [R-8](#r-8) | No phase owns internal ops tooling | Eng | 3 [2] |
-| [D-1](#d-1) | Custody model | Owner | 5 [4], 7 [6] |
-| [D-2](#d-2) | Wallet and signing provider | Owner | 5 [4] |
-| [D-3](#d-3) | Local payment provider for sandbox | Owner | 3 [2] |
-| [D-4](#d-4) | Legal entity and licence per product | Owner | 3 [2], 13 [10] |
-| [D-5](#d-5) | Credit licence or lending partner | Owner | 11 |
-| [D-6](#d-6) | Authentication and step-up mechanism | Owner | 1 |
-| [D-7](#d-7) | Canonical business identifier and duplicate rule | Owner | 1 |
-| [D-8](#d-8) | KYC/KYB provider and tier limits | Owner | 3 [2] |
-| [D-9](#d-9) | Hosting region and data residency | Owner | 1 (deploy), 13 [10] |
-| [D-10](#d-10) | NAM product types and investment provider | Owner | 7 [6] |
-| [D-11](#d-11) | Base RPC provider | Owner | 5 [4] |
-| [E-1](#e-1) | Tenant isolation mechanism | Eng | 1 |
-| [E-2](#e-2) | How sandbox records are labelled | Eng | 1 |
-| [E-3](#e-3) | Node, TypeScript and test-runner versions | Eng | 1 |
-| [E-4](#e-4) | Read-only mainnet fork under the sandbox-only rule | Owner | 5 [4] |
-| [X-1..X-12](#x-requirements-that-cannot-be-tested-without-external-access) | Requirements that cannot be tested without external access | mixed | various |
+| ID | Question | Owner | Blocks | Status |
+|---|---|---|---|---|
+| [G-1](#g-1) | Phase 0 "repository discovery" on an empty repo | Eng | 0 | Resolved |
+| [G-2](#g-2) | "Existing KELO merchants" and "safe migration" | Eng | 4 [3] | Resolved: backfill |
+| [G-3](#g-3) | "Preserve working functionality" clauses | Eng | none | Resolved |
+| [G-4](#g-4) | "Unless the existing repository justifies another choice" | Eng | 1 | Resolved |
+| [G-5](#g-5) | §17 first assignment and gap analysis | Eng | 0 | Resolved |
+| [G-6](#g-6) | §15 required documentation on day one | Eng | none | Resolved |
+| [C-1](#c-1) | First vertical slice: brief §17 vs Phase 0 instruction | Owner | 1 | Resolved: money path first |
+| [C-2](#c-2) | "Financial event anchoring" has no defined scope | Owner | 5 [4] | MVP: none (no AORA contracts); production open |
+| [C-3](#c-3) | Testnet config vs "no chain-selection abstraction" | Eng | 5 [4] | Resolved: Base Sepolia permitted |
+| [C-4](#c-4) | USDC contract address provenance | Eng | 5 [4] | Resolved 2026-10-13 |
+| [R-1](#r-1) | Ledger is built after the things that post to it | Eng | 1 | Resolved: approved |
+| [R-2](#r-2) | No phase builds KELO | Owner | 4 [3], 11 | Resolved: approved; "qualifying" still open |
+| [R-3](#r-3) | No phase builds CHIWO | Owner | 9 [7] | Resolved: approved |
+| [R-4](#r-4) | Outbox and workers are needed before Phase 3 | Eng | 1 | Resolved: approved |
+| [R-5](#r-5) | Pricing data and developer API conventions arrive in Phase 9 | Eng | 3 [2] | Open |
+| [R-6](#r-6) | On-chain reconciliation precedes the ledger | Eng | 5 [4] | Open |
+| [R-7](#r-7) | No phase says when user interfaces are built | Owner | 3 [2] | Open |
+| [R-8](#r-8) | No phase owns internal ops tooling | Eng | 3 [2] | Open |
+| [D-1](#d-1) | Custody model | Owner | 5 [4], 7 [6] | Open; testnet interim ruling |
+| [D-2](#d-2) | Wallet and signing provider | Owner | 5 [4] | Open; testnet interim ruling |
+| [D-3](#d-3) | Local payment provider for sandbox | Owner | 3 [2] | MVP: Daraja sandbox + simulator |
+| [D-4](#d-4) | Legal entity and licence per product | Owner | 3 [2], 13 [10] | Open |
+| [D-5](#d-5) | Credit licence or lending partner | Owner | 11 | Open |
+| [D-6](#d-6) | Authentication and step-up mechanism | Owner | 1 | MVP resolved; production open (ADR 0011) |
+| [D-7](#d-7) | Canonical business identifier and duplicate rule | Owner | 1 | Resolved: ADR 0012 |
+| [D-8](#d-8) | KYC/KYB provider and tier limits | Owner | 3 [2] | Open |
+| [D-9](#d-9) | Hosting region and data residency | Owner | 1 (deploy), 13 [10] | Open |
+| [D-10](#d-10) | NAM product types and investment provider | Owner | 7 [6] | Open |
+| [D-11](#d-11) | Base RPC provider | Owner | 5 [4] | Open |
+| [E-1](#e-1) | Tenant isolation mechanism | Eng | 1 | Resolved: approved |
+| [E-2](#e-2) | How sandbox records are labelled | Eng | 1 | Resolved: approved |
+| [E-3](#e-3) | Node, TypeScript and test-runner versions | Eng | 1 | Resolved at checkpoint 1A |
+| [E-4](#e-4) | Read-only mainnet fork under the sandbox-only rule | Owner | 5 [4] | Open |
+| [M-1..M-7](#m-flags-raised-by-the-mvp-definition) | Flags raised by the MVP definition | mixed | various | Open |
+| [X-1..X-12](#x-requirements-that-cannot-be-tested-without-external-access) | Requirements that cannot be tested without external access | mixed | various | Open |
+
+## Owner rulings (2026-10-13)
+
+- **Phase 0 approved.** ADRs 0001–0008 accepted. ADR 0012 accepted. ADRs 0009, 0010, 0011 remain pending.
+- **G-1 to G-6:** greenfield readings accepted with Phase 0.
+- **C-1:** money-path slice first; provisioning follows in its own phase.
+- **C-2 (MVP):** AORA smart contracts are out of MVP scope, so there is no anchoring in the MVP. The production question stays open.
+- **C-3:** Base Sepolia is the test network; testnet transactions are permitted and labelled sandbox (CLAUDE.md rule 10 amended). Mainnet remains forbidden.
+- **C-4:** both USDC addresses verified against Circle's documentation on 2026-10-13; provenance in ADR 0005.
+- **R-1, R-4:** ledger core and outbox move into Phase 1.
+- **R-2, R-3:** minimal KELO merchant domain added to the provisioning phase; CHIWO consumer core and KELO credit core phases added. *Still open under R-2:* which KELO state counts as "qualifying". Assumed: one explicit `approved` state.
+- **E-1:** row-level security as a second tenant barrier.
+- **E-2:** `mode` column on every tenant and financial record; only `sandbox` permitted.
+- **E-3:** Vitest unless it fails checkpoint 1A, then Jest without asking; outcome recorded in ADR 0001.
+- **D-3 (MVP):** Safaricom Daraja sandbox for M-Pesa collection and B2C payout; AORA simulator elsewhere. Provider behaviour is verified from documentation in the phase that integrates it.
+- **D-6 (MVP):** sandbox authenticator in Phase 1; phone number plus SMS one-time code through an SMS provider sandbox, and a transaction PIN for step-up, behind an `AuthProvider` interface. Production choice open (ADR 0011).
+- **D-7:** unregistered sole traders are in scope; rule in ADR 0012.
+- **D-1, D-2 (testnet only):** signer interface backed by a local development signer with a testnet key from `.env.local`, forbidden outside sandbox and enforced at startup. Production decisions remain open.
+
+New items raised by the MVP definition are in section [M](#m-flags-raised-by-the-mvp-definition).
 
 ---
 
@@ -388,3 +409,19 @@ Each of these is required by the spec but cannot be proven from inside this repo
 | X-12 | This repository's own CI workflow | It only runs on GitHub after a push | Same commands run locally; workflow is unproven until the first push | 0 (flagged in report) |
 
 Legal confirmations (§7.3 "for every launch jurisdiction, confirm the legal model…") are also external and are tracked under [D-4](#d-4) and [D-5](#d-5).
+
+---
+
+## M. Flags raised by the MVP definition
+
+The MVP definition (owner, 2026-10-13) was checked against the brief and CLAUDE.md. These points conflict with, or stretch, a written rule. None is resolved silently; each has a proposed reading that I am following until told otherwise. Detail in [mvp-scope.md](../product/mvp-scope.md) §4.
+
+| ID | Flag | Rule it touches | Proposed reading | Owner | Blocks |
+|---|---|---|---|---|---|
+| M-1 | The testnet signer key is kept in `.env.local`, and staging needs it too | CLAUDE.md rule 9; brief §3.8 ("never… plaintext configuration") | Permitted for a testnet-only key by the owner's ruling. Locally: `.env.local`. In staging: injected from the platform's secret store, not a file. Startup refuses it outside sandbox and off Base Sepolia | Owner | 5 |
+| M-2 | Developer API keys and webhook signing secrets would be stored in the database | CLAUDE.md rule 9 ("API keys… never in database fields") | Read rule 9 as covering usable secrets. AORA-issued API keys are stored as hashes only and shown once. Outbound webhooks are signed with a platform key pair held in the secret store, so no per-merchant secret is stored | Owner | 3 |
+| M-3 | One AORA-controlled testnet wallet holds every customer's USDC | Brief §6.5 (no implicit custody); ADR 0010 pending | Sandbox convenience only, labelled on every balance view. Decides nothing for production. Per-customer receive addresses need a design in the Phase 5 plan | Owner | 5 |
+| M-4 | B2C payouts and settlement views imply AORA holds merchant fiat | ADR 0010 fiat options F1–F3 undecided; D-4 | Sandbox chart of accounts assumes an AORA-controlled collection account, labelled as an assumption | Owner | 3 |
+| M-5 | KELO credit is built before the licence or partner decision | Lessons §4; D-5 | Sandbox only, behind a feature flag that is off by default; no lender named | Owner | 11 |
+| M-6 | Simulated fiat-to-USDC conversion | Brief §3.3 (conversion only with an approved provider and legal model) | Simulator only, labelled "simulated conversion, no real rate"; rate and fee come from versioned sandbox data | Owner | 6 |
+| M-7 | Named providers (Safaricom Daraja, Africa's Talking) | CLAUDE.md rule 11 | Their behaviour is taken only from their current documentation, read in the phase that integrates them, and recorded with source and date. Nothing is assumed in advance | Eng | 2, 3 |

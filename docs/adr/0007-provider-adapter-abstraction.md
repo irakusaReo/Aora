@@ -1,6 +1,6 @@
 # ADR 0007 — Provider adapter abstraction
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §3.3, §5.1, §9.1; lessons §3, §6; CLAUDE.md rules 6, 7, 11; open questions [D-3](../architecture/open-questions.md#d-3), X-1 to X-4
 

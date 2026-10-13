@@ -1,10 +1,10 @@
 # AORA — Delivery Plan
 
-- **Status:** Proposed. Nothing here is approved until the owner signs off Phase 0.
+- **Status:** Approved by the owner on 2026-10-13, with the MVP overlay in §4. Phase 0 is complete; Phase 1 is in progress.
 - **Date:** 2026-10-13
 - **Sources:** [master brief](master-development-brief.md) §14, [competitive lessons](../product/kony-competitive-lessons.md), [open questions](open-questions.md), [ADRs](../adr/)
 
-Everything in every phase below is sandbox-only until Phase 13.
+Everything in every phase below is sandbox-only until Phase 13. Provider sandboxes and Base Sepolia are permitted; Base mainnet is not.
 
 ## 1. What changed from brief §14, and why
 
@@ -22,7 +22,7 @@ The brief's phases are kept. The order changes only where one phase needs someth
 | **New: CHIWO consumer core** (Phase 8) | NAM-in-CHIWO has no host otherwise | R-3 |
 | **New: KELO credit core** (Phase 11) | No brief phase builds KELO credit | R-2 |
 
-The two new phases are additions to the brief and need explicit approval.
+The two new phases were approved by the owner on 2026-10-13.
 
 | This plan | Brief §14 |
 |---|---|
@@ -111,7 +111,7 @@ Investment domain; explicit product types; disclosures; deposit and withdrawal s
 - **Exit:** a sandbox deposit and withdrawal run end to end for one product type.
 - **Proof (brief §13.3):** funding confirmed is not investment confirmed; holdings change only on authoritative provider or contract state; withdrawal not shown complete before confirmation; no balance credited on request alone; provider discrepancy creates an exception; sandbox holdings cannot be mistaken for real.
 
-### Phase 8 — CHIWO consumer core (new; needs approval)
+### Phase 8 — CHIWO consumer core (new; approved)
 
 Consumer registration and identity verification; consumer account; sandbox consumer payment and USDC transfer journey of brief §4.1; `chiwo-consumer-workflows.md`.
 
@@ -131,7 +131,7 @@ Consumer registration and identity verification; consumer account; sandbox consu
 - **Exit:** brief §4.4 runs in sandbox.
 - **Proof:** business-investor context separate from personal; cashier and unauthorized staff cannot view or initiate; collections, unsettled funds and credit are never offered as investable balance.
 
-### Phase 11 — KELO credit core (new; needs approval)
+### Phase 11 — KELO credit core (new; approved)
 
 Applications; eligibility decisions with reason codes and input snapshots; offers with total cost of credit; consent with terms version; disbursement and repayment in the ledger; configurable repayment from inflows; lender adapter. All behind a feature flag (lessons §4).
 
@@ -164,7 +164,7 @@ Refund workflow; payout fee models and fee preview; automatic sweeps; split sett
 | Step | What is built | Depth |
 |---|---|---|
 | Identity | Person and account records; authentication interface with a **sandbox authenticator** (fixed test users, simulated second factor); session | One way to sign in. No registration flow, no recovery |
-| Tenant | Canonical business (internal ID, name, country, external identifiers table); one KONY workspace per business; membership with two roles, `admin` and `cashier`; tenant scoping in the data layer plus database row-level security; audit events | Businesses and users are created by a seed script, not an onboarding flow |
+| Tenant | Canonical business (internal ID, name, country, external identifiers table); one KONY workspace per business; membership with three roles, `admin`, `finance` and `cashier`; tenant scoping in the data layer plus database row-level security; audit events | Businesses and users are created by a seed script, not an onboarding flow |
 | Ledger | ADR 0003 core: assets, accounts, journal entries, postings, running balances; balance, immutability and idempotency invariants in the database | One asset (`KES`, exponent from data); a minimal sandbox chart of accounts; no fees |
 | Payment intent | `POST /v1/payment-intents` (idempotency key required), `GET /v1/payment-intents/{id}` (status lookup); explicit state machine: `created` → `pending_provider` → `succeeded` \| `failed`, plus `status_unknown` and `reconciliation_required` | One direction: a collection into the merchant's pending-settlement account |
 | Provider | Simulator adapter per ADR 0007 with triggers: success, decline, timeout then success, timeout then failure, duplicate webhook, late webhook, amount mismatch, missing settlement line | In-process; no network |
@@ -214,3 +214,16 @@ Written before the code they test.
 ### 3.5 Slice definition of done
 
 CLAUDE.md definition of done, plus: all §3.4 tests pass in CI against PostgreSQL; the four architecture documents and the OpenAPI file match the code; the end-of-phase report lists exactly what is simulated.
+
+## 4. MVP overlay (owner, 2026-10-13)
+
+The goal is now a sandbox MVP in staging ([mvp-scope.md](../product/mvp-scope.md)). The phases above stand, with these changes:
+
+- **Phase 3 is split.** **3A:** onboarding, branches, staff, M-Pesa collection through the Daraja sandbox, tariffs, history, settlement view, `kony-web`, ops console v1, first staging deployment. **3B:** payouts with fee preview, refunds, developer API (keys, idempotency, signed webhooks with replay). 3B items are pulled forward from Phase 12.
+- **Ops console** is a web app from 3A and gains a screen in each later phase.
+- **Staging** is redeployed at each phase exit from 3A on; "journey passes in staging" joins the exit criteria.
+- **MVP gate** after Phase 11: seeded demo data, health checks, reset runbook, and every journey in mvp-scope §1 passing in staging.
+- **Phase 12** keeps only what the MVP does not need. **Phase 13** is unchanged and not part of the MVP.
+- **Phase 2** uses an SMS provider sandbox for one-time codes and a transaction PIN for step-up, behind `AuthProvider`.
+- **Phase 5** may submit Base Sepolia transactions through the development signer (ADR 0009 interim ruling).
+- Each phase has a plan in `docs/plans/phase-N.md` and progress is tracked in `docs/progress.md`.

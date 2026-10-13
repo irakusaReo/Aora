@@ -36,6 +36,16 @@ Options can be combined by product (for example, one model for consumers and ano
 3. Who pays network fees: customer, AORA, or priced into disclosed fees.
 4. Then a provider shortlist to evaluate against verified documentation.
 
+## Interim ruling for the testnet MVP (2026-10-13)
+
+The production decision is still pending. For the sandbox MVP on Base Sepolia only:
+
+- The `Signer` interface is backed by a **local development signer** that loads one testnet private key from `.env.local` (git-ignored, never committed, never logged, never stored in the database).
+- The signer is **forbidden outside sandbox**. The process refuses to start if the development signer is configured and either `AORA_MODE` is not `sandbox` or the connected chain ID is not Base Sepolia's.
+- The key must never have held mainnet funds. A key that controls value on any mainnet is refused.
+- This makes the MVP's USDC wallet an AORA-controlled testnet wallet with per-customer ledger claims. That is a sandbox convenience and decides nothing about production custody (ADR 0010).
+- In staging the key should come from the platform's secret store, injected as an environment variable, rather than from a file on disk (see `docs/product/mvp-scope.md`, flag F-1).
+
 ## Consequences of leaving this open
 
 - Phase 5 can build chain config, transfer verification, the transaction state machine and tests on a local chain.

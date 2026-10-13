@@ -1,6 +1,6 @@
 # ADR 0008 — KELO-to-KONY provisioning with a transactional outbox
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §4.5, §10.1, §13.4; CLAUDE.md rules 7, 12; open questions [G-2](../architecture/open-questions.md#g-2), [R-2](../architecture/open-questions.md#r-2), [R-4](../architecture/open-questions.md#r-4), [D-7](../architecture/open-questions.md#d-7)
 

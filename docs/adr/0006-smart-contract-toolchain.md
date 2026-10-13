@@ -1,6 +1,6 @@
 # ADR 0006 — Smart-contract toolchain
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §3.7, §6.2, §11.2, §13.2; CLAUDE.md rule 10; open questions [C-2](../architecture/open-questions.md#c-2), [D-1](../architecture/open-questions.md#d-1), [E-4](../architecture/open-questions.md#e-4)
 

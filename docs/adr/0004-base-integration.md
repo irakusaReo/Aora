@@ -1,6 +1,6 @@
 # ADR 0004 — Base integration library and approach
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §3, §9.2, §9.3, §13.2; CLAUDE.md rules 1, 6, 7, 10; open questions [C-2](../architecture/open-questions.md#c-2), [C-3](../architecture/open-questions.md#c-3), [D-2](../architecture/open-questions.md#d-2), [D-11](../architecture/open-questions.md#d-11), [E-4](../architecture/open-questions.md#e-4)
 

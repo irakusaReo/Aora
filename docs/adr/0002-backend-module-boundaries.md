@@ -1,6 +1,6 @@
 # ADR 0002 — Backend module boundaries
 
-- **Status:** Proposed
+- **Status:** Accepted (owner ruling, 2026-10-13)
 - **Date:** 2026-10-13
 - **Related:** brief §2.5, §7, §11; open questions [E-1](../architecture/open-questions.md#e-1), [E-2](../architecture/open-questions.md#e-2), [D-4](../architecture/open-questions.md#d-4)
 
