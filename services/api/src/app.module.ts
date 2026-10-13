@@ -16,6 +16,8 @@ import {
 } from './modules/identity/guards.js';
 import { IdentityController } from './modules/identity/identity.controller.js';
 import { IdentityService } from './modules/identity/identity.service.js';
+import { LedgerService } from './modules/ledger/ledger.service.js';
+import { OutboxService } from './modules/outbox/outbox.service.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import { APP_CONFIG, type AppConfig } from './platform/config.js';
 import { Database } from './platform/database.js';
@@ -29,6 +31,8 @@ const SHARED = [
   AuditService,
   BusinessService,
   TenancyService,
+  LedgerService,
+  OutboxService,
   IdentityService,
   SessionGuard,
   WorkspaceGuard,
@@ -55,7 +59,14 @@ export class AppModule implements NestModule {
 
   /** What must happen for every new workspace beyond the tenancy rows themselves. */
   static workspaceHook(): WorkspaceHook {
-    return () => Promise.resolve();
+    const ledger = new LedgerService();
+    return async (tx, tenantId) => {
+      await ledger.openAccount(tx, {
+        tenantId,
+        type: 'merchant_collections_pending',
+        assetCode: 'KES',
+      });
+    };
   }
 
   configure(consumer: MiddlewareConsumer): void {

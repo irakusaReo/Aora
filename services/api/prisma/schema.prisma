@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "identity", "tenancy"]
+  schemas  = ["audit", "business", "identity", "ledger", "outbox", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -139,15 +139,132 @@ model membership {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model workspace {
-  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id String        @db.Uuid
-  product     String
-  mode        String        @default("sandbox")
-  created_at  DateTime      @default(now()) @db.Timestamptz(6)
-  audit_event audit_event[]
-  membership  membership[]
-  business    business      @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id     String            @db.Uuid
+  product         String
+  mode            String            @default("sandbox")
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  audit_event     audit_event[]
+  account         account[]
+  account_balance account_balance[]
+  journal_entry   journal_entry[]
+  posting         posting[]
+  outbox_event    outbox_event[]
+  membership      membership[]
+  business        business          @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([business_id, product])
   @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model account {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id       String?          @db.Uuid
+  asset_code      String
+  type            String
+  qualifier       String           @default("")
+  normal_side     String
+  allow_negative  Boolean          @default(false)
+  mode            String           @default("sandbox")
+  created_at      DateTime         @default(now()) @db.Timestamptz(6)
+  asset           asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  workspace       workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  account_balance account_balance?
+  posting         posting[]
+
+  @@unique([type, qualifier, asset_code], map: "account_platform_unique", where: raw("(tenant_id IS NULL)"))
+  @@unique([tenant_id, type, qualifier, asset_code], map: "account_tenant_unique", where: raw("(tenant_id IS NOT NULL)"))
+  @@schema("ledger")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model account_balance {
+  account_id String     @id @db.Uuid
+  tenant_id  String?    @db.Uuid
+  balance    BigInt
+  mode       String     @default("sandbox")
+  updated_at DateTime   @default(now()) @db.Timestamptz(6)
+  account    account    @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace  workspace? @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("ledger")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model asset {
+  code     String    @id
+  kind     String
+  exponent Int       @db.SmallInt
+  account  account[]
+  posting  posting[]
+
+  @@schema("ledger")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model journal_entry {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String?        @db.Uuid
+  idempotency_key     String         @unique
+  entry_type          String
+  operation_type      String
+  operation_id        String
+  reverses_entry_id   String?        @unique @db.Uuid
+  mode                String         @default("sandbox")
+  posted_at           DateTime       @default(now()) @db.Timestamptz(6)
+  created_txid        BigInt         @default(dbgenerated("txid_current()"))
+  journal_entry       journal_entry? @relation("journal_entryTojournal_entry", fields: [reverses_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_journal_entry journal_entry? @relation("journal_entryTojournal_entry")
+  workspace           workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  posting             posting[]
+
+  @@index([operation_type, operation_id], map: "journal_entry_operation")
+  @@schema("ledger")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model posting {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entry_id      String        @db.Uuid
+  account_id    String        @db.Uuid
+  tenant_id     String?       @db.Uuid
+  direction     String
+  amount        BigInt
+  asset_code    String
+  mode          String        @default("sandbox")
+  account       account       @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  asset         asset         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  journal_entry journal_entry @relation(fields: [entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace     workspace?    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([account_id], map: "posting_account")
+  @@index([entry_id], map: "posting_entry")
+  @@schema("ledger")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model outbox_event {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String?    @db.Uuid
+  type         String
+  payload      Json       @default("{}")
+  status       String     @default("pending")
+  attempts     Int        @default(0)
+  available_at DateTime   @default(now()) @db.Timestamptz(6)
+  locked_at    DateTime?  @db.Timestamptz(6)
+  last_error   String?
+  mode         String     @default("sandbox")
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  processed_at DateTime?  @db.Timestamptz(6)
+  workspace    workspace? @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([available_at, created_at], map: "outbox_event_due", where: raw("(status = 'pending'::text)"))
+  @@index([locked_at], map: "outbox_event_processing", where: raw("(status = 'processing'::text)"))
+  @@schema("outbox")
 }

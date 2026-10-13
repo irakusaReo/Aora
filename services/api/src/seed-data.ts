@@ -1,4 +1,5 @@
 import { BusinessService } from './modules/business/business.service.js';
+import { LedgerService } from './modules/ledger/ledger.service.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import type { Database, Tx } from './platform/database.js';
 
@@ -6,6 +7,9 @@ import type { Database, Tx } from './platform/database.js';
  * SANDBOX seed data. Phone numbers use the unassigned +999 country code so
  * they can never belong to a real person.
  */
+/** Name of the AORA simulator provider; also the qualifier of its clearing account. */
+export const SANDBOX_PROVIDER = 'sandbox_sim';
+
 export const SEED_PHONES = {
   adminA: '+99900000001',
   financeA: '+99900000002',
@@ -18,6 +22,8 @@ export interface SeedResult {
   readonly tenantA: string;
   readonly tenantB: string;
   readonly accounts: Record<keyof typeof SEED_PHONES, string>;
+  /** Platform ledger account for money held by the sandbox simulator provider. */
+  readonly providerClearingAccount: string;
 }
 
 async function createAccount(
@@ -65,6 +71,13 @@ export async function seedSandbox(
       },
     });
 
+    const providerClearingAccount = await new LedgerService().openAccount(tx, {
+      tenantId: null,
+      type: 'provider_clearing',
+      assetCode: 'KES',
+      qualifier: SANDBOX_PROVIDER,
+    });
+
     const tenantA = await tenancy.createWorkspace(tx, businessA);
     const tenantB = await tenancy.createWorkspace(tx, businessB);
     await onWorkspace(tx, tenantA);
@@ -78,6 +91,7 @@ export async function seedSandbox(
     return {
       tenantA,
       tenantB,
+      providerClearingAccount,
       accounts: {
         adminA: adminA.id,
         financeA: financeA.id,
