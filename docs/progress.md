@@ -16,7 +16,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **2A** — import-direction lint rule with a test that plants violations; database access with no session state, proven through a transaction-mode pooler with one server connection; cron job routes (outbox, simulator webhooks, reconciliation) that are authenticated, idempotent, time-bounded and lease-protected; the deployed-environment guard that makes the fixed code impossible off a developer machine; `vercel.json` (region `fra1`, schedules); Neon bootstrap, migrate and verify scripts (written, not yet run against Neon).
 - **2C** — random one-time codes behind `AuthProvider` with an `SmsSender` interface and a simulated sender; PIN set, change, lockout and step-up; sign-out.
 - **2D** — permission map and a hand-written route × role matrix test; member management behind step-up with a last-admin rule enforced in the database; consent records; rate limiting in PostgreSQL.
-- 187 tests pass locally; lint, typecheck, format and build are clean.
+- 187 tests pass locally and in CI; lint, typecheck, format and build are clean. `main` is pushed and the first CI run (2026-10-13) passed, including the pooled-connection tests and the schema drift check.
 
 ## Next
 
@@ -26,13 +26,11 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Blocked
 
-- **Nothing has reached GitHub.** `origin/main` is still at the owner's first commit and no CI run exists. The stored token has scopes `gist, read:org, repo` and lacks `workflow`, so any push containing `.github/workflows/ci.yml` is rejected. The owner needs to run `gh auth refresh -h github.com -s workflow` (and complete the browser step), then `git push origin main`. Vercel deploys from Git, so this also blocks 2B.
 - **2B** waits for Neon and Vercel accounts and CLI logins.
 - **2E** waits for Africa's Talking sandbox credentials.
 
 ## Waiting on the owner
 
-- Push access (above).
 - Credential request for Phase 2 (Neon, Vercel, Africa's Talking).
 - O-10: confirm the Vercel **Pro** plan (per-minute cron).
 - O-5 (MTN market), O-6 (bank), O-7 (image storage): needed for Phases 4 and 5, not now.
@@ -40,7 +38,6 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 ## Known gaps carried forward
 
 - Cold-start latency on Vercel is unmeasured until 2B.
-- CI has never run.
 - Africa's Talking, Daraja, Airtel, MTN and bank behaviour: nothing is assumed; each is read from current documentation in its checkpoint.
 - CBK Digital Credit Provider conduct rules and the legal status of layaway are not yet verified (O-8, O-9).
 
