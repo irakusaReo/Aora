@@ -5,7 +5,7 @@
   "description": "AORA API and worker (sandbox only)",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=../../.env.local dist/main.js",
     "start:worker": "node --env-file-if-exists=../../.env.local dist/worker.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
