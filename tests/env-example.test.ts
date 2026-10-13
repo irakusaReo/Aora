@@ -45,9 +45,10 @@ describe('.env.example', () => {
     }
   });
 
-  it('uses <placeholder> credentials in connection strings', () => {
+  it('puts no password in a connection string, other than a <placeholder>', () => {
     for (const { key, value } of entries.filter((entry) => entry.value.includes('://'))) {
-      expect(value, key).toMatch(/:\/\/<[a-z0-9-]+>:<[a-z0-9-]+>@/);
+      const password = /:\/\/[^:@/]+:([^@]*)@/.exec(value)?.[1];
+      expect(password === undefined || PLACEHOLDER.test(password), key).toBe(true);
     }
   });
 });

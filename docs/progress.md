@@ -3,31 +3,43 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP in staging ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 1 ([plan](plans/phase-1.md)).
+- **Current phase:** Phase 1 is **built and awaiting owner approval** ([plan](plans/phase-1.md)). Do not start Phase 2 before approval.
 - **Last updated:** 2026-10-13
 
 ## Done
 
-- Phase 0 approved and committed: brief cleaned, open questions, ADRs 0001–0010, delivery plan, scaffold.
-- Owner rulings of 2026-10-13 applied: ADRs 0001–0008 and 0012 accepted; ADR 0011 written (pending); C-4 resolved; CLAUDE.md working agreement and rule 10 updated; CI actions pinned to commit SHAs; MVP scope written.
-
-## In progress
-
-- Phase 1, checkpoint 1A.
+- **Phase 0** (approved): brief cleaned, open questions, ADRs 0001–0010, delivery plan, scaffold.
+- **Owner rulings of 2026-10-13 applied:** ADRs 0001–0008 and 0012 accepted; ADR 0011 written (pending); C-4 resolved; working agreement and rule 10 updated in CLAUDE.md; CI actions pinned to commit SHAs; MVP scope written.
+- **Phase 1** (built, not yet approved):
+  - 1A — API package, three database roles with row-level security, sandbox authenticator behind `AuthProvider`, sessions, step-up guard, roles, audit trail.
+  - 1B — double-entry ledger with database-enforced invariants, idempotent posting, reversals; transactional outbox with retry and dead state.
+  - 1C — payment intents with an explicit state machine, AORA simulator provider, signed webhook intake, reconciliation with an exception queue, operator endpoints, OpenAPI contract.
+  - Documents: `system-overview`, `domain-boundaries`, `financial-ledger`, `security-and-tenancy`, `docs/api/openapi.yaml`.
+  - 110 tests pass locally. The built API and worker were run and a payment was taken through to a clean reconciliation.
 
 ## Next
 
-1. Checkpoint 1A, then 1B, then 1C (see the plan).
-2. Phase 1 architecture documents and end-of-phase report.
-3. Phase 2 credential request (SMS provider sandbox).
+1. Owner approves Phase 1, and pushes (see Blocked).
+2. Owner answers the Phase 2 credential request (SMS provider sandbox).
+3. Write `docs/plans/phase-2.md`. First task: the import-boundary lint rule (ADR 0002 rule 3).
+4. Phase 2 scope: phone and one-time-code sign-in through the SMS sandbox, transaction PIN step-up, role permissions for `finance`, consent records, rate limiting, ledger completion (statements, balance rebuild job), sign-out.
 
 ## Blocked
 
-- **Push to GitHub.** The stored GitHub token lacks the `workflow` scope, so GitHub rejects any push that contains `.github/workflows/ci.yml`. Commits are local until the owner runs `gh auth refresh -h github.com -s workflow` and then `git push origin main`. CI has therefore never run (open question X-12).
+- **Push to GitHub and CI.** The stored GitHub token lacks the `workflow` scope, so GitHub rejects any push that contains `.github/workflows/ci.yml`. All commits are local. The owner needs to run `gh auth refresh -h github.com -s workflow` and then `git push origin main`. **CI has never run**; the workflow (including its PostgreSQL service and schema drift check) is unproven until then.
+
+## Known gaps carried forward
+
+- Authentication and the payment provider are simulated.
+- No rate limiting.
+- `StepUpGuard` exists and is tested but protects no real endpoint yet.
+- Import-direction lint rule not in place.
+- GitHub Actions' `postgres:16` service image is pinned by tag, not digest.
+- Local development needs Node 24 (`nvm install`); the machine default is Node 20.
 
 ## How to run
 
-Requires Node 24 (`nvm use`) and pnpm via corepack. See the Commands section of `CLAUDE.md`.
+See the Commands section of `CLAUDE.md` and the README. Short version: `pnpm db:start && pnpm db:migrate && pnpm test`.
 
 ## Credential request format
 
@@ -55,4 +67,4 @@ Expected requests: SMS provider sandbox (Phase 2); Daraja sandbox credentials an
 
 ## Decisions waiting on the owner
 
-See the index in [open-questions.md](architecture/open-questions.md). Nothing open blocks Phase 1.
+See the index in [open-questions.md](architecture/open-questions.md). For Phase 2: M-2 (how API keys and webhook secrets are stored) is worth settling early though it bites in 3B; D-8 (KYC provider and tier limits) and M-4 (funds-flow assumption) are needed for 3A.

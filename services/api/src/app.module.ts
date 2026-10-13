@@ -18,6 +18,14 @@ import { IdentityController } from './modules/identity/identity.controller.js';
 import { IdentityService } from './modules/identity/identity.service.js';
 import { LedgerService } from './modules/ledger/ledger.service.js';
 import { OutboxService } from './modules/outbox/outbox.service.js';
+import {
+  OpsController,
+  PaymentIntentsController,
+  WebhooksController,
+} from './modules/payments/payments.controller.js';
+import { PaymentsService } from './modules/payments/payments.service.js';
+import { ReconciliationService } from './modules/payments/reconciliation.service.js';
+import { SimulatorProvider } from './modules/payments/simulator.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import { APP_CONFIG, type AppConfig } from './platform/config.js';
 import { Database } from './platform/database.js';
@@ -33,6 +41,9 @@ const SHARED = [
   TenancyService,
   LedgerService,
   OutboxService,
+  SimulatorProvider,
+  ReconciliationService,
+  PaymentsService,
   IdentityService,
   SessionGuard,
   WorkspaceGuard,
@@ -40,12 +51,20 @@ const SHARED = [
   StepUpGuard,
 ];
 
+export const CONTROLLERS = [
+  HealthController,
+  IdentityController,
+  PaymentIntentsController,
+  WebhooksController,
+  OpsController,
+];
+
 @Module({})
 export class AppModule implements NestModule {
   static register(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, IdentityController],
+      controllers: [...CONTROLLERS],
       providers: [
         { provide: APP_CONFIG, useValue: config },
         { provide: AUTH_PROVIDER, useFactory: () => new SandboxAuthProvider(config) },

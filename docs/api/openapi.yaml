@@ -1,0 +1,450 @@
+openapi: 3.1.0
+info:
+  title: AORA API
+  version: 0.1.0
+  summary: SANDBOX ONLY. No real money moves through this API.
+  description: |
+    Phase 1 surface: sign-in with the sandbox authenticator, collection payment
+    intents against the AORA simulator provider, simulator webhook intake, and
+    operator reconciliation endpoints.
+
+    Conventions:
+    - Every response carries the header `Aora-Mode: sandbox`, and every JSON
+      object body carries `"mode": "sandbox"`.
+    - Every response carries `Aora-Request-Id`.
+    - Amounts are strings of digits in minor units, for example `"15000"` for
+      KES 150.00. JSON numbers are rejected.
+    - `POST` requests that create a financial operation require an
+      `Idempotency-Key` header. The same key with the same body returns the
+      original result with status 200 and `Idempotent-Replay: true`. The same
+      key with a different body returns 409.
+    - Error codes are stable. Changing or removing one is a breaking change.
+servers:
+  - url: http://127.0.0.1:3000
+    description: Local sandbox
+tags:
+  - name: Health
+  - name: Auth
+  - name: Payment intents
+  - name: Webhooks
+  - name: Operations
+paths:
+  /v1/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness and database check
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, database, mode]
+                properties:
+                  status: { const: ok }
+                  database: { const: ok }
+                  mode: { $ref: '#/components/schemas/Mode' }
+  /v1/auth/challenges:
+    post:
+      tags: [Auth]
+      operationId: startSignIn
+      summary: Start sign-in for a phone number
+      description: >
+        Always returns a challenge id, whether or not the number is registered.
+        In Phase 1 the sandbox authenticator sends nothing and accepts one fixed code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone]
+              properties:
+                phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+      responses:
+        '201': { $ref: '#/components/responses/Challenge' }
+        '400': { $ref: '#/components/responses/Error' }
+  /v1/auth/sessions:
+    post:
+      tags: [Auth]
+      operationId: createSession
+      summary: Exchange a challenge and code for a session token
+      requestBody: { $ref: '#/components/requestBodies/ChallengeAnswer' }
+      responses:
+        '201':
+          description: Session created. The token is shown once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expires_at, mode]
+                properties:
+                  token: { type: string }
+                  expires_at: { type: string, format: date-time }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/auth/step-up/challenges:
+    post:
+      tags: [Auth]
+      operationId: startStepUp
+      summary: Start a second-factor challenge for the signed-in account
+      security: [{ session: [] }]
+      responses:
+        '201': { $ref: '#/components/responses/Challenge' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/auth/step-up:
+    post:
+      tags: [Auth]
+      operationId: completeStepUp
+      summary: Confirm the second factor
+      description: Sensitive actions require a step-up completed within the last few minutes.
+      security: [{ session: [] }]
+      requestBody: { $ref: '#/components/requestBodies/ChallengeAnswer' }
+      responses:
+        '200':
+          description: Step-up recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [step_up_until, mode]
+                properties:
+                  step_up_until: { type: string, format: date-time }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: The signed-in account and its workspace memberships
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: Account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account_id, is_platform_operator, memberships, mode]
+                properties:
+                  account_id: { type: string, format: uuid }
+                  is_platform_operator: { type: boolean }
+                  memberships:
+                    type: array
+                    items:
+                      type: object
+                      required: [workspace_id, role]
+                      properties:
+                        workspace_id: { type: string, format: uuid }
+                        role: { enum: [admin, finance, cashier] }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/payment-intents:
+    post:
+      tags: [Payment intents]
+      operationId: createPaymentIntent
+      summary: Create a collection payment intent
+      description: >
+        Roles: admin, finance, cashier. The intent is submitted to the provider
+        asynchronously; poll `GET /v1/payment-intents/{id}` for its status.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor, currency]
+              properties:
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                currency: { type: string, pattern: '^[A-Z]{3}$', examples: [KES] }
+                sandbox_scenario:
+                  description: Sandbox only. Makes the simulator provider behave in a chosen way.
+                  enum:
+                    - success
+                    - decline
+                    - timeout_then_success
+                    - timeout_then_failure
+                    - duplicate_webhook
+                    - late_webhook
+                    - amount_mismatch
+                    - missing_settlement_line
+      responses:
+        '201': { $ref: '#/components/responses/PaymentIntent' }
+        '200':
+          description: Replay of an earlier request with the same key and body
+          headers:
+            Idempotent-Replay: { schema: { const: 'true' } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentIntent' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/payment-intents/{id}:
+    get:
+      tags: [Payment intents]
+      operationId: getPaymentIntent
+      summary: Status lookup for a payment intent
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/PaymentIntent' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/webhooks/sandbox:
+    post:
+      tags: [Webhooks]
+      operationId: receiveSandboxWebhook
+      summary: Webhook intake for the AORA simulator provider
+      description: >
+        Authenticated by an HMAC-SHA-256 signature over the raw body, not by a
+        session. Duplicate deliveries are accepted and have no further effect.
+      parameters:
+        - name: Aora-Sim-Signature
+          in: header
+          required: true
+          schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [event_id, type, operation_ref, provider_reference, result, amount_minor, asset]
+              properties:
+                event_id: { type: string }
+                type: { const: collection.result }
+                operation_ref: { type: string }
+                provider_reference: { type: string }
+                result: { enum: [succeeded, failed] }
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                asset: { type: string }
+      responses:
+        '200':
+          description: Received
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, mode]
+                properties:
+                  received: { const: true }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/ops/reconciliation-runs:
+    post:
+      tags: [Operations]
+      operationId: runReconciliation
+      summary: Run reconciliation now
+      description: >
+        Platform operators only. Compares the provider's settlement report with
+        payment intents and the ledger and records differences. Corrects nothing.
+      security: [{ session: [] }]
+      responses:
+        '201':
+          description: Run finished
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id, lines_checked, intents_checked, exceptions_opened, mode]
+                properties:
+                  run_id: { type: string, format: uuid }
+                  lines_checked: { type: integer }
+                  intents_checked: { type: integer }
+                  exceptions_opened: { type: integer }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/reconciliation-exceptions:
+    get:
+      tags: [Operations]
+      operationId: listReconciliationExceptions
+      summary: List reconciliation exceptions, newest first
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: Exceptions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, mode]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReconciliationException' }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/reconciliation-exceptions/{id}:
+    get:
+      tags: [Operations]
+      operationId: getReconciliationException
+      summary: Inspect one reconciliation exception
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Exception
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationException' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    session:
+      type: http
+      scheme: bearer
+      description: Session token from `POST /v1/auth/sessions`.
+  parameters:
+    Workspace:
+      name: Aora-Workspace-Id
+      in: header
+      required: true
+      description: The workspace to act in. The caller must be a member.
+      schema: { type: string, format: uuid }
+  requestBodies:
+    ChallengeAnswer:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [challenge_id, code]
+            properties:
+              challenge_id: { type: string }
+              code: { type: string, minLength: 1, maxLength: 12 }
+  responses:
+    Challenge:
+      description: Challenge started
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [challenge_id, mode]
+            properties:
+              challenge_id: { type: string, format: uuid }
+              mode: { $ref: '#/components/schemas/Mode' }
+    PaymentIntent:
+      description: Payment intent
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PaymentIntent' }
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Mode:
+      const: sandbox
+      description: Every record and response is sandbox data.
+    AmountMinor:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+      description: Integer amount in the currency's minor units, as a string.
+      examples: ['15000']
+    PaymentIntentStatus:
+      description: |
+        - `created`: accepted by AORA, not yet sent to the provider.
+        - `submitting`: being sent to the provider.
+        - `pending_provider`: accepted by the provider, awaiting its result.
+        - `succeeded`: paid, and recorded in the ledger.
+        - `failed`: not paid.
+        - `status_unknown`: the provider did not answer. AORA is asking it; the payment may or may not have happened. Do not retry.
+        - `reconciliation_required`: the provider's information conflicts with AORA's records. An operator must review it.
+      enum:
+        - created
+        - submitting
+        - pending_provider
+        - succeeded
+        - failed
+        - status_unknown
+        - reconciliation_required
+    PaymentIntent:
+      type: object
+      required: [id, status, amount_minor, currency, provider, failure_code, created_at, updated_at, mode]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/PaymentIntentStatus' }
+        amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+        currency: { type: string }
+        provider: { type: string }
+        failure_code: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ReconciliationException:
+      type: object
+      required: [id, type, status, workspace_id, subject_type, subject_ref, detail, run_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        type:
+          enum:
+            - missing_internal
+            - missing_at_provider
+            - amount_mismatch
+            - duplicate_reference
+            - state_mismatch
+            - stuck_status_unknown
+            - ledger_mismatch
+            - provider_result_conflict
+        status: { enum: [open] }
+        workspace_id: { type: [string, 'null'], format: uuid }
+        subject_type: { type: string }
+        subject_ref: { type: string }
+        detail: { type: object }
+        run_id: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error, mode]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              enum:
+                - invalid_request
+                - unauthenticated
+                - forbidden
+                - step_up_required
+                - not_found
+                - idempotency_key_required
+                - idempotency_key_reused
+                - invalid_state_transition
+                - capability_not_supported
+                - invalid_signature
+                - too_many_attempts
+                - internal_error
+            message: { type: string }
+            request_id: { type: string }
+        mode: { $ref: '#/components/schemas/Mode' }

@@ -32,7 +32,7 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 
 - Repository: greenfield, started 2026-10-13.
 - Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) running in staging against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 1 — foundation and ledger core, via the first vertical slice** (`docs/plans/phase-1.md`)
+- Current phase: **Phase 1 built, awaiting owner approval** (`docs/plans/phase-1.md`). Do not start Phase 2 until it is approved.
 - Last approved milestone: Phase 0 (2026-10-13)
 - Live status, next steps and blockers: `docs/progress.md`
 
@@ -93,20 +93,26 @@ A feature is done only when all of these hold:
 
 ## Commands
 
-Requires Node 24 (`.nvmrc`) and the pnpm version in `package.json` `packageManager`.
+Requires Node 24 (`nvm use`), pnpm through corepack (`corepack enable`), and PostgreSQL 16 server binaries for the local database.
 
 | Task | Command |
 |---|---|
 | Install | `pnpm install` (CI: `pnpm install --frozen-lockfile`) |
+| Start local database | `pnpm db:start` (stop: `pnpm db:stop`; wipe: `pnpm db:reset`) |
+| Migrate | `pnpm db:migrate` |
+| Regenerate `schema.prisma` and client after a migration | `pnpm -r db:pull && pnpm db:generate` |
 | Lint | `pnpm lint` |
 | Typecheck | `pnpm typecheck` |
-| Test | `pnpm test` (watch: `pnpm test:watch`) |
+| Test | `pnpm test` (needs `pnpm db:start`; one package: `pnpm vitest run --project api`) |
 | Format | `pnpm format` (check: `pnpm format:check`) |
-| Dev server | Not available yet. Added in Phase 1 with the first service. |
-| Migrate | Not available yet. Added in Phase 1 with the database. |
-| Contract tests | Not available yet. Added when the first contract is specified (ADR 0006). |
+| Build | `pnpm build` |
+| Seed sandbox data | `pnpm db:seed` (after build and migrate) |
+| Run API / worker | `pnpm start:api` / `pnpm start:worker` (after build; reads `.env.local`) |
+| Contract tests | Not available. No smart contracts exist (ADR 0006). |
 
-Run `format:check`, `lint`, `typecheck` and `test` before reporting any work as done. CI runs the same four.
+Run `format:check`, `lint`, `typecheck` and `test` before reporting any work as done. CI runs the same four, plus a check that `schema.prisma` matches the migrations.
+
+Schema changes: write a new SQL file under `services/api/prisma/migrations/`, never edit an applied one. SQL is the source of truth; `schema.prisma` is generated from the database.
 
 ## End-of-phase report format
 

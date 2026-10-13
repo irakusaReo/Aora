@@ -1,6 +1,6 @@
 # Phase 1 Plan — Foundation and ledger core, via the first vertical slice
 
-- **Status:** scope approved by the owner on 2026-10-13 (checkpoints 1A → 1B → 1C). Proceeding without further approval.
+- **Status:** built. Checkpoints 1A, 1B and 1C are committed. Awaiting owner approval of the phase.
 - **Scope source:** [delivery-plan.md](../architecture/delivery-plan.md) §3. Nothing outside §3.1 is built.
 - **ADRs applied:** 0001, 0002, 0003, 0007, 0008 (outbox part), 0012 (tables and exact-match constraints only).
 
@@ -206,3 +206,14 @@ Then: architecture documents (`system-overview`, `domain-boundaries`, `financial
 ## 9. Not in this phase
 
 Fees and tariffs, payouts, refunds, settlement, real providers, SMS, PIN, KYC, branches, any chain code, KELO, CHIWO, NAM, any UI, deployment, USDC as a ledger asset.
+
+## 10. What changed while building (none material)
+
+- **Table names** are unique across schemas so the generated client has one model per name: `identity.user_account`, `audit.audit_event`, `outbox.outbox_event`, `sim.sim_transaction`, `sim.sim_webhook_delivery`.
+- **Step-up** has two endpoints, `POST /v1/auth/step-up/challenges` and `POST /v1/auth/step-up`, mirroring sign-in.
+- **Exception types** gained `state_mismatch` (provider settled a payment AORA has not marked succeeded) and `provider_result_conflict` (a result that contradicts a recorded final state).
+- **`payment_intent` gained `created → reconciliation_required`** for a provider result that arrives before submission.
+- **Test files run against per-file databases cloned from a migrated template**, rather than one shared database.
+- **The tooling spike test was removed** once its two questions were answered; the real tests now cover both.
+- **A third database role, `aora_owner`, needs explicit policies** because `FORCE ROW LEVEL SECURITY` binds the owner too, and the ledger's trigger functions run as the owner.
+- **Session time zone is forced to UTC.** Without it, timestamps written by the application were shifted by the server's local offset. Found by the expiry tests.

@@ -21,7 +21,10 @@
     "db:reset": "./scripts/dev-db.sh reset",
     "db:migrate": "pnpm -r db:migrate",
     "db:generate": "pnpm -r db:generate",
-    "postinstall": "pnpm -r db:generate"
+    "postinstall": "pnpm -r db:generate",
+    "start:api": "pnpm --filter @aora/api start",
+    "start:worker": "pnpm --filter @aora/api start:worker",
+    "db:seed": "pnpm --filter @aora/api db:seed"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

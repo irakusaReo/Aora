@@ -59,7 +59,7 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 - **R-2, R-3:** minimal KELO merchant domain added to the provisioning phase; CHIWO consumer core and KELO credit core phases added. *Still open under R-2:* which KELO state counts as "qualifying". Assumed: one explicit `approved` state.
 - **E-1:** row-level security as a second tenant barrier.
 - **E-2:** `mode` column on every tenant and financial record; only `sandbox` permitted.
-- **E-3:** Vitest unless it fails checkpoint 1A, then Jest without asking; outcome recorded in ADR 0001.
+- **E-3:** Vitest unless it fails checkpoint 1A, then Jest without asking; outcome recorded in ADR 0001. *Outcome: Vitest works with NestJS; no switch.*
 - **D-3 (MVP):** Safaricom Daraja sandbox for M-Pesa collection and B2C payout; AORA simulator elsewhere. Provider behaviour is verified from documentation in the phase that integrates it.
 - **D-6 (MVP):** sandbox authenticator in Phase 1; phone number plus SMS one-time code through an SMS provider sandbox, and a transaction PIN for step-up, behind an `AuthProvider` interface. Production choice open (ADR 0011).
 - **D-7:** unregistered sole traders are in scope; rule in ADR 0012.

@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "identity", "ledger", "outbox", "tenancy"]
+  schemas  = ["audit", "business", "identity", "ledger", "outbox", "payments", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -115,6 +115,7 @@ model user_account {
   auth_challenge       auth_challenge[]
   session              session[]
   person               person           @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent       payment_intent[]
   membership           membership[]
 
   @@schema("identity")
@@ -139,19 +140,22 @@ model membership {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model workspace {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id     String            @db.Uuid
-  product         String
-  mode            String            @default("sandbox")
-  created_at      DateTime          @default(now()) @db.Timestamptz(6)
-  audit_event     audit_event[]
-  account         account[]
-  account_balance account_balance[]
-  journal_entry   journal_entry[]
-  posting         posting[]
-  outbox_event    outbox_event[]
-  membership      membership[]
-  business        business          @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id               String                      @db.Uuid
+  product                   String
+  mode                      String                      @default("sandbox")
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  audit_event               audit_event[]
+  account                   account[]
+  account_balance           account_balance[]
+  journal_entry             journal_entry[]
+  posting                   posting[]
+  outbox_event              outbox_event[]
+  payment_intent            payment_intent[]
+  payment_intent_transition payment_intent_transition[]
+  reconciliation_exception  reconciliation_exception[]
+  membership                membership[]
+  business                  business                    @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([business_id, product])
   @@schema("tenancy")
@@ -195,11 +199,12 @@ model account_balance {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model asset {
-  code     String    @id
-  kind     String
-  exponent Int       @db.SmallInt
-  account  account[]
-  posting  posting[]
+  code           String           @id
+  kind           String
+  exponent       Int              @db.SmallInt
+  account        account[]
+  posting        posting[]
+  payment_intent payment_intent[]
 
   @@schema("ledger")
 }
@@ -267,4 +272,130 @@ model outbox_event {
   @@index([available_at, created_at], map: "outbox_event_due", where: raw("(status = 'pending'::text)"))
   @@index([locked_at], map: "outbox_event_processing", where: raw("(status = 'processing'::text)"))
   @@schema("outbox")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment_intent {
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                 String                      @db.Uuid
+  idempotency_key           String
+  request_hash              String
+  amount                    BigInt
+  asset_code                String
+  status                    String                      @default("created")
+  provider                  String
+  provider_reference        String?
+  sandbox_scenario          String?
+  failure_code              String?
+  status_inquiries          Int                         @default(0)
+  created_by                String                      @db.Uuid
+  mode                      String                      @default("sandbox")
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  asset                     asset                       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account              user_account                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                 workspace                   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent_transition payment_intent_transition[]
+
+  @@unique([tenant_id, idempotency_key])
+  @@index([status, updated_at], map: "payment_intent_status")
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment_intent_transition {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  intent_id      String         @db.Uuid
+  tenant_id      String         @db.Uuid
+  from_status    String?
+  to_status      String
+  source         String
+  reason         String?
+  mode           String         @default("sandbox")
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  payment_intent payment_intent @relation(fields: [intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace      workspace      @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([intent_id, created_at], map: "payment_intent_transition_intent")
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model reconciliation_exception {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_id             String?             @db.Uuid
+  tenant_id          String?             @db.Uuid
+  type               String
+  subject_type       String
+  subject_ref        String
+  detail             Json                @default("{}")
+  status             String              @default("open")
+  mode               String              @default("sandbox")
+  created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  reconciliation_run reconciliation_run? @relation(fields: [run_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace          workspace?          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([type, subject_ref], map: "reconciliation_exception_open", where: raw("(status = 'open'::text)"))
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reconciliation_run {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider                 String
+  started_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  finished_at              DateTime?                  @db.Timestamptz(6)
+  lines_checked            Int                        @default(0)
+  intents_checked          Int                        @default(0)
+  exceptions_opened        Int                        @default(0)
+  mode                     String                     @default("sandbox")
+  reconciliation_exception reconciliation_exception[]
+
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model webhook_event {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider          String
+  provider_event_id String
+  payload_raw       String
+  received_at       DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at      DateTime? @db.Timestamptz(6)
+  outcome           String?
+  mode              String    @default("sandbox")
+
+  @@unique([provider, provider_event_id])
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sim_transaction {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operation_ref        String                 @unique
+  amount               BigInt
+  asset_code           String
+  scenario             String
+  status               String
+  report_copies        Int                    @default(1)
+  mode                 String                 @default("sandbox")
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  sim_webhook_delivery sim_webhook_delivery[]
+
+  @@schema("sim")
+}
+
+model sim_webhook_delivery {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transaction_id  String          @db.Uuid
+  sequence        BigInt          @default(autoincrement())
+  body            String
+  deliver_after   DateTime        @default(now()) @db.Timestamptz(6)
+  delivered_at    DateTime?       @db.Timestamptz(6)
+  sim_transaction sim_transaction @relation(fields: [transaction_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("sim")
 }
