@@ -188,6 +188,34 @@ paths:
                   mode: { $ref: '#/components/schemas/Mode' }
         '401': { $ref: '#/components/responses/Error' }
   /v1/payment-intents:
+    get:
+      tags: [Payment intents]
+      operationId: listPaymentIntents
+      summary: List collections, newest first
+      description: >
+        Roles: admin, finance, cashier. A cashier sees only the collections of
+        their own branch. Each item shows gross, fee and net.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: branch_id, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: cursor, in: query, schema: { type: string }, description: The `next_cursor` of the previous page. }
+      responses:
+        '200':
+          description: One page of collections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, next_cursor, mode]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/PaymentIntent' } }
+                  next_cursor: { type: [string, 'null'] }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
     post:
       tags: [Payment intents]
       operationId: createPaymentIntent
@@ -195,6 +223,9 @@ paths:
       description: >
         Roles: admin, finance, cashier. The intent is submitted to the provider
         asynchronously; poll `GET /v1/payment-intents/{id}` for its status.
+        The fee is fixed now, from the tariff version in effect, and returned
+        with the net amount. A cashier's collection always belongs to their own
+        branch. Answers `limit_exceeded` (422) above the workspace tier's limits.
       security: [{ session: [] }]
       parameters:
         - { $ref: '#/components/parameters/Workspace' }
@@ -213,6 +244,13 @@ paths:
               properties:
                 amount_minor: { $ref: '#/components/schemas/AmountMinor' }
                 currency: { type: string, pattern: '^[A-Z]{3}$', examples: [KES] }
+                rail: { type: string, pattern: '^[a-z][a-z0-9_]{1,30}$', default: mpesa }
+                branch_id: { type: string, format: uuid }
+                reference:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  description: The merchant's own label for the sale, such as an order or counter.
                 sandbox_scenario:
                   description: Sandbox only. Makes the simulator provider behave in a chosen way.
                   enum:
@@ -252,6 +290,38 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/tariffs/quote:
+    get:
+      tags: [Payment intents]
+      operationId: quoteTariff
+      summary: Gross, fee and net for an amount, under the tariff in effect now
+      description: 'Permission: `tariff.read` (admin, finance, cashier). Changes nothing.'
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: operation, in: query, required: true, schema: { enum: [collection] } }
+        - { name: rail, in: query, required: true, schema: { type: string } }
+        - { name: currency, in: query, required: true, schema: { type: string, pattern: '^[A-Z]{3}$' } }
+        - { name: amount_minor, in: query, required: true, schema: { $ref: '#/components/schemas/AmountMinor' } }
+      responses:
+        '200':
+          description: Quote
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [amount_minor, fee_minor, net_minor, tariff_version_id, tariff_version, mode]
+                properties:
+                  amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                  fee_minor: { $ref: '#/components/schemas/FeeMinor' }
+                  net_minor: { $ref: '#/components/schemas/FeeMinor' }
+                  tariff_version_id: { type: string, format: uuid }
+                  tariff_version: { type: integer }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /v1/webhooks/sandbox:
     post:
       tags: [Webhooks]
@@ -412,8 +482,9 @@ paths:
       operationId: updateMember
       summary: Change a member's role, or remove them
       description: >
-        Permission: `member.manage` (admin). Requires a PIN step-up. Send either
-        `role` or `status`. A workspace always keeps at least one active admin.
+        Permission: `member.manage` (admin). Requires a PIN step-up. Send exactly
+        one of `role`, `status` or `branch_id` (null clears the branch). A
+        workspace always keeps at least one active admin.
       security: [{ session: [] }]
       parameters:
         - { $ref: '#/components/parameters/Workspace' }
@@ -428,12 +499,92 @@ paths:
               properties:
                 role: { $ref: '#/components/schemas/Role' }
                 status: { const: removed }
+                branch_id: { type: [string, 'null'], format: uuid }
       responses:
         '200':
           description: Member updated
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Member' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/branches:
+    get:
+      tags: [Workspace]
+      operationId: listBranches
+      summary: List the workspace's branches
+      description: 'Permission: `branch.read` (admin, finance, cashier).'
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/Workspace' }]
+      responses:
+        '200':
+          description: Branches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, mode]
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Branch' } }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Workspace]
+      operationId: createBranch
+      summary: Add a branch
+      description: 'Permission: `branch.manage` (admin). Names are unique in a workspace.'
+      security: [{ session: [] }]
+      parameters: [{ $ref: '#/components/parameters/Workspace' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        '201':
+          description: Branch added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Branch' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/branches/{id}:
+    patch:
+      tags: [Workspace]
+      operationId: updateBranch
+      summary: Rename, close or reopen a branch
+      description: 'Permission: `branch.manage` (admin). A closed branch takes no new collections.'
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                status: { enum: [active, closed] }
+      responses:
+        '200':
+          description: Branch updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Branch' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
@@ -690,14 +841,28 @@ components:
       enum: [admin, finance, cashier]
     Member:
       type: object
-      required: [id, account_id, role, status, phone_hint]
+      required: [id, account_id, role, status, branch_id, phone_hint]
       properties:
         id: { type: string, format: uuid }
         account_id: { type: string, format: uuid }
         role: { $ref: '#/components/schemas/Role' }
         status: { enum: [active, removed] }
+        branch_id: { type: [string, 'null'], format: uuid }
         phone_hint: { type: string, description: Last three digits of the member's phone number. }
         mode: { $ref: '#/components/schemas/Mode' }
+    Branch:
+      type: object
+      required: [id, name, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { enum: [active, closed] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    FeeMinor:
+      type: string
+      pattern: '^(0|[1-9][0-9]{0,18})$'
+      description: Integer amount in the currency's minor units, as a string. May be zero.
     AmountMinor:
       type: string
       pattern: '^[1-9][0-9]{0,18}$'
@@ -722,12 +887,41 @@ components:
         - reconciliation_required
     PaymentIntent:
       type: object
-      required: [id, status, amount_minor, currency, provider, failure_code, created_at, updated_at, mode]
+      required:
+        - id
+        - status
+        - amount_minor
+        - fee_minor
+        - net_minor
+        - tariff_version_id
+        - currency
+        - rail
+        - branch_id
+        - reference
+        - provider
+        - failure_code
+        - created_at
+        - updated_at
       properties:
         id: { type: string, format: uuid }
         status: { $ref: '#/components/schemas/PaymentIntentStatus' }
-        amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+        amount_minor:
+          $ref: '#/components/schemas/AmountMinor'
+          description: Gross, what the payer pays.
+        fee_minor:
+          $ref: '#/components/schemas/FeeMinor'
+          description: AORA's fee, fixed when the collection was created.
+        net_minor:
+          $ref: '#/components/schemas/FeeMinor'
+          description: What the merchant receives. Always gross minus fee.
+        tariff_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: The tariff version the fee was calculated from.
         currency: { type: string }
+        rail: { type: string }
+        branch_id: { type: [string, 'null'], format: uuid }
+        reference: { type: [string, 'null'] }
         provider: { type: string }
         failure_code: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }
@@ -775,6 +969,7 @@ components:
                 - idempotency_key_reused
                 - invalid_state_transition
                 - capability_not_supported
+                - limit_exceeded
                 - invalid_signature
                 - too_many_attempts
                 - pin_not_set

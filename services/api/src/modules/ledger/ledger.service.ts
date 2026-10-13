@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import type { Tx } from '../../platform/database.js';
 
 export type Direction = 'debit' | 'credit';
-export type AccountType = 'provider_clearing' | 'merchant_collections_pending';
+export type AccountType =
+  | 'provider_clearing'
+  | 'merchant_collections_pending'
+  | 'fee_revenue'
+  | 'merchant_available'
+  | 'merchant_payouts_in_flight';
 
 /** The closed list of account types and their fixed properties (ADR 0003). */
 const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean }> = {
@@ -10,6 +15,12 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   provider_clearing: { normalSide: 'debit', allowNegative: false },
   // Collected for the merchant and not yet settled: a liability.
   merchant_collections_pending: { normalSide: 'credit', allowNegative: false },
+  // AORA's own fees, earned when a collection or payout succeeds: income.
+  fee_revenue: { normalSide: 'credit', allowNegative: false },
+  // Settled to the merchant and free to pay out: a liability.
+  merchant_available: { normalSide: 'credit', allowNegative: false },
+  // Reserved for payouts that have been requested and not yet resolved: a liability.
+  merchant_payouts_in_flight: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {

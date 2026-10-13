@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -23,12 +24,30 @@ import { type ExceptionView, ReconciliationService } from './reconciliation.serv
 import { SCENARIOS, SIM_SIGNATURE_HEADER } from './simulator.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RAIL = /^[a-z][a-z0-9_]{1,30}$/;
+/** The rail a collection uses when the request names none. */
+const DEFAULT_RAIL = 'mpesa';
 
 const createBody = z.strictObject({
   // Validated by parseMinorUnits, so that a JSON number is rejected, not coerced.
   amount_minor: z.unknown(),
   currency: z.string().regex(/^[A-Z]{3}$/),
+  rail: z.string().regex(RAIL).optional(),
+  branch_id: z.uuid().optional(),
+  // The merchant's own label for the sale: an order, a counter, a vehicle (lessons §5).
+  reference: z.string().trim().min(1).max(64).optional(),
   sandbox_scenario: z.enum(SCENARIOS).optional(),
+});
+const listQuery = z.strictObject({
+  branch_id: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().min(1).max(200).optional(),
+});
+const quoteQuery = z.strictObject({
+  operation: z.literal('collection'),
+  rail: z.string().regex(RAIL),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  amount_minor: z.unknown(),
 });
 
 @Controller('v1/payment-intents')
@@ -51,7 +70,11 @@ export class PaymentIntentsController {
       );
     }
     const input = parseBody(createBody, body);
-    const { tenantId } = tenantOf(request);
+    const { tenantId, role, branchId } = tenantOf(request);
+    // A cashier collects for their own branch and no other.
+    if (role === 'cashier' && input.branch_id !== undefined && input.branch_id !== branchId) {
+      throw new AppError('forbidden', 'You do not have access to this workspace or action.');
+    }
     const result = await this.payments.createIntent({
       tenantId,
       accountId: sessionOf(request).accountId,
@@ -59,6 +82,9 @@ export class PaymentIntentsController {
       idempotencyKey,
       amount: parseMinorUnits(input.amount_minor),
       assetCode: input.currency,
+      rail: input.rail ?? DEFAULT_RAIL,
+      branchId: role === 'cashier' ? branchId : (input.branch_id ?? null),
+      reference: input.reference ?? null,
       scenario: input.sandbox_scenario ?? null,
     });
     response.status(result.replayed ? 200 : 201);
@@ -66,11 +92,51 @@ export class PaymentIntentsController {
     return result.intent;
   }
 
+  @Get()
+  @Permit('payment_intent.read')
+  list(
+    @Query() query: unknown,
+    @Req() request: Request,
+  ): Promise<{ data: IntentView[]; next_cursor: string | null }> {
+    const input = parseBody(listQuery, query);
+    const { tenantId, role, branchId } = tenantOf(request);
+    return this.payments.listIntents(tenantId, {
+      ...(role === 'cashier' ? { branchScope: branchId } : {}),
+      ...(input.branch_id ? { branchId: input.branch_id } : {}),
+      limit: input.limit,
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+    });
+  }
+
   @Get(':id')
   @Permit('payment_intent.read')
   get(@Param('id') id: string, @Req() request: Request): Promise<IntentView> {
     if (!UUID.test(id)) throw new AppError('not_found', 'Payment intent not found.');
-    return this.payments.getIntent(tenantOf(request).tenantId, id);
+    const { tenantId, role, branchId } = tenantOf(request);
+    return role === 'cashier'
+      ? this.payments.getIntent(tenantId, id, branchId)
+      : this.payments.getIntent(tenantId, id);
+  }
+}
+
+@Controller('v1/tariffs')
+@UseGuards(SessionGuard, WorkspaceGuard)
+export class TariffsController {
+  constructor(@Inject(PaymentsService) private readonly payments: PaymentsService) {}
+
+  /** What a collection of this amount would cost right now: gross, fee and net. */
+  @Get('quote')
+  @Permit('tariff.read')
+  quote(
+    @Query() query: unknown,
+    @Req() request: Request,
+  ): ReturnType<PaymentsService['quoteCollection']> {
+    const input = parseBody(quoteQuery, query);
+    return this.payments.quoteCollection(tenantOf(request).tenantId, {
+      rail: input.rail,
+      assetCode: input.currency,
+      amount: parseMinorUnits(input.amount_minor),
+    });
   }
 }
 

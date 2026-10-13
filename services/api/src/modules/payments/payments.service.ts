@@ -9,6 +9,8 @@ import { AuditService } from '../audit/audit.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { type OutboxEvent, OutboxService } from '../outbox/outbox.service.js';
+import { PricingService } from '../pricing/pricing.service.js';
+import { TenancyService } from '../tenancy/tenancy.service.js';
 import { supports } from './adapter.js';
 import { ReconciliationService } from './reconciliation.service.js';
 import { type Scenario, SimulatorProvider } from './simulator.js';
@@ -58,8 +60,17 @@ type Intent = Prisma.payment_intentGetPayload<object>;
 export interface IntentView {
   readonly id: string;
   readonly status: IntentStatus;
+  /** Gross: what the payer pays. */
   readonly amount_minor: string;
+  /** AORA's fee, fixed when the collection was created. */
+  readonly fee_minor: string;
+  /** What the merchant receives: gross minus fee, exactly. */
+  readonly net_minor: string;
+  readonly tariff_version_id: string | null;
   readonly currency: string;
+  readonly rail: string;
+  readonly branch_id: string | null;
+  readonly reference: string | null;
   readonly provider: string;
   readonly failure_code: string | null;
   readonly created_at: string;
@@ -71,7 +82,13 @@ function view(intent: Intent): IntentView {
     id: intent.id,
     status: intent.status as IntentStatus,
     amount_minor: intent.amount.toString(),
+    fee_minor: intent.fee_amount.toString(),
+    net_minor: (intent.amount - intent.fee_amount).toString(),
+    tariff_version_id: intent.tariff_version_id,
     currency: intent.asset_code,
+    rail: intent.rail,
+    branch_id: intent.branch_id,
+    reference: intent.reference,
     provider: intent.provider,
     failure_code: intent.failure_code,
     created_at: intent.created_at.toISOString(),
@@ -101,6 +118,8 @@ export class PaymentsService implements OnModuleInit {
     @Inject(SimulatorProvider) private readonly provider: SimulatorProvider,
     @Inject(ReconciliationService) private readonly reconciliation: ReconciliationService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(PricingService) private readonly pricing: PricingService,
+    @Inject(TenancyService) private readonly tenancy: TenancyService,
   ) {}
 
   onModuleInit(): void {
@@ -120,6 +139,9 @@ export class PaymentsService implements OnModuleInit {
     idempotencyKey: string;
     amount: bigint;
     assetCode: string;
+    rail: string;
+    branchId: string | null;
+    reference: string | null;
     scenario: Scenario | null;
   }): Promise<{ intent: IntentView; replayed: boolean }> {
     if (
@@ -132,18 +154,59 @@ export class PaymentsService implements OnModuleInit {
       );
     }
     const requestHash = createHash('sha256')
-      .update(JSON.stringify([input.amount.toString(), input.assetCode, input.scenario]))
+      .update(
+        JSON.stringify([
+          input.amount.toString(),
+          input.assetCode,
+          input.scenario,
+          input.rail,
+          input.branchId,
+          input.reference,
+        ]),
+      )
       .digest('hex');
 
     return this.db.withTenant(input.tenantId, async (tx) => {
+      // A repeat of a request already accepted is answered from the record, before
+      // any check that could now give a different answer (a new tariff, a used-up limit).
+      const earlier = await tx.payment_intent.findFirst({
+        where: { tenant_id: input.tenantId, idempotency_key: input.idempotencyKey },
+      });
+      if (earlier) {
+        if (earlier.request_hash !== requestHash) {
+          throw new AppError(
+            'idempotency_key_reused',
+            'This Idempotency-Key was already used with a different request.',
+          );
+        }
+        return { intent: view(earlier), replayed: true };
+      }
+      if (
+        input.branchId &&
+        !(await this.tenancy.isActiveBranch(tx, input.tenantId, input.branchId))
+      ) {
+        throw new AppError('invalid_request', 'Invalid request: branch_id.');
+      }
+      // The fee is fixed now, from the tariff version in effect (ADR 0021).
+      const quote = await this.pricing.quote(tx, {
+        operation: 'collection',
+        rail: input.rail,
+        country: this.provider.declaration.country,
+        assetCode: input.assetCode,
+        amount: input.amount,
+      });
+      await this.assertWithinLimits(tx, input.tenantId, input.assetCode, input.amount);
+
       // ON CONFLICT DO NOTHING waits out a concurrent request with the same key,
       // so duplicates resolve to exactly one intent.
       const inserted = await tx.$queryRaw<{ id: string }[]>`
         insert into payments.payment_intent
           (tenant_id, idempotency_key, request_hash, amount, asset_code, provider,
-           sandbox_scenario, created_by)
+           sandbox_scenario, created_by, rail, fee_amount, tariff_version_id, branch_id, reference)
         values (${input.tenantId}::uuid, ${input.idempotencyKey}, ${requestHash}, ${input.amount},
-                ${input.assetCode}, ${SANDBOX_PROVIDER}, ${input.scenario}, ${input.accountId}::uuid)
+                ${input.assetCode}, ${SANDBOX_PROVIDER}, ${input.scenario}, ${input.accountId}::uuid,
+                ${input.rail}, ${quote.fee}, ${quote.tariffVersionId}::uuid,
+                ${input.branchId}::uuid, ${input.reference})
         on conflict (tenant_id, idempotency_key) do nothing
         returning id`;
       const created = inserted[0];
@@ -190,13 +253,117 @@ export class PaymentsService implements OnModuleInit {
     });
   }
 
-  async getIntent(tenantId: string, intentId: string): Promise<IntentView> {
+  /**
+   * `branchScope` restricts the caller to one branch (a cashier's own); `undefined`
+   * means the whole workspace. A null scope matches collections with no branch.
+   */
+  async getIntent(
+    tenantId: string,
+    intentId: string,
+    branchScope?: string | null,
+  ): Promise<IntentView> {
     const intent = await this.db.withTenant(tenantId, (tx) =>
       tx.payment_intent.findUnique({ where: { id: intentId } }),
     );
     // Row-level security hides other tenants' intents, so they look like any missing id.
-    if (!intent) throw new AppError('not_found', 'Payment intent not found.');
+    if (!intent || (branchScope !== undefined && intent.branch_id !== branchScope)) {
+      throw new AppError('not_found', 'Payment intent not found.');
+    }
     return view(intent);
+  }
+
+  /** Collections of a workspace, newest first, paged by an opaque cursor. */
+  async listIntents(
+    tenantId: string,
+    options: { branchScope?: string | null; branchId?: string; limit: number; cursor?: string },
+  ): Promise<{ data: IntentView[]; next_cursor: string | null }> {
+    const after = options.cursor ? decodeCursor(options.cursor) : null;
+    const scoped = options.branchScope !== undefined;
+    const branch = scoped ? options.branchScope : (options.branchId ?? null);
+    const filterBranch = scoped || options.branchId !== undefined;
+    return this.db.withTenant(tenantId, async (tx) => {
+      // Keyset paging on (created_at, id). The timestamp travels as text so that
+      // its microseconds survive the round trip.
+      const page = await tx.$queryRaw<{ id: string; created: string }[]>`
+        select id, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as created
+        from payments.payment_intent
+        where (${!filterBranch} or branch_id is not distinct from ${branch ?? null}::uuid)
+          and (${after === null}
+               or (created_at, id) < (${after?.created ?? null}::timestamptz, ${after?.id ?? null}::uuid))
+        order by created_at desc, id desc
+        limit ${options.limit + 1}`;
+      const shown = page.slice(0, options.limit);
+      const rows = await tx.payment_intent.findMany({
+        where: { id: { in: shown.map((row) => row.id) } },
+      });
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const last = shown.at(-1);
+      return {
+        data: shown.flatMap((row) => {
+          const intent = byId.get(row.id);
+          return intent ? [view(intent)] : [];
+        }),
+        next_cursor: page.length > options.limit && last ? encodeCursor(last) : null,
+      };
+    });
+  }
+
+  /** The fee a collection of this amount would carry right now. Changes nothing. */
+  async quoteCollection(
+    tenantId: string,
+    input: { rail: string; assetCode: string; amount: bigint },
+  ): Promise<{
+    amount_minor: string;
+    fee_minor: string;
+    net_minor: string;
+    tariff_version_id: string;
+    tariff_version: number;
+  }> {
+    const quote = await this.db.withTenant(tenantId, (tx) =>
+      this.pricing.quote(tx, {
+        operation: 'collection',
+        rail: input.rail,
+        country: this.provider.declaration.country,
+        assetCode: input.assetCode,
+        amount: input.amount,
+      }),
+    );
+    return {
+      amount_minor: quote.amount.toString(),
+      fee_minor: quote.fee.toString(),
+      net_minor: quote.net.toString(),
+      tariff_version_id: quote.tariffVersionId,
+      tariff_version: quote.tariffVersion,
+    };
+  }
+
+  /**
+   * Refuses a collection above the workspace tier's limits. The per-workspace
+   * lock makes concurrent requests take turns, so two cannot both fit under a
+   * daily limit that has room for one.
+   */
+  private async assertWithinLimits(
+    tx: Tx,
+    tenantId: string,
+    assetCode: string,
+    amount: bigint,
+  ): Promise<void> {
+    const limits = await this.tenancy.limitsFor(tx, tenantId, assetCode);
+    if (!limits || amount > limits.perTransactionMax) {
+      throw new AppError('limit_exceeded', 'This amount is above the limit for one collection.');
+    }
+    await tx.$executeRaw`
+      select pg_advisory_xact_lock(hashtextextended(${`collect:${tenantId}:${assetCode}`}::text, 0))`;
+    const taken = await tx.$queryRaw<{ total: bigint }[]>`
+      select coalesce(sum(amount), 0)::bigint as total from payments.payment_intent
+      where asset_code = ${assetCode} and status <> 'failed'
+        and created_at > now() - interval '24 hours'`;
+    if ((taken[0]?.total ?? 0n) + amount > limits.dailyCollectionMax) {
+      throw new AppError(
+        'limit_exceeded',
+        'This collection would take the workspace over its limit for 24 hours.',
+      );
+    }
   }
 
   /** Verifies and stores a provider webhook, then queues it. Safe to receive any number of times. */
@@ -460,8 +627,22 @@ export class PaymentsService implements OnModuleInit {
             assetCode: intent.asset_code,
           }),
           direction: 'credit',
-          amount: intent.amount,
+          amount: intent.amount - intent.fee_amount,
         },
+        // AORA's fee, as fixed on the intent. A posting must be positive, so a free collection has none.
+        ...(intent.fee_amount > 0n
+          ? [
+              {
+                accountId: await this.ledger.findAccount(tx, {
+                  tenantId: null,
+                  type: 'fee_revenue',
+                  assetCode: intent.asset_code,
+                }),
+                direction: 'credit' as const,
+                amount: intent.fee_amount,
+              },
+            ]
+          : []),
       ],
     });
     // Transaction alert to the person who took the payment, in the same transaction:
@@ -546,6 +727,19 @@ export class PaymentsService implements OnModuleInit {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CURSOR = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z)\|([0-9a-f-]{36})$/i;
+
+function encodeCursor(row: { id: string; created: string }): string {
+  return Buffer.from(`${row.created}|${row.id}`).toString('base64url');
+}
+
+function decodeCursor(cursor: string): { id: string; created: string } {
+  const match = CURSOR.exec(Buffer.from(cursor, 'base64url').toString('utf8'));
+  if (!match?.[1] || !match[2] || !UUID.test(match[2])) {
+    throw new AppError('invalid_request', 'Invalid request: cursor.');
+  }
+  return { created: match[1], id: match[2] };
+}
 
 function payloadString(event: OutboxEvent, key: string): string {
   const payload = event.payload;

@@ -12,7 +12,12 @@ const EXPECTED: Record<
   { admin: boolean; finance: boolean; cashier: boolean; stepUp?: true }
 > = {
   'POST /v1/payment-intents': { admin: true, finance: true, cashier: true },
+  'GET /v1/payment-intents': { admin: true, finance: true, cashier: true },
   'GET /v1/payment-intents/:id': { admin: true, finance: true, cashier: true },
+  'GET /v1/tariffs/quote': { admin: true, finance: true, cashier: true },
+  'GET /v1/workspace/branches': { admin: true, finance: true, cashier: true },
+  'POST /v1/workspace/branches': { admin: true, finance: false, cashier: false },
+  'PATCH /v1/workspace/branches/:id': { admin: true, finance: false, cashier: false },
   'GET /v1/ledger/balances': { admin: true, finance: true, cashier: false },
   'GET /v1/workspace/members': { admin: true, finance: true, cashier: false },
   'POST /v1/workspace/members': { admin: true, finance: false, cashier: false, stepUp: true },

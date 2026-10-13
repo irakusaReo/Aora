@@ -31,12 +31,18 @@ import { OutboxService } from './modules/outbox/outbox.service.js';
 import {
   OpsController,
   PaymentIntentsController,
+  TariffsController,
   WebhooksController,
 } from './modules/payments/payments.controller.js';
 import { PaymentsService } from './modules/payments/payments.service.js';
 import { ReconciliationService } from './modules/payments/reconciliation.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
-import { BalancesController, MembersController } from './modules/tenancy/members.controller.js';
+import { PricingService } from './modules/pricing/pricing.service.js';
+import {
+  BalancesController,
+  BranchesController,
+  MembersController,
+} from './modules/tenancy/members.controller.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import { APP_CONFIG, type AppConfig } from './platform/config.js';
 import { Database } from './platform/database.js';
@@ -57,6 +63,7 @@ const SHARED = [
   BusinessService,
   TenancyService,
   LedgerService,
+  PricingService,
   OutboxService,
   SimulatorProvider,
   ReconciliationService,
@@ -72,9 +79,11 @@ export const CONTROLLERS = [
   HealthController,
   IdentityController,
   PaymentIntentsController,
+  TariffsController,
   WebhooksController,
   OpsController,
   MembersController,
+  BranchesController,
   BalancesController,
   ConsentController,
   CronController,

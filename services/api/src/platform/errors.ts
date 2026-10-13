@@ -19,6 +19,7 @@ export type ErrorCode =
   | 'idempotency_key_reused'
   | 'invalid_state_transition'
   | 'capability_not_supported'
+  | 'limit_exceeded'
   | 'invalid_signature'
   | 'too_many_attempts'
   | 'pin_not_set'
@@ -36,6 +37,7 @@ const STATUS: Record<ErrorCode, number> = {
   idempotency_key_reused: 409,
   invalid_state_transition: 409,
   capability_not_supported: 422,
+  limit_exceeded: 422,
   invalid_signature: 401,
   too_many_attempts: 429,
   pin_not_set: 409,
