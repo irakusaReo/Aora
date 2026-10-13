@@ -96,34 +96,17 @@ export class IdentityService {
    */
   async upsertFromProvider(user: ProviderUser): Promise<void> {
     if (this.config.deployed && isClerkTestIdentity(user.email)) return;
-    const claimed = user.phoneE164 && E164.test(user.phoneE164) ? user.phoneE164 : null;
+    // The phone number is NOT taken from the provider: AORA holds it as the
+    // financial identity, and the user sets it through `setPhone`. A provider
+    // update therefore never touches it.
     await this.db.asPlatform(async (tx) => {
-      // A phone number is a financial identity and belongs to one account. If another
-      // account already holds it, this one gets none, and the conflict is recorded
-      // for an operator; it is never silently shared or moved.
-      const holders = claimed
-        ? await tx.$queryRaw<{ id: string }[]>`
-            select id from identity.user_account
-            where phone_e164 = ${claimed} and clerk_user_id is distinct from ${user.subject}`
-        : [];
-      const phone = holders.length > 0 ? null : claimed;
-      if (claimed && !phone) {
-        await this.audit.record(tx, {
-          actorKind: 'provider',
-          action: 'identity.phone.conflict',
-          subjectType: 'provider_user',
-          subjectId: user.subject,
-          outcome: 'denied',
-          detail: { held_by_account: holders[0]?.id ?? null },
-        });
-      }
       const inserted = await tx.$queryRaw<{ id: string }[]>`
         with new_person as (
           insert into identity.person default values returning id
         )
         insert into identity.user_account
-          (person_id, clerk_user_id, email, phone_e164, display_name, provider_updated_at)
-        select id, ${user.subject}, ${user.email}, ${phone}, ${user.displayName}, ${user.updatedAt}
+          (person_id, clerk_user_id, email, display_name, provider_updated_at)
+        select id, ${user.subject}, ${user.email}, ${user.displayName}, ${user.updatedAt}
         from new_person
         on conflict (clerk_user_id) do nothing
         returning id`;
@@ -137,17 +120,79 @@ export class IdentityService {
         });
         return;
       }
-      // A phone number that changes is no longer verified (open question O-11).
       await tx.$executeRaw`
         update identity.user_account
         set email = ${user.email},
             display_name = ${user.displayName},
-            phone_verified_at = case when phone_e164 is not distinct from ${phone} then phone_verified_at end,
-            phone_e164 = ${phone},
             provider_updated_at = ${user.updatedAt}
         where clerk_user_id = ${user.subject} and status = 'active'
           and provider_updated_at <= ${user.updatedAt} and ${user.updatedAt} > 0`;
     });
+  }
+
+  /**
+   * Sets the account's phone number: its payment identifier and financial
+   * identity (brief §2.1). It is stored unverified (open question O-11). A
+   * number belongs to one account; a second claim is refused and recorded.
+   * Replacing an existing number is a sensitive change and needs a step-up.
+   */
+  async setPhone(
+    session: SessionContext,
+    phoneE164: string,
+    requestId: string,
+  ): Promise<{ phone_hint: string; phone_verified: boolean }> {
+    if (!E164.test(phoneE164)) {
+      throw new AppError(
+        'invalid_request',
+        'Enter the phone number in international format, for example +254712345678.',
+      );
+    }
+    return this.db
+      .asPlatform(async (tx) => {
+        await tx.$queryRaw`select id from identity.user_account where id = ${session.accountId}::uuid for update`;
+        const account = await tx.user_account.findUniqueOrThrow({
+          where: { id: session.accountId },
+        });
+        const changing = account.phone_e164 !== null && account.phone_e164 !== phoneE164;
+        if (changing && (!session.stepUpUntil || session.stepUpUntil <= new Date())) {
+          throw new AppError('step_up_required', 'Confirm this change with your PIN.');
+        }
+        if (account.phone_e164 !== phoneE164) {
+          const holder = await tx.user_account.findUnique({ where: { phone_e164: phoneE164 } });
+          if (holder) {
+            // Recorded for an operator; the caller learns only that the number cannot be used.
+            await this.audit.record(tx, {
+              actorKind: 'user',
+              actorAccountId: account.id,
+              action: 'identity.phone.conflict',
+              subjectType: 'user_account',
+              subjectId: account.id,
+              outcome: 'denied',
+              requestId,
+              detail: { held_by_account: holder.id },
+            });
+            return null;
+          }
+          await tx.user_account.update({
+            where: { id: account.id },
+            data: { phone_e164: phoneE164, phone_verified_at: null },
+          });
+          await this.audit.record(tx, {
+            actorKind: 'user',
+            actorAccountId: account.id,
+            action: changing ? 'identity.phone.changed' : 'identity.phone.set',
+            subjectType: 'user_account',
+            subjectId: account.id,
+            outcome: 'success',
+            requestId,
+          });
+        }
+        return { phone_hint: `•••${phoneE164.slice(-3)}`, phone_verified: false };
+      })
+      .then((result) => {
+        if (!result) throw new AppError('conflict', 'This phone number cannot be used.');
+        return result;
+      });
   }
 
   /**

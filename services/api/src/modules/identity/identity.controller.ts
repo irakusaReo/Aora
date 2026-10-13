@@ -8,6 +8,7 @@ import { IdentityService } from './identity.service.js';
 
 const pinBody = z.strictObject({ pin: z.string().max(12) });
 const stepUpBody = z.strictObject({ pin: z.string().min(1).max(12) });
+const phoneBody = z.strictObject({ phone: z.string().max(20) });
 
 // Sign-in, sign-out and account recovery are the identity provider's (ADR 0019).
 // These routes are what stays AORA's: who you are here, and the transaction PIN.
@@ -25,6 +26,7 @@ export class IdentityController {
     is_platform_operator: boolean;
     memberships: { workspace_id: string; role: string }[];
   } {
+    // Contact details are not returned here; the phone number is shown masked by PUT /v1/me/phone.
     const session = sessionOf(request);
     return {
       account_id: session.accountId,
@@ -34,6 +36,17 @@ export class IdentityController {
         role: entry.role,
       })),
     };
+  }
+
+  /** The phone number is AORA's to hold: the payment identifier, not a sign-in credential. */
+  @Put('me/phone')
+  @HttpCode(200)
+  setPhone(
+    @Body() body: unknown,
+    @Req() request: Request,
+  ): Promise<{ phone_hint: string; phone_verified: boolean }> {
+    const input = parseBody(phoneBody, body);
+    return this.identity.setPhone(sessionOf(request), input.phone, contextOf(request).requestId);
   }
 
   @Put('auth/pin')

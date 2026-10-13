@@ -73,13 +73,12 @@ describe('just-in-time provisioning', () => {
     expect(responses.every((response) => response.status === 200)).toBe(true);
     expect(new Set(responses.map((response) => response.body.account_id)).size).toBe(1);
     const row = await account(subject);
+    // The phone number is not taken from the provider's profile; the user gives it to AORA.
     expect(row).toMatchObject({
       email: 'new.person@sandbox.aora.test',
-      phone_e164: '+99911100009',
+      phone_e164: null,
       status: 'active',
     });
-    // A phone number in a profile is not a verified phone number (open question O-11).
-    expect(row?.['phone_verified_at']).toBeNull();
     expect(responses[0]?.body.memberships).toEqual([]);
   });
 
@@ -186,72 +185,86 @@ describe('Clerk webhooks', () => {
   });
 });
 
-describe('phone numbers', () => {
-  it('never lets two accounts hold the same number: the second gets none and the conflict is recorded', async () => {
-    const first = `user_${randomUUID()}`;
-    const second = `user_${randomUUID()}`;
-    const phone = [{ id: 'idn_2', phone_number: '+99933300001' }];
-    expect(
-      (
-        await clerkEvent(
-          'user.created',
-          user(first, 'p1@sandbox.aora.test', 100, { phone_numbers: phone }),
-        )
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await clerkEvent(
-          'user.created',
-          user(second, 'p2@sandbox.aora.test', 100, { phone_numbers: phone }),
-        )
-      ).status,
-    ).toBe(200);
-    expect((await account(first))?.['phone_e164']).toBe('+99933300001');
-    expect(await account(second)).toMatchObject({
-      phone_e164: null,
-      email: 'p2@sandbox.aora.test',
+describe('phone numbers (held by AORA, not by the identity provider)', () => {
+  const setPhone = (token: string, phone: string) =>
+    h.http().put('/v1/me/phone').set('Authorization', `Bearer ${token}`).send({ phone });
+  const newUser = () => {
+    const id = `user_${randomUUID()}`;
+    h.sandboxAuth.setProfile(id, {
+      email: `${id}@sandbox.aora.test`,
+      phoneE164: null,
+      displayName: 'P',
     });
-    const conflicts = await h.owner((client) =>
-      client.query(
-        `select count(*) as n from audit.audit_event where action = 'identity.phone.conflict' and subject_id = $1`,
-        [second],
-      ),
-    );
-    expect(conflicts.rows[0]?.n).toBe('1');
+    return id;
+  };
+
+  it('are not taken from the identity provider, and a provider update never erases one', async () => {
+    const id = newUser();
+    const token = h.sandboxAuth.issue(id);
+    await h.http().get('/v1/me').set('Authorization', `Bearer ${token}`);
+    expect((await account(id))?.['phone_e164']).toBeNull();
+    expect((await setPhone(token, '+99944400001')).status).toBe(200);
+    await clerkEvent('user.updated', user(id, `${id}@sandbox.aora.test`, 900));
+    expect(await account(id)).toMatchObject({
+      phone_e164: '+99944400001',
+      phone_verified_at: null,
+    });
   });
 
-  it('drops a number that is not in international format, and treats a changed number as unverified', async () => {
-    const id = `user_${randomUUID()}`;
-    await clerkEvent(
-      'user.created',
-      user(id, 'fmt@sandbox.aora.test', 100, {
-        phone_numbers: [{ id: 'idn_2', phone_number: '0712345678' }],
-      }),
+  it('must be in international format', async () => {
+    const token = h.sandboxAuth.issue(newUser());
+    for (const bad of ['0712345678', '+0712345678', '254712345678', '+2547', 'abc', '']) {
+      expect((await setPhone(token, bad)).status, bad).toBe(400);
+    }
+  });
+
+  it('belong to one account: a second claim is refused and audited, and says nothing about who holds it', async () => {
+    const first = h.sandboxAuth.issue(newUser());
+    const secondId = newUser();
+    const second = h.sandboxAuth.issue(secondId);
+    expect((await setPhone(first, '+99944400002')).status).toBe(200);
+    const refused = await setPhone(second, '+99944400002');
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).not.toMatch(/account|user_/i);
+    expect((await account(secondId))?.['phone_e164']).toBeNull();
+    const audits = await h.owner((client) =>
+      client.query(
+        `select count(*) as n from audit.audit_event where action = 'identity.phone.conflict'`,
+      ),
     );
-    expect((await account(id))?.['phone_e164']).toBeNull();
-    await clerkEvent(
-      'user.updated',
-      user(id, 'fmt@sandbox.aora.test', 200, {
-        phone_numbers: [{ id: 'idn_2', phone_number: '+99933300002' }],
-      }),
-    );
+    expect(Number(audits.rows[0]?.n)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('can be set freely the first time, but changing one needs a PIN step-up and clears verification', async () => {
+    const id = newUser();
+    const token = h.sandboxAuth.issue(id, { sessionId: `sess_${randomUUID()}` });
+    expect((await setPhone(token, '+99944400003')).status).toBe(200);
     await h.owner((client) =>
       client.query(
         `update identity.user_account set phone_verified_at = now() where clerk_user_id = $1`,
         [id],
       ),
     );
-    await clerkEvent(
-      'user.updated',
-      user(id, 'fmt@sandbox.aora.test', 300, {
-        phone_numbers: [{ id: 'idn_2', phone_number: '+99933300003' }],
-      }),
-    );
+    const blocked = await setPhone(token, '+99944400004');
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.code).toBe('step_up_required');
+    await h.stepUp(token);
+    expect((await setPhone(token, '+99944400004')).status).toBe(200);
     expect(await account(id)).toMatchObject({
-      phone_e164: '+99933300003',
+      phone_e164: '+99944400004',
       phone_verified_at: null,
     });
+  });
+
+  it('are shown back only masked', async () => {
+    const token = h.sandboxAuth.issue(newUser());
+    const response = await setPhone(token, '+99944400005');
+    expect(response.body).toMatchObject({
+      phone_hint: '•••005',
+      phone_verified: false,
+      mode: 'sandbox',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('+99944400005');
   });
 });
 

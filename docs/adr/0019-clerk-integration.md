@@ -9,7 +9,7 @@
 | Clerk | AORA |
 |---|---|
 | Proving who is signing in: email code, sessions, session tokens | Everything about what that person may do |
-| The user's account profile: email, phone, name | Persons, businesses, workspaces, memberships, roles, permissions |
+| The user's account profile: email and name (see the amendment on phone numbers) | Persons, businesses, workspaces, memberships, roles, permissions |
 | Sign-in and account UI components in web and mobile apps | Consent records, audit, tenant context for row-level security |
 | | Transaction PIN and step-up policy |
 | | Ledger and every financial record |
@@ -74,6 +74,15 @@ Web apps use Clerk's Next.js SDK; Expo apps use Clerk's Expo SDK with the sessio
 ## What is removed
 
 AORA's own one-time-code generation, `auth_challenge` and `session` tables' use, the simulated SMS sender, the simulated SMS inbox route and `SANDBOX_SMS_INBOX_TOKEN`, the sign-in rate limits (Clerk rate-limits sign-in), and the `/v1/auth/challenges`, `/v1/auth/sessions`, `/v1/auth/pin/challenges` and sign-out endpoints.
+
+## Amendment, 2026-10-13: the phone number is held by AORA, not Clerk
+
+When the instance was configured, Clerk's dashboard showed phone number for sign-up and sign-in as a paid-plan feature. The owner is not committing to a paid plan, so:
+
+- **Clerk holds email and name only.** Phone is switched off in Clerk.
+- **AORA collects and stores the phone number** as the account's payment identifier and financial identity (brief §2.1), through `PUT /v1/me/phone`. It is stored unverified (O-11), belongs to one account only (a second claim is refused and audited), and replacing an existing number needs a PIN step-up.
+- Provider sync never reads, sets or clears the phone number.
+- This narrows what Clerk processes (one less item of personal data outside AORA) and replaces the earlier statements in this ADR that Clerk's profile carries the phone.
 
 ## Alternatives considered
 

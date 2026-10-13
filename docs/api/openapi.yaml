@@ -52,6 +52,44 @@ paths:
                   status: { const: ok }
                   database: { const: ok }
                   mode: { $ref: '#/components/schemas/Mode' }
+  /v1/me/phone:
+    put:
+      tags: [Auth]
+      operationId: setPhone
+      summary: Set the account's phone number (payment identifier)
+      description: >
+        The phone number is the account's payment identifier and financial
+        identity. It is held by AORA, not by the identity provider, and is not a
+        sign-in credential. It is stored unverified. A number can belong to one
+        account only. Setting it the first time needs no step-up; replacing an
+        existing number needs a PIN step-up.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone]
+              properties:
+                phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+      responses:
+        '200':
+          description: Phone number stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [phone_hint, phone_verified, mode]
+                properties:
+                  phone_hint: { type: string, description: Last three digits, masked. }
+                  phone_verified: { type: boolean }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /v1/auth/pin:
     put:
       tags: [Auth]

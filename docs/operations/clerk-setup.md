@@ -13,7 +13,7 @@ How to create the Clerk instance AORA uses for sign-in. **Development instance o
 2. **[you] Choose the sign-in options.** In the application's sign-up and sign-in settings **(to verify)**:
    - Email address: **required**, verified by **email verification code**. This is the sign-in method.
    - Password: **off**.
-   - Phone number: **on and required** as a profile field, but **not** as a sign-in method and with SMS verification **off** (open question O-11).
+   - Phone number: **off**. Clerk charges for phone on sign-up and sign-in, so AORA collects the phone number itself (ADR 0019 amendment).
    - Name: on (first and last name).
    - Social sign-in providers: off.
 
