@@ -22,6 +22,11 @@ export function createIntent(
     .send(body);
 }
 
+/** The ids of a list response, in the order returned. */
+export function ids(response: Response): string[] {
+  return (response.body.data as { id: string }[]).map((row) => row.id);
+}
+
 export function getIntent(h: Harness, caller: Caller, id: string): Promise<Response> {
   return h
     .http()

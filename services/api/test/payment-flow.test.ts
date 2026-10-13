@@ -66,14 +66,15 @@ describe('end to end: sign in, intent, webhook, ledger, reconciliation', () => {
       'succeeded',
     ]);
     expect(await ledgerFor(h, id)).toEqual({ entries: 1, credited: '15000' });
-    expect(BigInt(await merchantBalance()) - before).toBe(15000n);
+    // Gross 15000 less the sandbox tariff's 1.00 % fee.
+    expect(BigInt(await merchantBalance()) - before).toBe(14850n);
 
     const postings = await h.owner((client) =>
       client.query(
         `select a.type, a.tenant_id, p.direction, p.amount, p.mode
          from ledger.posting p join ledger.account a on a.id = p.account_id
          join ledger.journal_entry e on e.id = p.entry_id
-         where e.operation_id = $1 order by p.direction desc`,
+         where e.operation_id = $1 order by p.direction desc, p.amount desc`,
         [id],
       ),
     );
@@ -89,9 +90,10 @@ describe('end to end: sign in, intent, webhook, ledger, reconciliation', () => {
         type: 'merchant_collections_pending',
         tenant_id: h.seed.tenantA,
         direction: 'credit',
-        amount: '15000',
+        amount: '14850',
         mode: 'sandbox',
       },
+      { type: 'fee_revenue', tenant_id: null, direction: 'credit', amount: '150', mode: 'sandbox' },
     ]);
     expect(await exceptionTypes(h, id)).toEqual([]);
   });
