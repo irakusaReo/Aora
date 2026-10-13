@@ -89,13 +89,17 @@ describe('fee calculation (pure, integer minor units)', () => {
         fc.bigInt({ min: 1n, max: 9_223_372_036_854_775_807n }),
         fc.constantFrom('half_up' as const, 'down' as const),
         (raw, amount, rounding) => {
-          const bands = raw.map((entry, index) => ({
-            minAmount: index === 0 ? 0n : entry.minAmount,
-            bps: entry.bps,
-            flatAmount: entry.flatAmount,
-            minFee: entry.minFee,
-            maxFee: entry.cap === null ? null : entry.minFee + entry.cap,
-          }));
+          // One band per starting amount, as the database's unique constraint guarantees.
+          const starts = new Set<bigint>();
+          const bands = raw
+            .map((entry, index) => ({
+              minAmount: index === 0 ? 0n : entry.minAmount,
+              bps: entry.bps,
+              flatAmount: entry.flatAmount,
+              minFee: entry.minFee,
+              maxFee: entry.cap === null ? null : entry.minFee + entry.cap,
+            }))
+            .filter((entry) => !starts.has(entry.minAmount) && starts.add(entry.minAmount));
           const fee = computeFee(bands, rounding, amount);
           const applied = [...bands]
             .sort((a, b) => (a.minAmount < b.minAmount ? 1 : -1))
@@ -106,7 +110,7 @@ describe('fee calculation (pure, integer minor units)', () => {
           if (applied?.maxFee != null) expect(fee <= applied.maxFee).toBe(true);
         },
       ),
-      { numRuns: 500 },
+      { numRuns: 2000 },
     );
   });
 });
