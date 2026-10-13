@@ -26,45 +26,12 @@ async function members(token: string, workspace: string) {
 }
 
 describe('member management', () => {
-  it('lists only the caller’s workspace, without full phone numbers', async () => {
+  it('lists only the caller’s workspace, without full phone numbers or email addresses', async () => {
     const list = await members(adminA, h.seed.tenantA);
+    expect(JSON.stringify(list)).not.toContain('adminA@sandbox.aora.test');
     expect(list.map((m) => m.role).sort()).toEqual(['admin', 'cashier', 'finance']);
     expect(JSON.stringify(list)).not.toContain('+9990000000');
     expect(await members(adminB, h.seed.tenantB)).toHaveLength(1);
-  });
-
-  it('requires a step-up to add a member', async () => {
-    const fresh = await h.signIn('adminA');
-    const response = await h
-      .http()
-      .post('/v1/workspace/members')
-      .set(call(fresh, h.seed.tenantA))
-      .send({ phone: '+99900000050', role: 'cashier' });
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe('step_up_required');
-  });
-
-  it('adds a member, creating the account if the number is new, and audits it', async () => {
-    const response = await h
-      .http()
-      .post('/v1/workspace/members')
-      .set(call(adminA, h.seed.tenantA))
-      .send({ phone: '+99900000050', role: 'cashier' });
-    expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ role: 'cashier', status: 'active', mode: 'sandbox' });
-    const again = await h
-      .http()
-      .post('/v1/workspace/members')
-      .set(call(adminA, h.seed.tenantA))
-      .send({ phone: '+99900000050', role: 'finance' });
-    expect(again.status).toBe(409);
-    const audit = await h.owner((client) =>
-      client.query(
-        `select count(*) as n from audit.audit_event where action = 'tenancy.member.added' and tenant_id = $1`,
-        [h.seed.tenantA],
-      ),
-    );
-    expect(audit.rows[0]?.n).toBe('1');
   });
 
   it("cannot see, change or add to another merchant's workspace", async () => {
@@ -83,9 +50,9 @@ describe('member management', () => {
     expect(viaTheirWorkspace.status).toBe(403);
     const add = await h
       .http()
-      .post('/v1/workspace/members')
+      .post('/v1/workspace/invitations')
       .set(call(adminB, h.seed.tenantA))
-      .send({ phone: '+99900000004', role: 'admin' });
+      .send({ email: 'adminB@sandbox.aora.test', role: 'admin' });
     expect(add.status).toBe(403);
     expect((await members(adminA, h.seed.tenantA)).find((m) => m.id === victim?.id)?.role).toBe(
       'cashier',

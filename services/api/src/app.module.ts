@@ -20,10 +20,8 @@ import { IdentityController } from './modules/identity/identity.controller.js';
 import { IdentityService } from './modules/identity/identity.service.js';
 import { CronController, CronGuard, DrainAfterResponseInterceptor } from './modules/jobs/jobs.js';
 import { EMAIL_CHANNEL, SimulatedEmailChannel } from './modules/notifications/channel.js';
-import {
-  NotificationsController,
-  NotificationsService,
-} from './modules/notifications/notifications.service.js';
+import { NotificationsController } from './modules/notifications/notifications.controller.js';
+import { NotificationsService } from './modules/notifications/notifications.service.js';
 import { ResendEmailChannel } from './modules/notifications/resend-channel.js';
 import { ProviderWebhooksController } from './modules/webhooks/provider-webhooks.controller.js';
 import { LedgerService } from './modules/ledger/ledger.service.js';
@@ -37,11 +35,20 @@ import {
 import { PaymentsService } from './modules/payments/payments.service.js';
 import { ReconciliationService } from './modules/payments/reconciliation.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
+import {
+  OnboardingController,
+  OnboardingReviewsController,
+} from './modules/onboarding/onboarding.controller.js';
+import { OnboardingService } from './modules/onboarding/onboarding.service.js';
+import { OpsLookupController } from './modules/ops/ops.controller.js';
 import { PricingService } from './modules/pricing/pricing.service.js';
 import {
   BalancesController,
   BranchesController,
+  InvitationsController,
   MembersController,
+  MyInvitationsController,
+  WorkspaceController,
 } from './modules/tenancy/members.controller.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import { APP_CONFIG, type AppConfig } from './platform/config.js';
@@ -69,6 +76,7 @@ const SHARED = [
   ReconciliationService,
   PaymentsService,
   IdentityService,
+  OnboardingService,
   SessionGuard,
   WorkspaceGuard,
   OperatorGuard,
@@ -83,7 +91,13 @@ export const CONTROLLERS = [
   WebhooksController,
   OpsController,
   MembersController,
+  InvitationsController,
+  MyInvitationsController,
+  WorkspaceController,
   BranchesController,
+  OnboardingController,
+  OnboardingReviewsController,
+  OpsLookupController,
   BalancesController,
   ConsentController,
   CronController,
@@ -131,13 +145,7 @@ export class AppModule implements NestModule {
   /** What must happen for every new workspace beyond the tenancy rows themselves. */
   static workspaceHook(): WorkspaceHook {
     const ledger = new LedgerService();
-    return async (tx, tenantId) => {
-      await ledger.openAccount(tx, {
-        tenantId,
-        type: 'merchant_collections_pending',
-        assetCode: 'KES',
-      });
-    };
+    return (tx, tenantId) => ledger.openWorkspaceAccounts(tx, tenantId);
   }
 
   configure(consumer: MiddlewareConsumer): void {

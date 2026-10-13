@@ -42,7 +42,14 @@ export function locationKey(location: BusinessLocation): string {
 export class BusinessService {
   async createRegistered(
     tx: Tx,
-    input: { name: string; country: string; registrationType: string; registrationValue: string },
+    input: {
+      name: string;
+      country: string;
+      registrationType: string;
+      registrationValue: string;
+      /** Whether the identifier was checked against its registry. Unverified never matches automatically. */
+      verified?: boolean;
+    },
   ): Promise<string> {
     const business = await tx.business.create({
       data: {
@@ -58,6 +65,7 @@ export class BusinessService {
         type: input.registrationType,
         country: input.country,
         value_normalised: normaliseIdentifier(input.registrationValue),
+        verified_at: input.verified ? new Date() : null,
       },
     });
     return business.id;

@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   'ledger.read': ['admin', 'finance'],
   'branch.read': ['admin', 'finance', 'cashier'],
   'branch.manage': ['admin'],
+  'workspace.read': ['admin', 'finance', 'cashier'],
   'member.read': ['admin', 'finance'],
   'member.manage': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;

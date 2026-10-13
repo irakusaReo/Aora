@@ -395,6 +395,8 @@ paths:
       operationId: listReconciliationExceptions
       summary: List reconciliation exceptions, newest first
       security: [{ session: [] }]
+      parameters:
+        - { name: status, in: query, schema: { enum: [open, resolved] } }
       responses:
         '200':
           description: Exceptions
@@ -448,34 +450,6 @@ paths:
                   mode: { $ref: '#/components/schemas/Mode' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
-    post:
-      tags: [Workspace]
-      operationId: addMember
-      summary: Add a member by phone number
-      description: 'Permission: `member.manage` (admin). Requires a PIN step-up.'
-      security: [{ session: [] }]
-      parameters: [{ $ref: '#/components/parameters/Workspace' }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [phone, role]
-              properties:
-                phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
-                role: { $ref: '#/components/schemas/Role' }
-      responses:
-        '201':
-          description: Member added
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Member' }
-        '400': { $ref: '#/components/responses/Error' }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
   /v1/workspace/members/{id}:
     patch:
       tags: [Workspace]
@@ -590,6 +564,343 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace:
+    get:
+      tags: [Workspace]
+      operationId: getWorkspace
+      summary: The workspace, its tier and what the tier allows
+      description: >
+        Permission: `workspace.read` (admin, finance, cashier). Limits are sandbox values.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/workspace/invitations:
+    get:
+      tags: [Workspace]
+      operationId: listInvitations
+      summary: List the workspace's invitations
+      description: >
+        Permission: `member.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Invitation' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Workspace]
+      operationId: createInvitation
+      summary: Invite a person by email address
+      description: >
+        Permission: `member.manage` (admin). Requires a PIN step-up. Nothing is granted until the person signs in with that address and accepts. No email can accept on their behalf.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, role]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                role: { $ref: '#/components/schemas/Role' }
+                branch_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Invitation created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/invitations/{id}:
+    delete:
+      tags: [Workspace]
+      operationId: revokeInvitation
+      summary: Revoke an open invitation
+      description: >
+        Permission: `member.manage` (admin). Requires a PIN step-up.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/me/invitations:
+    get:
+      tags: [Identity]
+      operationId: listMyInvitations
+      summary: Open invitations addressed to the signed-in person's email
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/MyInvitation' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/me/invitations/{id}/accept:
+    post:
+      tags: [Identity]
+      operationId: acceptInvitation
+      summary: Accept an invitation
+      description: >
+        Only the invited address can accept. Accepting twice changes nothing. A revoked, expired or foreign invitation answers 404.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [workspace_id, role], properties: { workspace_id: { type: string, format: uuid }, role: { $ref: '#/components/schemas/Role' }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/onboarding/applications:
+    get:
+      tags: [Onboarding]
+      operationId: listApplications
+      summary: The signed-in person's own applications
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/OnboardingApplication' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Onboarding]
+      operationId: createApplication
+      summary: Apply to bring a business onto AORA
+      description: >
+        Matched against existing businesses (ADR 0012). A clear new business is `approved` at once and gets a workspace with the applicant as admin. A possible duplicate is `needs_review` and creates nothing. A business that is already onboarded is `rejected`: join it by invitation. Needs a phone number on the account (`phone_required`).
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, name, country]
+              properties:
+                kind: { enum: [registered, unregistered] }
+                name: { type: string, minLength: 1, maxLength: 120 }
+                country: { type: string, pattern: '^[A-Z]{2}$' }
+                registration:
+                  description: Required when kind is registered.
+                  type: object
+                  required: [type, value]
+                  properties:
+                    type: { type: string, examples: [sandbox_registration_number] }
+                    value: { type: string, maxLength: 60 }
+                location:
+                  description: Required when kind is unregistered.
+                  type: object
+                  required: [area, locality, place]
+                  properties:
+                    area: { type: string }
+                    locality: { type: string }
+                    place: { type: string }
+                sandbox_kyb:
+                  description: Sandbox only. Scripts the answer of the sandbox verification adapter.
+                  enum: [verified, unverified]
+      responses:
+        '201':
+          description: Application decided or queued for review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingApplication' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/onboarding/applications/{id}:
+    get:
+      tags: [Onboarding]
+      operationId: getApplication
+      summary: Status of one of the signed-in person's applications
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingApplication' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/ops/onboarding-reviews:
+    get:
+      tags: [Operations]
+      operationId: listOnboardingReviews
+      summary: Applications waiting for a duplicate review
+      description: >
+        Operator only.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/OnboardingApplication' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/onboarding-reviews/{id}/decision:
+    post:
+      tags: [Operations]
+      operationId: decideOnboardingReview
+      summary: Decide a possible duplicate
+      description: >
+        Operator only. `distinct` onboards the applicant as a new business; `same` rejects the application. Never a merge. Audited; final.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [outcome, reason]
+              properties:
+                outcome: { enum: [distinct, same] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingApplication' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/ops/reconciliation-exceptions/{id}/resolution:
+    post:
+      tags: [Operations]
+      operationId: resolveReconciliationException
+      summary: Resolve an exception with a reason
+      description: >
+        Operator only. Records a judgement; changes no payment, balance or journal entry. Audited; final. If the difference remains, the next run opens the exception again.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [resolution, reason]
+              properties:
+                resolution: { enum: [corrected, accepted, false_positive] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationException' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/ops/accounts:
+    get:
+      tags: [Operations]
+      operationId: lookupAccounts
+      summary: Find a user by id, email or phone number
+      description: >
+        Operator only. Exactly one of the three. Contact details are returned masked, and the lookup is audited.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: query, schema: { type: string, format: uuid } }
+        - { name: email, in: query, schema: { type: string, format: email } }
+        - { name: phone, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/workspaces:
+    get:
+      tags: [Operations]
+      operationId: lookupWorkspaces
+      summary: Find a merchant workspace by id or business name
+      description: >
+        Operator only.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: query, schema: { type: string, format: uuid } }
+        - { name: name, in: query, schema: { type: string, minLength: 2 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/audit-events:
+    get:
+      tags: [Operations]
+      operationId: listAuditEvents
+      summary: Read the audit trail, newest first
+      description: >
+        Operator only.
+      security: [{ session: [] }]
+      parameters:
+        - { name: workspace_id, in: query, schema: { type: string, format: uuid } }
+        - { name: subject_id, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
   /v1/ledger/balances:
     get:
       tags: [Workspace]
@@ -848,7 +1159,70 @@ components:
         role: { $ref: '#/components/schemas/Role' }
         status: { enum: [active, removed] }
         branch_id: { type: [string, 'null'], format: uuid }
+        display_name: { type: [string, 'null'] }
+        email_masked: { type: string, description: First letter and domain of the member's email address. }
         phone_hint: { type: string, description: Last three digits of the member's phone number. }
+        mode: { $ref: '#/components/schemas/Mode' }
+    Workspace:
+      type: object
+      required: [id, name, kind, country, tier, limits]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { enum: [registered, unregistered] }
+        country: { type: string }
+        tier: { type: string }
+        limits:
+          type: array
+          items:
+            type: object
+            required: [currency, per_transaction_max_minor, daily_collection_max_minor, daily_payout_max_minor]
+            properties:
+              currency: { type: string }
+              per_transaction_max_minor: { $ref: '#/components/schemas/AmountMinor' }
+              daily_collection_max_minor: { $ref: '#/components/schemas/AmountMinor' }
+              daily_payout_max_minor: { $ref: '#/components/schemas/FeeMinor' }
+        mode: { $ref: '#/components/schemas/Mode' }
+    Invitation:
+      type: object
+      required: [id, email, role, branch_id, status, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        branch_id: { type: [string, 'null'], format: uuid }
+        status: { enum: [pending, accepted, revoked, expired] }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    MyInvitation:
+      type: object
+      required: [id, workspace_id, workspace_name, role, expires_at]
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        workspace_name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        expires_at: { type: string, format: date-time }
+    OnboardingApplication:
+      type: object
+      required: [id, status, kind, name, country, workspace_id, decision_reason, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          description: |
+            - `submitted`: received, not yet matched.
+            - `needs_review`: a possible duplicate; an operator decides. Nothing has been created.
+            - `approved`: the business, its workspace and the applicant's admin membership exist.
+            - `rejected`: final; `decision_reason` says why.
+          enum: [submitted, needs_review, approved, rejected]
+        kind: { enum: [registered, unregistered] }
+        name: { type: string }
+        country: { type: string }
+        workspace_id: { type: [string, 'null'], format: uuid }
+        decision_reason: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
         mode: { $ref: '#/components/schemas/Mode' }
     Branch:
       type: object
@@ -942,7 +1316,11 @@ components:
             - stuck_status_unknown
             - ledger_mismatch
             - provider_result_conflict
-        status: { enum: [open] }
+        status: { enum: [open, resolved] }
+        resolution: { enum: [corrected, accepted, false_positive, null] }
+        resolution_reason: { type: [string, 'null'] }
+        resolved_by: { type: [string, 'null'], format: uuid }
+        resolved_at: { type: [string, 'null'], format: date-time }
         workspace_id: { type: [string, 'null'], format: uuid }
         subject_type: { type: string }
         subject_ref: { type: string }
@@ -973,6 +1351,7 @@ components:
                 - invalid_signature
                 - too_many_attempts
                 - pin_not_set
+                - phone_required
                 - conflict
                 - internal_error
             message: { type: string }

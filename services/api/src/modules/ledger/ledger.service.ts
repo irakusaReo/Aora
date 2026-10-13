@@ -66,6 +66,15 @@ export class LedgerService {
     return account.id;
   }
 
+  /** The accounts every new workspace needs before it can collect. */
+  async openWorkspaceAccounts(tx: Tx, tenantId: string): Promise<void> {
+    await this.openAccount(tx, {
+      tenantId,
+      type: 'merchant_collections_pending',
+      assetCode: 'KES',
+    });
+  }
+
   async findAccount(
     tx: Tx,
     input: { tenantId: string | null; type: AccountType; assetCode: string; qualifier?: string },

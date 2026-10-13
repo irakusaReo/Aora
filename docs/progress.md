@@ -26,12 +26,13 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 ## Phase 3 checkpoints
 
 - **3A-1 done and on `main`:** versioned tariffs with gross, fee and net on every collection ([ADR 0021](adr/0021-fees-settlement-and-payout-ledger.md)); tier limits; branches; cashier limited to their branch; collection list with cursor; fee quote. Migration `…000600_tariffs_branches` (expand-only, applied to staging 2026-10-13). 258 tests pass.
+- **3A-2 done:** merchant onboarding with ADR 0012 matching (exact match never hands a workspace to a second applicant; possible duplicates wait in an operator review queue and create nothing); staff invitations by email ([ADR 0019](adr/0019-clerk-integration.md) addendum); operator API for exceptions (resolved with an audited reason), user and merchant lookup, and the audit trail; `GET /v1/workspace`. Migration `…000700_onboarding` (expand-only). 297 tests pass. Exception types proven end to end: six of eight (`stuck_status_unknown` and `ledger_mismatch` are covered by their own Phase 1 tests, not by the resolution test).
 - **Incident, 2026-10-13:** the unfinished 3A-1 working tree reached `main` through pull request #3 while CI was red, so staging ran code whose migration had not been applied (collections and reconciliation returned 500). Fixed by applying `…000600_tariffs_branches` to staging by hand (expand-only) and merging the completed checkpoint (pull request #4). Staging health, all three jobs and `pnpm neon:verify staging` pass. Lesson: nothing merges to `main` while CI is red, and never before its migration is on staging.
 - **GitHub Actions secrets** `STAGING_DATABASE_URL_OWNER` and `STAGING_CRON_SECRET` exist (2026-10-13). `Migrate staging` passes. The scheduled-jobs workflow passes its outbox and simulator steps; its reconciliation step failed only because of the incident above.
 - **Daraja credentials: not in `.env.local` yet** (checked 2026-10-13: none of the `DARAJA_*` names are present). `DARAJA_CALLBACK_SECRET` and `WEBHOOK_SIGNING_PRIVATE_KEY` are generated locally (`pnpm secrets:generate`); not yet on Vercel. What Daraja's documentation says is in [providers/daraja.md](providers/daraja.md).
 - **Owner decisions of 2026-10-13 (reply to the Phase 2 report):** O-11 confirmed-recipient rule approved, plus a configurable cap and cooling-off period for the first payout to a newly confirmed destination; Daraja callback token plus status query approved, with an IP allow-list as an extra layer and tokens redacted from logs (with a test); invitations by email approved; retired tables (`auth_challenge`, `session`, `sim_sms`) to be dropped in a contract migration this phase; sign-in codes to go back to Clerk delivery (Resend stays for alerts and reminders). **Not yet carried out, awaiting the owner's confirmation in chat:** the Clerk delivery switch, the certificate download, the two Vercel projects, copying variables to Vercel, and the operator flag.
 - **Vercel Deployment Checks:** Vercel's documentation (vercel.com/docs/deployment-checks, last updated 2026-08-11, read 2026-10-13) states no plan restriction and lists two prerequisites: the project linked through Vercel for GitHub, and automatic aliasing for production turned on. Whether the Hobby dashboard offers it is unconfirmed. Nothing configured.
-- **Next:** 3A-2 onboarding with ADR 0012 matching and review queue, staff invitation by email, operator API. Then 3A-3 web apps, 3B Daraja, 3C settlement, payouts and refunds, 3D developer API.
+- **Next:** 3A-3 web apps (`packages/api-client`, `packages/ui`, `apps/kony-web`, `apps/internal-ops`). Then 3B Daraja, 3C settlement, payouts and refunds, 3D developer API.
 
 ## Next (carried from Phase 2)
 
@@ -54,7 +55,6 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Known gaps carried forward
 
-- Members are invited by phone number; should become invitation by email (Phase 3).
 - The owner's staging account has a random PIN that was not recorded; reset it by signing in again once an app exists.
 - Whether Expo session tokens lack the `azp` claim is unverified (ADR 0019); confirm with the mobile apps.
 - `seed.ts` and `worker.ts` use top-level await (local only; never the Vercel entry file).

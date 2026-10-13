@@ -20,13 +20,14 @@ const setPin = (token: string, pin: string) =>
   h.http().put('/v1/auth/pin').set(auth(token)).send({ pin });
 const stepUp = (token: string, pin: string) =>
   h.http().post('/v1/auth/step-up').set(auth(token)).send({ pin });
-const addMember = (token: string, phone: string) =>
+// Any step-up-protected action will do; inviting a member is one.
+const addMember = (token: string, suffix: string) =>
   h
     .http()
-    .post('/v1/workspace/members')
+    .post('/v1/workspace/invitations')
     .set(auth(token))
     .set('Aora-Workspace-Id', h.seed.tenantA)
-    .send({ phone, role: 'cashier' });
+    .send({ email: `pin-test-${suffix.replace(/\D/g, '')}@people.aora.test`, role: 'cashier' });
 
 describe('PIN', () => {
   it('cannot be used for step-up before it is set', async () => {

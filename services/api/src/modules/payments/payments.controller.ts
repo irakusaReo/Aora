@@ -43,6 +43,11 @@ const listQuery = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().min(1).max(200).optional(),
 });
+const exceptionQuery = z.strictObject({ status: z.enum(['open', 'resolved']).optional() });
+const resolutionBody = z.strictObject({
+  resolution: z.enum(['corrected', 'accepted', 'false_positive']),
+  reason: z.string().trim().min(10).max(500),
+});
 const quoteQuery = z.strictObject({
   operation: z.literal('collection'),
   rail: z.string().regex(RAIL),
@@ -170,8 +175,26 @@ export class OpsController {
   }
 
   @Get('reconciliation-exceptions')
-  async list(): Promise<{ data: ExceptionView[] }> {
-    return { data: await this.reconciliation.listExceptions() };
+  async list(@Query() query: unknown): Promise<{ data: ExceptionView[] }> {
+    const input = parseBody(exceptionQuery, query);
+    return { data: await this.reconciliation.listExceptions(input.status) };
+  }
+
+  /** An operator's judgement, with a reason. Audited; final; moves no money. */
+  @Post('reconciliation-exceptions/:id/resolution')
+  @HttpCode(200)
+  resolve(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: Request,
+  ): Promise<ExceptionView> {
+    const input = parseBody(resolutionBody, body);
+    if (!UUID.test(id)) throw new AppError('not_found', 'Reconciliation exception not found.');
+    return this.reconciliation.resolve(
+      { accountId: sessionOf(request).accountId, requestId: contextOf(request).requestId },
+      id,
+      input,
+    );
   }
 
   @Get('reconciliation-exceptions/:id')
