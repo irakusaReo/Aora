@@ -59,6 +59,7 @@ export interface AppConfig {
   };
   readonly rateLimits: Readonly<Record<RateLimitName, { limit: number; windowSeconds: number }>>;
   readonly jobs: { readonly budgetMs: number; readonly leaseSeconds: number };
+  readonly invitations: { readonly ttlHours: number };
   readonly payments: {
     readonly statusInquiryDelaySeconds: number;
     readonly maxStatusInquiries: number;
@@ -151,6 +152,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     },
     rateLimits: { pin_step_up_account: { limit: 10, windowSeconds: 15 * 60 } },
     jobs: { budgetMs: 45_000, leaseSeconds: 120 },
+    invitations: { ttlHours: 7 * 24 },
     payments: {
       statusInquiryDelaySeconds: 30,
       maxStatusInquiries: 5,

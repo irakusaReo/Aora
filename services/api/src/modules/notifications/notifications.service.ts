@@ -1,18 +1,6 @@
-import {
-  Controller,
-  Get,
-  Inject,
-  Injectable,
-  Logger,
-  type OnModuleInit,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
-import type { Request } from 'express';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { Database, type Tx } from '../../platform/database.js';
-import { sessionOf } from '../../platform/http.js';
-import { SessionGuard } from '../identity/guards.js';
 import { type OutboxEvent, OutboxService } from '../outbox/outbox.service.js';
 import { EMAIL_CHANNEL, type EmailChannel } from './channel.js';
 import { maskEmail, renderNotification, renderSignInEmail } from './templates.js';
@@ -233,15 +221,3 @@ export interface NotificationView {
 
 class DeliveryUnknown extends Error {}
 export class SignInEmailFailed extends Error {}
-
-@Controller('v1/notifications')
-@UseGuards(SessionGuard)
-export class NotificationsController {
-  constructor(@Inject(NotificationsService) private readonly notifications: NotificationsService) {}
-
-  /** What AORA has sent the signed-in person, and what became of it. */
-  @Get()
-  async list(@Req() request: Request): Promise<{ data: NotificationView[] }> {
-    return { data: await this.notifications.listFor(sessionOf(request).accountId) };
-  }
-}

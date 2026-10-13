@@ -21,6 +21,9 @@ const COPY: Record<string, Copy> = {
     'payment.received.subject': 'Payment received: {amount}',
     'payment.received.body': 'A payment of {amount} was received. Reference ending {reference}.',
     'payment.received.where': 'Open AORA and sign in to see the details.',
+    'workspace.invitation.subject': 'You have been invited to {workspace}',
+    'workspace.invitation.body':
+      'You have been invited to join {workspace} on AORA as {role}. Open AORA and sign in with this email address to accept or ignore the invitation.',
     'sign_in.footer': 'If you did not try to sign in, you can ignore this email.',
   },
 };
@@ -88,6 +91,17 @@ const TEMPLATES: Record<string, (params: Params, locale: string) => RenderedEmai
       copy(locale, 'payment.received.subject', values),
       `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
       `${body}\n${where}`,
+    );
+  },
+  // Staff invitation. Params: workspace_name, role. Carries nothing that could accept it.
+  'workspace.invitation': (params, locale) => {
+    const values = { workspace: text(params, 'workspace_name'), role: text(params, 'role') };
+    const body = copy(locale, 'workspace.invitation.body', values);
+    return layout(
+      locale,
+      copy(locale, 'workspace.invitation.subject', values),
+      `<p>${escapeHtml(body)}</p>`,
+      body,
     );
   },
 };

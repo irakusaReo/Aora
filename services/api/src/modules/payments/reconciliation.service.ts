@@ -37,7 +37,13 @@ export interface ExceptionView {
   readonly detail: Prisma.JsonValue;
   readonly run_id: string | null;
   readonly created_at: string;
+  readonly resolution: string | null;
+  readonly resolution_reason: string | null;
+  readonly resolved_by: string | null;
+  readonly resolved_at: string | null;
 }
+
+export type Resolution = 'corrected' | 'accepted' | 'false_positive';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -214,11 +220,57 @@ export class ReconciliationService {
     });
   }
 
-  async listExceptions(): Promise<ExceptionView[]> {
+  async listExceptions(status?: 'open' | 'resolved'): Promise<ExceptionView[]> {
     const rows = await this.db.asPlatform((tx) =>
-      tx.reconciliation_exception.findMany({ orderBy: { created_at: 'desc' }, take: 200 }),
+      tx.reconciliation_exception.findMany({
+        ...(status ? { where: { status } } : {}),
+        orderBy: { created_at: 'desc' },
+        take: 200,
+      }),
     );
     return rows.map(toView);
+  }
+
+  /**
+   * Records an operator's judgement on an exception, with a reason. It changes
+   * no intent, balance or journal entry: a correction to the books is its own
+   * compensating entry, made elsewhere and referred to in the reason. If the
+   * difference is still there, the next run opens the exception again.
+   */
+  async resolve(
+    actor: { accountId: string; requestId: string },
+    id: string,
+    input: { resolution: Resolution; reason: string },
+  ): Promise<ExceptionView> {
+    return this.db.asPlatform(async (tx) => {
+      const updated = await tx.reconciliation_exception.updateMany({
+        where: { id, status: 'open' },
+        data: {
+          status: 'resolved',
+          resolved_at: new Date(),
+          resolved_by: actor.accountId,
+          resolution: input.resolution,
+          resolution_reason: input.reason,
+        },
+      });
+      const row = await tx.reconciliation_exception.findUnique({ where: { id } });
+      if (!row) throw new AppError('not_found', 'Reconciliation exception not found.');
+      if (updated.count !== 1) {
+        throw new AppError('invalid_state_transition', 'This exception is already resolved.');
+      }
+      await this.audit.record(tx, {
+        tenantId: row.tenant_id,
+        actorKind: 'user',
+        actorAccountId: actor.accountId,
+        action: 'payments.reconciliation.exception_resolved',
+        subjectType: 'reconciliation_exception',
+        subjectId: row.id,
+        outcome: 'success',
+        requestId: actor.requestId,
+        detail: { type: row.type, resolution: input.resolution, reason: input.reason },
+      });
+      return toView(row);
+    });
   }
 
   async getException(id: string): Promise<ExceptionView> {
@@ -241,5 +293,9 @@ function toView(row: Prisma.reconciliation_exceptionGetPayload<object>): Excepti
     detail: row.detail,
     run_id: row.run_id,
     created_at: row.created_at.toISOString(),
+    resolution: row.resolution,
+    resolution_reason: row.resolution_reason,
+    resolved_by: row.resolved_by,
+    resolved_at: row.resolved_at?.toISOString() ?? null,
   };
 }

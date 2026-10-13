@@ -33,19 +33,21 @@ model audit_event {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model business {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  kind                String
-  name                String
-  name_normalised     String
-  country             String
-  owner_person_id     String?               @db.Uuid
-  location            Json?
-  location_key        String?
-  mode                String                @default("sandbox")
-  created_at          DateTime              @default(now()) @db.Timestamptz(6)
-  person              person?               @relation(fields: [owner_person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  business_identifier business_identifier[]
-  workspace           workspace[]
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind                   String
+  name                   String
+  name_normalised        String
+  country                String
+  owner_person_id        String?                  @db.Uuid
+  location               Json?
+  location_key           String?
+  mode                   String                   @default("sandbox")
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  person                 person?                  @relation(fields: [owner_person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business_identifier    business_identifier[]
+  match_decision         match_decision[]
+  onboarding_application onboarding_application[]
+  workspace              workspace[]
 
   @@unique([owner_person_id, name_normalised, location_key], map: "business_unregistered_identity", where: raw("(kind = 'unregistered'::text)"))
   @@schema("business")
@@ -107,32 +109,37 @@ model session {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model user_account {
-  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  person_id            String           @db.Uuid
-  phone_e164           String?          @unique
-  is_platform_operator Boolean          @default(false)
-  mode                 String           @default("sandbox")
-  created_at           DateTime         @default(now()) @db.Timestamptz(6)
-  pin_hash             String?
-  pin_set_at           DateTime?        @db.Timestamptz(6)
-  pin_failed_attempts  Int              @default(0)
-  pin_locked_until     DateTime?        @db.Timestamptz(6)
-  clerk_user_id        String?          @unique
-  email                String?
-  display_name         String?
-  phone_verified_at    DateTime?        @db.Timestamptz(6)
-  status               String           @default("active")
-  closed_at            DateTime?        @db.Timestamptz(6)
-  provider_updated_at  BigInt           @default(0)
-  audit_event          audit_event[]
-  consent_record       consent_record[]
-  auth_challenge       auth_challenge[]
-  session              session[]
-  step_up              step_up[]
-  person               person           @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  notification         notification[]
-  payment_intent       payment_intent[]
-  membership           membership[]
+  id                                                                               String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  person_id                                                                        String                     @db.Uuid
+  phone_e164                                                                       String?                    @unique
+  is_platform_operator                                                             Boolean                    @default(false)
+  mode                                                                             String                     @default("sandbox")
+  created_at                                                                       DateTime                   @default(now()) @db.Timestamptz(6)
+  pin_hash                                                                         String?
+  pin_set_at                                                                       DateTime?                  @db.Timestamptz(6)
+  pin_failed_attempts                                                              Int                        @default(0)
+  pin_locked_until                                                                 DateTime?                  @db.Timestamptz(6)
+  clerk_user_id                                                                    String?                    @unique
+  email                                                                            String?
+  display_name                                                                     String?
+  phone_verified_at                                                                DateTime?                  @db.Timestamptz(6)
+  status                                                                           String                     @default("active")
+  closed_at                                                                        DateTime?                  @db.Timestamptz(6)
+  provider_updated_at                                                              BigInt                     @default(0)
+  audit_event                                                                      audit_event[]
+  onboarding_application_onboarding_application_applicant_account_idTouser_account onboarding_application[]   @relation("onboarding_application_applicant_account_idTouser_account")
+  onboarding_application_onboarding_application_decided_byTouser_account           onboarding_application[]   @relation("onboarding_application_decided_byTouser_account")
+  consent_record                                                                   consent_record[]
+  auth_challenge                                                                   auth_challenge[]
+  session                                                                          session[]
+  step_up                                                                          step_up[]
+  person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  notification                                                                     notification[]
+  payment_intent                                                                   payment_intent[]
+  reconciliation_exception                                                         reconciliation_exception[]
+  invitation_invitation_accepted_byTouser_account                                  invitation[]               @relation("invitation_accepted_byTouser_account")
+  invitation_invitation_invited_byTouser_account                                   invitation[]               @relation("invitation_invited_byTouser_account")
+  membership                                                                       membership[]
 
   @@schema("identity")
 }
@@ -166,6 +173,7 @@ model workspace {
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
   tier                      String                      @default("tier_0")
   audit_event               audit_event[]
+  onboarding_application    onboarding_application[]
   consent_record            consent_record[]
   account                   account[]
   account_balance           account_balance[]
@@ -177,6 +185,7 @@ model workspace {
   payment_intent_transition payment_intent_transition[]
   reconciliation_exception  reconciliation_exception[]
   branch                    branch[]
+  invitation                invitation[]
   membership                membership[]
   business                  business                    @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -369,6 +378,11 @@ model reconciliation_exception {
   status             String              @default("open")
   mode               String              @default("sandbox")
   created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  resolved_at        DateTime?           @db.Timestamptz(6)
+  resolved_by        String?             @db.Uuid
+  resolution         String?
+  resolution_reason  String?
+  user_account       user_account?       @relation(fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reconciliation_run reconciliation_run? @relation(fields: [run_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace          workspace?          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -636,6 +650,7 @@ model branch {
   created_at     DateTime         @default(now()) @db.Timestamptz(6)
   payment_intent payment_intent[]
   workspace      workspace        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invitation     invitation[]
   membership     membership[]
 
   @@unique([id, tenant_id])
@@ -657,5 +672,90 @@ model tier_limit {
   asset                asset    @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([tier, asset_code, version])
+  @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model identifier_type {
+  type    String
+  country String
+  label   String
+
+  @@id([type, country])
+  @@schema("business")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model match_decision {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_id         String                 @db.Uuid
+  rule                   String
+  normalisation_version  Int
+  inputs                 Json
+  outcome                String
+  matched_business_id    String?                @db.Uuid
+  mode                   String                 @default("sandbox")
+  created_at             DateTime               @default(now()) @db.Timestamptz(6)
+  onboarding_application onboarding_application @relation(fields: [application_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business               business?              @relation(fields: [matched_business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([application_id], map: "match_decision_application")
+  @@schema("business")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model onboarding_application {
+  id                                                                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicant_account_id                                                   String           @db.Uuid
+  idempotency_key                                                        String
+  request_hash                                                           String
+  kind                                                                   String
+  name                                                                   String
+  country                                                                String
+  registration_type                                                      String?
+  registration_value                                                     String?
+  location                                                               Json?
+  verification                                                           String
+  status                                                                 String           @default("submitted")
+  business_id                                                            String?          @db.Uuid
+  tenant_id                                                              String?          @db.Uuid
+  decided_by                                                             String?          @db.Uuid
+  decision_reason                                                        String?
+  mode                                                                   String           @default("sandbox")
+  created_at                                                             DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at                                                             DateTime         @default(now()) @db.Timestamptz(6)
+  match_decision                                                         match_decision[]
+  user_account_onboarding_application_applicant_account_idTouser_account user_account     @relation("onboarding_application_applicant_account_idTouser_account", fields: [applicant_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business                                                               business?        @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_onboarding_application_decided_byTouser_account           user_account?    @relation("onboarding_application_decided_byTouser_account", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                              workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([applicant_account_id, idempotency_key])
+  @@index([status, created_at], map: "onboarding_application_status")
+  @@schema("business")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model invitation {
+  id                                                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                         String        @db.Uuid
+  email_lower                                       String
+  role                                              String
+  branch_id                                         String?       @db.Uuid
+  status                                            String        @default("pending")
+  invited_by                                        String        @db.Uuid
+  accepted_by                                       String?       @db.Uuid
+  expires_at                                        DateTime      @db.Timestamptz(6)
+  mode                                              String        @default("sandbox")
+  created_at                                        DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at                                        DateTime      @default(now()) @db.Timestamptz(6)
+  user_account_invitation_accepted_byTouser_account user_account? @relation("invitation_accepted_byTouser_account", fields: [accepted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branch                                            branch?       @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_invitation_invited_byTouser_account  user_account  @relation("invitation_invited_byTouser_account", fields: [invited_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                         workspace     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, email_lower], map: "invitation_open_unique", where: raw("(status = 'pending'::text)"))
+  @@index([email_lower], map: "invitation_email", where: raw("(status = 'pending'::text)"))
   @@schema("tenancy")
 }

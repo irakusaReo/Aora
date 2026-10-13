@@ -1,7 +1,5 @@
-import { AuditService } from './modules/audit/audit.service.js';
 import { BusinessService } from './modules/business/business.service.js';
 import { LedgerService } from './modules/ledger/ledger.service.js';
-import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import type { Database, Tx } from './platform/database.js';
 
 /**
@@ -53,6 +51,17 @@ async function createAccount(
   return { id: account.id, personId: person.id };
 }
 
+async function createWorkspace(tx: Tx, businessId: string): Promise<string> {
+  const workspace = await tx.workspace.create({
+    data: { business_id: businessId, product: 'kony' },
+  });
+  return workspace.id;
+}
+
+async function addMember(tx: Tx, tenantId: string, accountId: string, role: string): Promise<void> {
+  await tx.membership.create({ data: { tenant_id: tenantId, account_id: accountId, role } });
+}
+
 export type WorkspaceHook = (tx: Tx, tenantId: string) => Promise<void>;
 
 /** Creates two unrelated merchants, their staff, and one platform operator. */
@@ -61,7 +70,6 @@ export async function seedSandbox(
   onWorkspace: WorkspaceHook = () => Promise.resolve(),
 ): Promise<SeedResult> {
   const businesses = new BusinessService();
-  const tenancy = new TenancyService(db, new AuditService());
   return db.asPlatform(
     async (tx) => {
       const adminA = await createAccount(tx, 'adminA');
@@ -75,6 +83,7 @@ export async function seedSandbox(
         country: 'KE',
         registrationType: 'sandbox_registration_number',
         registrationValue: 'SANDBOX-0001',
+        verified: true,
       });
       const businessB = await businesses.createUnregistered(tx, {
         name: 'Sandbox Vegetable Stall',
@@ -94,15 +103,15 @@ export async function seedSandbox(
         qualifier: SANDBOX_PROVIDER,
       });
 
-      const tenantA = await tenancy.createWorkspace(tx, businessA);
-      const tenantB = await tenancy.createWorkspace(tx, businessB);
+      const tenantA = await createWorkspace(tx, businessA);
+      const tenantB = await createWorkspace(tx, businessB);
       await onWorkspace(tx, tenantA);
       await onWorkspace(tx, tenantB);
 
-      await tenancy.addMember(tx, tenantA, adminA.id, 'admin');
-      await tenancy.addMember(tx, tenantA, financeA.id, 'finance');
-      await tenancy.addMember(tx, tenantA, cashierA.id, 'cashier');
-      await tenancy.addMember(tx, tenantB, adminB.id, 'admin');
+      await addMember(tx, tenantA, adminA.id, 'admin');
+      await addMember(tx, tenantA, financeA.id, 'finance');
+      await addMember(tx, tenantA, cashierA.id, 'cashier');
+      await addMember(tx, tenantB, adminB.id, 'admin');
 
       return {
         tenantA,

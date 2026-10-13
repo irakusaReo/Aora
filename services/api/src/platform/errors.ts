@@ -23,6 +23,7 @@ export type ErrorCode =
   | 'invalid_signature'
   | 'too_many_attempts'
   | 'pin_not_set'
+  | 'phone_required'
   | 'conflict'
   | 'internal_error';
 
@@ -41,6 +42,7 @@ const STATUS: Record<ErrorCode, number> = {
   invalid_signature: 401,
   too_many_attempts: 429,
   pin_not_set: 409,
+  phone_required: 409,
   conflict: 409,
   internal_error: 500,
 };

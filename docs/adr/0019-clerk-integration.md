@@ -98,6 +98,14 @@ When the instance was configured, Clerk's dashboard showed phone number for sign
 - A development instance caps staging at 100 users.
 - The route × role matrix and journey J2 now run with Clerk-shaped identities.
 
+## Addendum, 2026-10-13: staff invitations by email (Phase 3)
+
+- A workspace admin invites an **email address**, after a PIN step-up. AORA stores the invitation; Clerk is not involved and no Clerk Organization or invitation feature is used.
+- The invited person accepts explicitly after signing in. AORA matches the invitation to the account whose email (as synced from Clerk) equals the invited address. Only that account can see or accept it. An email carries nothing that can accept an invitation.
+- **Assumption:** the email address AORA holds for an account has been verified by Clerk, because sign-in is by a code sent to it. If another sign-in method is ever enabled in Clerk, invitation matching must first check the address's verification status. Recorded so the assumption is not lost.
+- Invitations expire (seven days, configuration). Accepting twice gives one membership. A removed member who is invited again is reactivated, not duplicated.
+- The earlier route that added a member by phone number is removed: a phone number no longer proves anything at sign-in.
+
 ## Sources (read 2026-10-13)
 
 - [C1] Clerk, "verifyToken()" — https://clerk.com/docs/reference/backend/verify-token

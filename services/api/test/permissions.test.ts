@@ -20,7 +20,15 @@ const EXPECTED: Record<
   'PATCH /v1/workspace/branches/:id': { admin: true, finance: false, cashier: false },
   'GET /v1/ledger/balances': { admin: true, finance: true, cashier: false },
   'GET /v1/workspace/members': { admin: true, finance: true, cashier: false },
-  'POST /v1/workspace/members': { admin: true, finance: false, cashier: false, stepUp: true },
+  'GET /v1/workspace': { admin: true, finance: true, cashier: true },
+  'GET /v1/workspace/invitations': { admin: true, finance: true, cashier: false },
+  'POST /v1/workspace/invitations': { admin: true, finance: false, cashier: false, stepUp: true },
+  'DELETE /v1/workspace/invitations/:id': {
+    admin: true,
+    finance: false,
+    cashier: false,
+    stepUp: true,
+  },
   'PATCH /v1/workspace/members/:id': { admin: true, finance: false, cashier: false, stepUp: true },
 };
 
