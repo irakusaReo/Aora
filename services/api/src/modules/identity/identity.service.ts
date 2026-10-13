@@ -99,6 +99,9 @@ export class IdentityService {
     // The phone number is NOT taken from the provider: AORA holds it as the
     // financial identity, and the user sets it through `setPhone`. A provider
     // update therefore never touches it.
+    // The provider's timestamp is in milliseconds and does not fit a 32-bit integer,
+    // so it is always bound as a bigint.
+    const updatedAt = BigInt(Math.trunc(user.updatedAt));
     await this.db.asPlatform(async (tx) => {
       const inserted = await tx.$queryRaw<{ id: string }[]>`
         with new_person as (
@@ -106,7 +109,7 @@ export class IdentityService {
         )
         insert into identity.user_account
           (person_id, clerk_user_id, email, display_name, provider_updated_at)
-        select id, ${user.subject}, ${user.email}, ${user.displayName}, ${user.updatedAt}
+        select id, ${user.subject}, ${user.email}, ${user.displayName}, ${updatedAt}::bigint
         from new_person
         on conflict (clerk_user_id) do nothing
         returning id`;
@@ -124,9 +127,9 @@ export class IdentityService {
         update identity.user_account
         set email = ${user.email},
             display_name = ${user.displayName},
-            provider_updated_at = ${user.updatedAt}
+            provider_updated_at = ${updatedAt}::bigint
         where clerk_user_id = ${user.subject} and status = 'active'
-          and provider_updated_at <= ${user.updatedAt} and ${user.updatedAt} > 0`;
+          and provider_updated_at <= ${updatedAt}::bigint and ${updatedAt}::bigint > 0`;
     });
   }
 

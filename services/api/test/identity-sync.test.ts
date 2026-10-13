@@ -137,6 +137,22 @@ describe('Clerk webhooks', () => {
     expect(me.body).toMatchObject({ is_platform_operator: false, memberships: [] });
   });
 
+  it("handles the provider's real millisecond timestamps, which do not fit a 32-bit integer", async () => {
+    const id = `user_${randomUUID()}`;
+    const now = Date.now();
+    expect((await clerkEvent('user.created', user(id, 'ms1@sandbox.aora.test', now))).status).toBe(
+      200,
+    );
+    expect(
+      (await clerkEvent('user.updated', user(id, 'ms2@sandbox.aora.test', now + 5000))).status,
+    ).toBe(200);
+    expect((await account(id))?.['email']).toBe('ms2@sandbox.aora.test');
+    expect(
+      (await clerkEvent('user.updated', user(id, 'ms0@sandbox.aora.test', now - 5000))).status,
+    ).toBe(200);
+    expect((await account(id))?.['email']).toBe('ms2@sandbox.aora.test');
+  });
+
   it('has one effect when the same delivery arrives twice', async () => {
     const id = `user_${randomUUID()}`;
     const delivery = `msg_${randomUUID()}`;
