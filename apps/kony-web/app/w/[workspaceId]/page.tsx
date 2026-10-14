@@ -11,6 +11,8 @@ import { api, exponentOf, messageOf } from '../../../lib/api';
 import { collect, preview } from './actions';
 
 const CURRENCY = 'KES';
+// Safaricom's published sandbox test number (docs/providers/daraja.md): never a real person.
+const DARAJA_TEST_NUMBER = '+254708374149';
 const SCENARIOS = [
   'success',
   'decline',
@@ -102,6 +104,17 @@ export default async function Collections({
               </tbody>
             </table>
             <p className="muted">Sandbox fees are made-up values, not a real tariff.</p>
+            {!query['sandbox_scenario'] && (
+              <label>
+                Payer&apos;s M-Pesa number (the Daraja sandbox only accepts its test number)
+                <input
+                  name="payer_phone"
+                  defaultValue={DARAJA_TEST_NUMBER}
+                  inputMode="tel"
+                  required
+                />
+              </label>
+            )}
             <button type="submit">Collect</button>
           </form>
         ) : (
@@ -132,15 +145,17 @@ export default async function Collections({
               <input name="reference" maxLength={64} />
             </label>
             <label>
-              Sandbox behaviour
-              <select name="sandbox_scenario" defaultValue="success">
+              Payment provider
+              <select name="sandbox_scenario" defaultValue="">
+                <option value="">Daraja sandbox: real STK push to the test number</option>
                 {SCENARIOS.map((scenario) => (
                   <option key={scenario} value={scenario}>
-                    {scenario.replaceAll('_', ' ')}
+                    AORA simulator: {scenario.replaceAll('_', ' ')}
                   </option>
                 ))}
               </select>
             </label>
+
             <button type="submit">See fee</button>
           </form>
         )}

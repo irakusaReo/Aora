@@ -281,6 +281,13 @@ paths:
                   minLength: 1
                   maxLength: 64
                   description: The merchant's own label for the sale, such as an order or counter.
+                payer_phone:
+                  type: string
+                  pattern: '^\+[1-9][0-9]{7,14}$'
+                  description: >
+                    The payer's M-Pesa number. Required when the collection goes to Daraja
+                    (rail mpesa, no sandbox_scenario). In the sandbox only the Daraja test
+                    number is accepted. Kept by the adapter; never returned.
                 sandbox_scenario:
                   description: Sandbox only. Makes the simulator provider behave in a chosen way.
                   enum:
@@ -352,6 +359,27 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /v1/webhooks/daraja/stk/{intentId}/{token}:
+    post:
+      tags: [Webhooks]
+      operationId: receiveDarajaStkCallback
+      summary: Daraja M-Pesa Express result (sandbox)
+      description: >
+        Called by Safaricom Daraja. Daraja documents no signature, so the URL
+        carries a per-operation token. A callback never moves money by itself:
+        it prompts a status query, and only the query's answer is applied (ADR 0022).
+      parameters:
+        - { name: intentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { $ref: '#/components/responses/Received' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
   /v1/webhooks/sandbox:
     post:
       tags: [Webhooks]

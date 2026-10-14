@@ -36,6 +36,11 @@ const createBody = z.strictObject({
   branch_id: z.uuid().optional(),
   // The merchant's own label for the sale: an order, a counter, a vehicle (lessons §5).
   reference: z.string().trim().min(1).max(64).optional(),
+  // The payer's M-Pesa number, international format. Required when the collection goes to Daraja.
+  payer_phone: z
+    .string()
+    .regex(/^\+[1-9][0-9]{7,14}$/)
+    .optional(),
   sandbox_scenario: z.enum(SCENARIOS).optional(),
 });
 const listQuery = z.strictObject({
@@ -91,6 +96,7 @@ export class PaymentIntentsController {
       branchId: role === 'cashier' ? branchId : (input.branch_id ?? null),
       reference: input.reference ?? null,
       scenario: input.sandbox_scenario ?? null,
+      payerPhone: input.payer_phone ?? null,
     });
     response.status(result.replayed ? 200 : 201);
     if (result.replayed) response.setHeader('Idempotent-Replay', 'true');
@@ -154,6 +160,32 @@ export class WebhooksController {
   @HttpCode(200)
   async sandbox(@Req() request: Request): Promise<{ received: true }> {
     await this.payments.receiveWebhook(request.rawBody, request.header(SIM_SIGNATURE_HEADER));
+    return { received: true };
+  }
+}
+
+/**
+ * Daraja STK push results. Daraja documents no signature, so each callback URL
+ * carries a per-operation token, and a callback never moves money by itself:
+ * it only prompts a status query (ADR 0022). Nothing here logs the URL.
+ */
+@Controller('v1/webhooks/daraja')
+export class DarajaWebhooksController {
+  constructor(@Inject(PaymentsService) private readonly payments: PaymentsService) {}
+
+  @Post('stk/:intentId/:token')
+  @HttpCode(200)
+  async stk(
+    @Param('intentId') intentId: string,
+    @Param('token') token: string,
+    @Req() request: Request,
+  ): Promise<{ received: true }> {
+    await this.payments.receiveDarajaCallback({
+      intentId,
+      token,
+      rawBody: request.rawBody,
+      sourceIp: request.ip ?? null,
+    });
     return { received: true };
   }
 }

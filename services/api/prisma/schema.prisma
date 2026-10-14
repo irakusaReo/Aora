@@ -153,6 +153,7 @@ model workspace {
   outbox_event              outbox_event[]
   payment_intent            payment_intent[]
   payment_intent_transition payment_intent_transition[]
+  provider_operation        provider_operation[]
   reconciliation_exception  reconciliation_exception[]
   branch                    branch[]
   invitation                invitation[]
@@ -716,4 +717,29 @@ model invitation {
   @@unique([tenant_id, email_lower], map: "invitation_open_unique", where: raw("(status = 'pending'::text)"))
   @@index([email_lower], map: "invitation_email", where: raw("(status = 'pending'::text)"))
   @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model provider_operation {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider               String
+  operation_type         String
+  operation_id           String    @db.Uuid
+  tenant_id              String    @db.Uuid
+  msisdn                 String?
+  external_ref           String?
+  external_ref_2         String?
+  callback_result_code   String?
+  callback_amount        String?
+  receipt                String?
+  last_query_result_code String?
+  mode                   String    @default("sandbox")
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime  @default(now()) @db.Timestamptz(6)
+  workspace              workspace @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([provider, external_ref], map: "provider_operation_external_ref", where: raw("(external_ref IS NOT NULL)"))
+  @@unique([provider, operation_type, operation_id])
+  @@schema("payments")
 }

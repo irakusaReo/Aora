@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { isDeployed, sandboxAuthAllowed } from './deployment.js';
 
+/** The only Daraja environment this codebase may call (CLAUDE.md rule 10). */
+export const DARAJA_SANDBOX_URL = 'https://sandbox.safaricom.co.ke';
+
 // Sandbox is the only mode this codebase can run in (CLAUDE.md rule 10).
 const schema = z.object({
   AORA_MODE: z.literal('sandbox'),
@@ -20,7 +23,46 @@ const schema = z.object({
   CRON_SECRET: z.string().min(32).optional(),
   PORT: z.coerce.number().int().positive().default(3000),
   PUBLIC_API_URL: z.url().default('http://127.0.0.1:3000'),
+  DARAJA_BASE_URL: z.url().default(DARAJA_SANDBOX_URL),
+  DARAJA_CONSUMER_KEY: z.string().min(1).optional(),
+  DARAJA_CONSUMER_SECRET: z.string().min(1).optional(),
+  DARAJA_SHORTCODE: z
+    .string()
+    .regex(/^[0-9]{5,7}$/)
+    .optional(),
+  DARAJA_PASSKEY: z.string().min(1).optional(),
+  DARAJA_TEST_MSISDN: z
+    .string()
+    .regex(/^254[0-9]{9}$/)
+    .optional(),
+  DARAJA_CALLBACK_SECRET: z.string().min(32).optional(),
+  // Comma-separated source addresses Daraja callbacks must come from. Empty: not enforced
+  // (Safaricom's published list is not yet confirmed for the sandbox; docs/providers/daraja.md).
+  DARAJA_CALLBACK_ALLOWED_IPS: z.string().optional(),
 });
+
+const DARAJA_REQUIRED = [
+  'DARAJA_CONSUMER_KEY',
+  'DARAJA_CONSUMER_SECRET',
+  'DARAJA_SHORTCODE',
+  'DARAJA_PASSKEY',
+  'DARAJA_TEST_MSISDN',
+  'DARAJA_CALLBACK_SECRET',
+] as const;
+
+/** Safaricom Daraja SANDBOX settings (ADR 0022). Null: the mpesa rail uses the simulator. */
+export interface DarajaConfig {
+  readonly baseUrl: string;
+  readonly consumerKey: string;
+  readonly consumerSecret: string;
+  readonly shortcode: string;
+  readonly passkey: string;
+  /** The Daraja test number: in the sandbox, the only payer an STK push may go to. */
+  readonly testMsisdn: string;
+  readonly callbackSecret: string;
+  readonly requestTimeoutMs: number;
+  readonly callbackAllowedIps?: readonly string[];
+}
 
 export type RateLimitName = 'pin_step_up_account';
 
@@ -50,6 +92,7 @@ export interface AppConfig {
   readonly cronSecret: string | null;
   readonly port: number;
   readonly publicApiUrl: string;
+  readonly daraja: DarajaConfig | null;
   readonly auth: {
     readonly stepUpTtlSeconds: number;
     readonly maxPinAttempts: number;
@@ -110,6 +153,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
       missing('CLERK_PUBLISHABLE_KEY (expected a test key)');
     }
   }
+  const daraja = darajaConfig(value, deployed);
   if (deployed) {
     if (!value.CRON_SECRET) missing('CRON_SECRET');
     if (!value.CLERK_AUTHORIZED_PARTIES) missing('CLERK_AUTHORIZED_PARTIES');
@@ -144,6 +188,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     cronSecret: value.CRON_SECRET ?? null,
     port: value.PORT,
     publicApiUrl: value.PUBLIC_API_URL,
+    daraja,
     auth: {
       stepUpTtlSeconds: 300,
       maxPinAttempts: 5,
@@ -159,5 +204,35 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
       stuckUnknownAfterSeconds: 15 * 60,
     },
     outbox: { maxAttempts: 8, retryDelaySeconds: 5 },
+  };
+}
+
+function darajaConfig(value: z.infer<typeof schema>, deployed: boolean): DarajaConfig | null {
+  const given = DARAJA_REQUIRED.filter((name) => value[name] !== undefined);
+  if (given.length === 0) return null;
+  const absent = DARAJA_REQUIRED.filter((name) => value[name] === undefined);
+  if (absent.length > 0) missing(absent.join(', '));
+  const url = new URL(value.DARAJA_BASE_URL);
+  const sandbox = url.origin === DARAJA_SANDBOX_URL;
+  // A loopback address is a test stand-in on a developer machine, never on a deployed environment.
+  const loopback = !deployed && url.protocol === 'http:' && url.hostname === '127.0.0.1';
+  if (!sandbox && !loopback) {
+    throw new Error(
+      'DARAJA_BASE_URL must be the Daraja sandbox. Production Daraja is never called.',
+    );
+  }
+  return {
+    baseUrl: url.origin,
+    consumerKey: value.DARAJA_CONSUMER_KEY ?? '',
+    consumerSecret: value.DARAJA_CONSUMER_SECRET ?? '',
+    shortcode: value.DARAJA_SHORTCODE ?? '',
+    passkey: value.DARAJA_PASSKEY ?? '',
+    testMsisdn: value.DARAJA_TEST_MSISDN ?? '',
+    callbackSecret: value.DARAJA_CALLBACK_SECRET ?? '',
+    requestTimeoutMs: 15_000,
+    callbackAllowedIps: (value.DARAJA_CALLBACK_ALLOWED_IPS ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
   };
 }

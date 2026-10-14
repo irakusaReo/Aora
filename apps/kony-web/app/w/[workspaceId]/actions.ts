@@ -19,6 +19,10 @@ export async function collect(form: FormData): Promise<void> {
       const value = field(form, key);
       if (value) body[key] = value;
     }
+    // The payer's number goes only to Daraja; a simulator scenario needs none.
+    if (!body['sandbox_scenario'] && field(form, 'payer_phone')) {
+      body['payer_phone'] = field(form, 'payer_phone');
+    }
     await (
       await api(workspaceId)
     ).post('/v1/payment-intents', body, field(form, 'idempotency_key'));
@@ -39,6 +43,7 @@ export async function preview(form: FormData): Promise<void> {
     redirect(`${base}?error=${encodeURIComponent('Enter an amount such as 150 or 150.50.')}`);
   }
   const query = new URLSearchParams({ amount_minor: minor });
+  // Never the payer's number: personal data stays out of URLs.
   for (const key of ['branch_id', 'reference', 'sandbox_scenario']) {
     const value = field(form, key);
     if (value) query.set(key, value);

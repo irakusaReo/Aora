@@ -115,6 +115,7 @@ describe('route × role matrix', () => {
       'GET /v1/health',
       'GET /v1/terms/:key',
       'POST /v1/webhooks/clerk',
+      'POST /v1/webhooks/daraja/stk/:intentId/:token',
       'POST /v1/webhooks/resend',
       'POST /v1/webhooks/sandbox',
     ]);

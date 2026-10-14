@@ -2,7 +2,7 @@
 
 Everything here was read from Safaricom's developer portal on **2026-10-13**. Nothing is from memory. Each section names its page. Re-read the page before changing the adapter; record the new date here.
 
-Pages that did not render on that date and are still to be read: `apis/MpesaExpressQuery` (STK status query), `apis/TransactionStatus`, `apis/Reversal`. Nothing that depends on them is built until they are read.
+Pages that did not render on that date and are still to be read: `apis/TransactionStatus`, `apis/Reversal`. `apis/MpesaExpressQuery` was read on 2026-10-14. Nothing that depends on them is built until they are read.
 
 ## Environment (pages: `apis/GettingStarted`, `apis/Authorization`)
 
@@ -38,3 +38,21 @@ Pages that did not render on that date and are still to be read: `apis/MpesaExpr
 - **The recipient's name appears only in the result, after the money has moved.** The page documents no lookup before sending. This is why a payout destination is confirmed by the user and not by a name check (open question O-11).
 - Result codes listed: `0`, `1` (insufficient balance in the utility account), `2`, `3`, `4`, `8` (limit rules), `11`, `2006` (account state), `21` (initiator not allowed), `2001` (initiator information invalid), `2028` (not permitted for the shortcode), `2040` (recipient not a registered customer), `8006` (security credential locked), `SFC_IC0003` (number invalid or not on M-Pesa).
 - FAQ: status of a B2C transaction can be checked with the Transaction Status Query API by `OriginatorConversationID` or receipt number; B2C cannot be reversed through the API; minimum KES 10, maximum KES 250,000 per transaction; the security credential may be reused across requests; the sandbox `InitiatorName`, `InitiatorPassword` and B2C shortcode come from the test credentials page (login required). The page's examples use `600992` and `600997` as `PartyA`; those are examples, not confirmed test credentials.
+
+## M-Pesa Express query (page: `apis/MpesaExpressQuery`, read 2026-10-14)
+
+- `POST /mpesa/stkpushquery/v1/query` with `BusinessShortCode`, `Password` (base64 of shortcode + passkey + timestamp), `Timestamp`, `CheckoutRequestID`.
+- Response: `MerchantRequestID`, `CheckoutRequestID`, `ResponseCode` (`0` = the query was accepted), `ResponseDescription`, `ResultCode` (`0` = the payment succeeded; anything else = failed or error, example `1032` cancelled by the user), `ResultDesc`.
+- **The query returns no amount and no receipt.** The M-Pesa Express page says the amount is "pre-set by the merchant" and the customer only enters their PIN, so a confirmed success is a success for the amount AORA requested. The receipt and the amount, when wanted, come from the callback.
+- **A query needs the `CheckoutRequestID`**, which only the push acknowledgement or the callback provides. If the push itself times out, there is nothing to query with until a callback arrives.
+
+## Observed in the sandbox (AORA's own calls, 2026-10-14)
+
+Real requests from AORA's sandbox app, test number only, KES 1. Behaviour seen here is evidence about the sandbox, not a documented guarantee.
+
+- **Push accepted** with a timestamp in Kenya time (UTC+3); the password built from it was accepted. Acknowledgement exactly as documented.
+- **Query while the payment is pending:** HTTP 200, `ResponseCode` `"0"`, `ResultCode` `"4999"`, `ResultDesc` "The transaction is still under processing". Code `4999` is not in the documentation.
+- **Result codes arrive as strings** (`"4999"`, `"1032"`), although the page types them as numeric.
+- **The test number's payment ended `1032`** ("Request Cancelled by user.") about 25 seconds after the push, with nobody acting on it.
+- **Rate limiting:** HTTP 429 with a body in a different shape from the documented errors: `{"fault":{"faultstring":"Spike arrest violation. Allowed rate : MessageRate{messagesPerPeriod=30, periodInMicroseconds=60000000, maxBurstMessageCount=3.0}","detail":{"errorcode":"policies.ratelimit.SpikeArrestViolation"}}}`. Token requests count towards it. It triggered even with five-second gaps after a burst, so the limiter's window is longer than it looks.
+- **Token invalidation** (the Authorization FAQ says each new token invalidates the previous one): not confirmed either way; the rate limiter blocked the test. A token fetched after another one worked.
