@@ -7,7 +7,8 @@ export type AccountType =
   | 'merchant_collections_pending'
   | 'fee_revenue'
   | 'merchant_available'
-  | 'merchant_payouts_in_flight';
+  | 'merchant_payouts_in_flight'
+  | 'provider_payout_float';
 
 /** The closed list of account types and their fixed properties (ADR 0003). */
 const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean }> = {
@@ -21,6 +22,9 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   merchant_available: { normalSide: 'credit', allowNegative: false },
   // Reserved for payouts that have been requested and not yet resolved: a liability.
   merchant_payouts_in_flight: { normalSide: 'credit', allowNegative: false },
+  // A provider's disbursement float, funded outside the ledger in the sandbox (M-4):
+  // below zero means float used, not an overdraft.
+  provider_payout_float: { normalSide: 'debit', allowNegative: true },
 };
 
 export interface PostingInput {
@@ -68,11 +72,13 @@ export class LedgerService {
 
   /** The accounts every new workspace needs before it can collect. */
   async openWorkspaceAccounts(tx: Tx, tenantId: string): Promise<void> {
-    await this.openAccount(tx, {
-      tenantId,
-      type: 'merchant_collections_pending',
-      assetCode: 'KES',
-    });
+    for (const type of [
+      'merchant_collections_pending',
+      'merchant_available',
+      'merchant_payouts_in_flight',
+    ] as const) {
+      await this.openAccount(tx, { tenantId, type, assetCode: 'KES' });
+    }
   }
 
   async findAccount(

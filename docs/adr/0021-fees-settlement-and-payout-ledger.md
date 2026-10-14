@@ -50,3 +50,13 @@ A successful collection posts one entry: debit `provider_clearing` gross; credit
 - A price or limit change is an insert, with no deployment.
 - Reconciliation now expects the merchant to be credited gross minus fee.
 - The sandbox chart assumes an AORA-controlled collection account (M-4). That is a labelled sandbox assumption, not a custody decision.
+
+## Addendum, 2026-10-14: what checkpoint 3C built
+
+- **Settlement rule (sandbox):** a run settles every succeeded collection of a workspace and asset that has no open reconciliation exception, in one batch: debit `merchant_collections_pending`, credit `merchant_available`, net of fee. Rows are taken with `FOR UPDATE SKIP LOCKED`, so overlapping runs never settle a collection twice; a collection is marked with its batch and can never move to another. Runs from the scheduled jobs (`/v1/internal/cron/settlement`).
+- **Payout float:** a successful payout credits `provider_payout_float` (per provider, debit-normal, allowed below zero). In the sandbox the provider's disbursement account is funded outside the ledger, so a balance below zero records float used, not an overdraft. This is a labelled sandbox assumption, like M-4, and must be replaced by a funded account before any pilot.
+- **Payouts:** reservation on creation (`merchant_available` → `merchant_payouts_in_flight`, amount plus fee); success: in flight → payout float (amount) and `fee_revenue` (fee); failure: the reservation is reversed exactly. The fee charged must equal the previewed fee and tariff version, or the request is refused (`fee_changed`).
+- **First payout to a new recipient:** `payments.payout_policy` (versioned data) sets the cooling-off period after confirmation, the first-payout cap and the minimum payout. Sandbox defaults: 10 minutes, KES 1,000.00, KES 10.00 (Daraja's documented B2C minimum, held as data).
+- **Refunds:** reservation on creation from `merchant_available` if the collection is settled, otherwise from `merchant_collections_pending`; success: in flight → `provider_clearing` of the provider that collected it; failure: reversed. A database trigger, which locks the collection, refuses any refund that would take the total refunded (excluding failed refunds) above the collection. The sandbox refund tariff charges nothing and AORA keeps the original collection fee. Refunds of Daraja collections are not available in Phase 3 (open question X-14).
+- **Payouts and refunds share one state machine** (`payments.operation_transition`), with the same rules as a payment intent: `submitting` committed before the provider call, `status_unknown` never resubmitted, `reconciliation_required` only left by an operator.
+

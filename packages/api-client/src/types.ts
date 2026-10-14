@@ -135,3 +135,45 @@ export interface List<T> {
   data: T[];
   next_cursor?: string | null;
 }
+
+export interface Settlement {
+  id: string;
+  currency: string;
+  gross_minor: string;
+  fee_minor: string;
+  net_minor: string;
+  collections: number;
+  created_at: string;
+}
+
+export interface PayoutRecipient {
+  id: string;
+  label: string;
+  rail: string;
+  status: 'unconfirmed' | 'confirmed' | 'disabled';
+  phone_hint: string;
+  confirmed_at: string | null;
+  confirmation_proves?: string;
+}
+
+export interface Payout {
+  id: string;
+  status: string;
+  recipient_id: string;
+  amount_minor: string;
+  fee_minor: string;
+  total_minor: string;
+  currency: string;
+  tariff_version_id: string;
+  failure_code: string | null;
+  receipt: string | null;
+  created_at: string;
+}
+
+export interface PayoutQuote {
+  amount_minor: string;
+  fee_minor: string;
+  total_minor: string;
+  tariff_version_id: string;
+  tariff_version: number;
+}

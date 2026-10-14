@@ -47,3 +47,13 @@ Daraja is the first real provider. Its M-Pesa Express ("STK push") API is asynch
 - **What the token protects, and what it does not.** The token stops anyone who doesn't know the URL from forging a callback. The URL, token included, does appear in the hosting platform's request logs, which AORA cannot redact. That exposure only lets someone trigger a status query, because no callback is ever trusted for money. AORA's own logs and error reports never contain the token, and a test proves it.
 - Daraja has no settlement report AORA can read yet (the Pull Transactions API is unread), so Daraja collections are reconciled against the ledger and by status query, not against a provider report.
 - Refunds through Daraja's Reversal API and B2C payouts are not part of this decision; they follow in checkpoint 3C after their pages are read.
+
+## Addendum, 2026-10-14: B2C payouts
+
+- **Routing:** a payout goes to Daraja B2C when the B2C test credentials are configured and the request names no simulator scenario. In the sandbox the recipient must be Daraja's test number, so no real person can be paid.
+- **Request:** `OriginatorConversationID` is AORA's payout id; `SecurityCredential` is the initiator password encrypted with Safaricom's public sandbox certificate (RSA, PKCS #1 v1.5, base64), embedded in the code and checked against its recorded SHA-256. `ResultURL` and `QueueTimeOutURL` carry a per-payout token, different from the STK token.
+- **Daraja's "Duplicate OriginatorConversationID" refusal means an earlier request exists**, so it is treated as unknown, never as a failure.
+- **No authenticated channel exists for B2C results.** Unlike M-Pesa Express, whose status query is a synchronous call with AORA's own access token, the B2C result and the Transaction Status answer are both callbacks to AORA. A status query would therefore add no authentication, only delay. The B2C result callback is applied when its token is valid, its payout id matches the URL, and its amount equals the payout's to the minor unit (otherwise `reconciliation_required`). A result that contradicts an already-final payout opens an exception. **Before any pilot, the callback address allow-list must be enforced**, because the token is then the only other control.
+- **When no result arrives,** AORA sends a Transaction Status query (asynchronous; its answer comes to a separate tokened URL) and applies `Completed`, `Cancelled`, `Declined` or `Expired` from it. After the configured number of attempts the payout goes to an operator. A payout is never sent twice.
+- **Reversals (refunds of Daraja collections) are not built:** the Reversal API needs a successful collection's receipt, and the sandbox test number never produces one (docs/providers/daraja.md).
+

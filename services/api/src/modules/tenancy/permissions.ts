@@ -14,6 +14,13 @@ export const PERMISSIONS = {
   'branch.read': ['admin', 'finance', 'cashier'],
   'branch.manage': ['admin'],
   'workspace.read': ['admin', 'finance', 'cashier'],
+  'settlement.read': ['admin', 'finance'],
+  'payout_recipient.read': ['admin', 'finance'],
+  'payout_recipient.manage': ['admin', 'finance'],
+  'payout.read': ['admin', 'finance'],
+  'payout.create': ['admin', 'finance'],
+  'refund.read': ['admin', 'finance'],
+  'refund.create': ['admin', 'finance'],
   'member.read': ['admin', 'finance'],
   'member.manage': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;

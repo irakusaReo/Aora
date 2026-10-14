@@ -959,6 +959,334 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+  /v1/settlements:
+    get:
+      tags: [Money]
+      operationId: listSettlements
+      summary: Settlement batches, collections moved from pending to available
+      description: >
+        Permission: `settlement.read` (admin, finance). Sandbox assumption M-4: AORA-controlled collection account.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Settlement' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/payout-recipients:
+    get:
+      tags: [Money]
+      operationId: listPayoutRecipients
+      summary: Payout recipients, numbers masked
+      description: >
+        Permission: `payout_recipient.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/PayoutRecipient' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Money]
+      operationId: addPayoutRecipient
+      summary: Add a payout recipient (unconfirmed)
+      description: >
+        Permission: `payout_recipient.manage`. In the sandbox with Daraja configured, only the Daraja test number is accepted.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone, label]
+              properties:
+                phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+                label: { type: string, minLength: 1, maxLength: 60 }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutRecipient' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/payout-recipients/{id}/confirmation:
+    post:
+      tags: [Money]
+      operationId: confirmPayoutRecipient
+      summary: Confirm a recipient by entering the number again
+      description: >
+        Permission: `payout_recipient.manage`. Requires a PIN step-up. Proves the user's intent, not that they own the number (O-11). The response says so in `confirmation_proves`.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone]
+              properties:
+                phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutRecipient' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/payouts/preview:
+    post:
+      tags: [Money]
+      operationId: previewPayout
+      summary: The fee and total a payout would have now
+      description: >
+        Permission: `payout.read`. Send the returned fee and tariff version with the payout; a different fee is refused (`fee_changed`).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipient_id, amount_minor, currency]
+              properties:
+                recipient_id: { type: string, format: uuid }
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [amount_minor, fee_minor, total_minor, tariff_version_id, tariff_version], properties: { amount_minor: { $ref: '#/components/schemas/AmountMinor' }, fee_minor: { $ref: '#/components/schemas/FeeMinor' }, total_minor: { $ref: '#/components/schemas/AmountMinor' }, tariff_version_id: { type: string, format: uuid }, tariff_version: { type: integer }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/payouts:
+    get:
+      tags: [Money]
+      operationId: listPayouts
+      summary: Payouts, newest first
+      description: >
+        Permission: `payout.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Payout' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Money]
+      operationId: createPayout
+      summary: Pay out to a confirmed recipient
+      description: >
+        Permission: `payout.create` (admin, finance). Requires a PIN step-up. Refused with `recipient_not_confirmed`, `recipient_cooling_off`, `limit_exceeded` (first-payout cap, tier limits), `fee_changed` or `insufficient_funds`. Amount plus fee are reserved at once; an unknown outcome is never resent.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipient_id, amount_minor, currency, expected_fee_minor, tariff_version_id]
+              properties:
+                recipient_id: { type: string, format: uuid }
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+                expected_fee_minor: { $ref: '#/components/schemas/FeeMinor' }
+                tariff_version_id: { type: string, format: uuid }
+                sandbox_scenario:
+                  description: Sandbox only. Makes the simulator behave in a chosen way; routes to the simulator.
+                  enum: [success, decline, timeout_then_success, timeout_then_failure]
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payout' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/payouts/{id}:
+    get:
+      tags: [Money]
+      operationId: getPayout
+      summary: Status lookup for a payout
+      description: >
+        Permission: `payout.read`.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payout' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/payment-intents/{id}/refunds:
+    post:
+      tags: [Money]
+      operationId: createRefund
+      summary: Refund part or all of a succeeded collection
+      description: >
+        Permission: `refund.create` (admin, finance). Requires a PIN step-up. The total refunded can never exceed the collection (`refund_exceeds_collection`). Daraja collections answer `capability_not_supported` in Phase 3.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor]
+              properties:
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                sandbox_scenario:
+                  description: Sandbox only. Makes the simulator behave in a chosen way; routes to the simulator.
+                  enum: [success, decline, timeout_then_success, timeout_then_failure]
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/refunds/{id}:
+    get:
+      tags: [Money]
+      operationId: getRefund
+      summary: Status lookup for a refund
+      description: >
+        Permission: `refund.read`.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/internal/cron/settlement:
+    get:
+      tags: [Jobs]
+      operationId: runSettlementJob
+      summary: Settle succeeded collections
+      description: >
+        Scheduler only. Idempotent; concurrent runs take different collections.
+      security: [{ cron: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [job, batches, collections], properties: { job: { const: settlement }, batches: { type: integer }, collections: { type: integer }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/webhooks/daraja/b2c/{payoutId}/{token}:
+    post:
+      tags: [Webhooks]
+      operationId: receiveDarajaB2cResult
+      summary: Daraja B2C result (sandbox)
+      description: >
+        Called by Daraja. Authenticated by a per-payout token in the URL (ADR 0022). The amount must match the payout to the minor unit.
+      parameters:
+        - { name: payoutId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceivedBody' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/webhooks/daraja/b2c-status/{payoutId}/{token}:
+    post:
+      tags: [Webhooks]
+      operationId: receiveDarajaStatusResult
+      summary: Daraja Transaction Status result for a payout (sandbox)
+      description: >
+        Called by Daraja in answer to a status query AORA sent because no B2C result arrived.
+      parameters:
+        - { name: payoutId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: token, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReceivedBody' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
   /v1/ledger/balances:
     get:
       tags: [Workspace]
@@ -1282,6 +1610,71 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         mode: { $ref: '#/components/schemas/Mode' }
+    ReceivedBody:
+      type: object
+      required: [received]
+      properties:
+        received: { const: true }
+        mode: { $ref: '#/components/schemas/Mode' }
+    Settlement:
+      type: object
+      required: [id, currency, gross_minor, fee_minor, net_minor, collections, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        currency: { type: string }
+        gross_minor: { $ref: '#/components/schemas/AmountMinor' }
+        fee_minor: { $ref: '#/components/schemas/FeeMinor' }
+        net_minor: { $ref: '#/components/schemas/FeeMinor' }
+        collections: { type: integer }
+        created_at: { type: string, format: date-time }
+    PayoutRecipient:
+      type: object
+      required: [id, label, rail, status, phone_hint, confirmed_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        rail: { type: string }
+        status: { enum: [unconfirmed, confirmed, disabled] }
+        phone_hint: { type: string, description: Last three digits only. }
+        confirmed_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        confirmation_proves: { type: string, description: What confirming proves (intent, not ownership). }
+        mode: { $ref: '#/components/schemas/Mode' }
+    OperationStatus:
+      description: Same meanings as PaymentIntentStatus.
+      enum: [created, submitting, pending_provider, succeeded, failed, status_unknown, reconciliation_required]
+    Payout:
+      type: object
+      required: [id, status, recipient_id, amount_minor, fee_minor, total_minor, currency, tariff_version_id, provider, failure_code, receipt, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OperationStatus' }
+        recipient_id: { type: string, format: uuid }
+        amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+        fee_minor: { $ref: '#/components/schemas/FeeMinor' }
+        total_minor: { $ref: '#/components/schemas/AmountMinor' }
+        currency: { type: string }
+        tariff_version_id: { type: string, format: uuid }
+        provider: { type: string }
+        failure_code: { type: [string, 'null'] }
+        receipt: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    Refund:
+      type: object
+      required: [id, status, payment_intent_id, amount_minor, currency, provider, failure_code, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OperationStatus' }
+        payment_intent_id: { type: string, format: uuid }
+        amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+        currency: { type: string }
+        provider: { type: string }
+        failure_code: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
     Branch:
       type: object
       required: [id, name, status, created_at]
@@ -1406,6 +1799,11 @@ components:
                 - invalid_state_transition
                 - capability_not_supported
                 - limit_exceeded
+                - insufficient_funds
+                - fee_changed
+                - recipient_not_confirmed
+                - recipient_cooling_off
+                - refund_exceeds_collection
                 - invalid_signature
                 - too_many_attempts
                 - pin_not_set

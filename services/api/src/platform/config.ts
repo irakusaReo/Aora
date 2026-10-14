@@ -36,6 +36,12 @@ const schema = z.object({
     .regex(/^254[0-9]{9}$/)
     .optional(),
   DARAJA_CALLBACK_SECRET: z.string().min(32).optional(),
+  DARAJA_B2C_SHORTCODE: z
+    .string()
+    .regex(/^[0-9]{5,7}$/)
+    .optional(),
+  DARAJA_INITIATOR_NAME: z.string().min(1).optional(),
+  DARAJA_INITIATOR_PASSWORD: z.string().min(1).optional(),
   // Comma-separated source addresses Daraja callbacks must come from. Empty: not enforced
   // (Safaricom's published list is not yet confirmed for the sandbox; docs/providers/daraja.md).
   DARAJA_CALLBACK_ALLOWED_IPS: z.string().optional(),
@@ -62,6 +68,12 @@ export interface DarajaConfig {
   readonly callbackSecret: string;
   readonly requestTimeoutMs: number;
   readonly callbackAllowedIps?: readonly string[];
+  /** B2C payouts; null when the B2C test credentials are not configured. */
+  readonly b2c?: {
+    readonly shortcode: string;
+    readonly initiatorName: string;
+    readonly initiatorPassword: string;
+  } | null;
 }
 
 export type RateLimitName = 'pin_step_up_account';
@@ -230,9 +242,27 @@ function darajaConfig(value: z.infer<typeof schema>, deployed: boolean): DarajaC
     testMsisdn: value.DARAJA_TEST_MSISDN ?? '',
     callbackSecret: value.DARAJA_CALLBACK_SECRET ?? '',
     requestTimeoutMs: 15_000,
+    b2c: b2cConfig(value),
     callbackAllowedIps: (value.DARAJA_CALLBACK_ALLOWED_IPS ?? '')
       .split(',')
       .map((entry) => entry.trim())
       .filter(Boolean),
+  };
+}
+
+function b2cConfig(value: z.infer<typeof schema>): NonNullable<DarajaConfig['b2c']> | null {
+  const names = [
+    'DARAJA_B2C_SHORTCODE',
+    'DARAJA_INITIATOR_NAME',
+    'DARAJA_INITIATOR_PASSWORD',
+  ] as const;
+  const given = names.filter((name) => value[name] !== undefined);
+  if (given.length === 0) return null;
+  const absent = names.filter((name) => value[name] === undefined);
+  if (absent.length > 0) missing(absent.join(', '));
+  return {
+    shortcode: value.DARAJA_B2C_SHORTCODE ?? '',
+    initiatorName: value.DARAJA_INITIATOR_NAME ?? '',
+    initiatorPassword: value.DARAJA_INITIATOR_PASSWORD ?? '',
   };
 }

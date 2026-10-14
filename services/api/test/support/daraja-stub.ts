@@ -25,6 +25,13 @@ export interface DarajaStub {
   readonly pushes: Record<string, unknown>[];
   readonly queries: Record<string, unknown>[];
   tokenRequests: number;
+  b2cBehaviours: ('accept' | 'timeout')[];
+  readonly b2cRequests: Record<string, unknown>[];
+  readonly statusRequests: Record<string, unknown>[];
+  /** The documented B2C result body for a payout (OriginatorConversationID = payout id). */
+  b2cResult(payoutId: string, result: 'success' | 'failed', amount?: string): string;
+  /** The documented Transaction Status result body. */
+  statusResult(payoutId: string, status: string, amount: string): string;
   /** The documented callback body for a checkout. */
   callback(checkoutId: string, result: 'success' | 'cancelled', amount?: string): string;
   close(): Promise<void>;
@@ -55,6 +62,17 @@ export async function startDarajaStub(): Promise<DarajaStub> {
     pushes: [],
     queries: [],
     tokenRequests: 0,
+    b2cBehaviours: [],
+    b2cRequests: [],
+    statusRequests: [],
+    b2cResult(payoutId, result, amount = '10') {
+      return result === 'success'
+        ? `{"Result":{"ResultType":0,"ResultCode":0,"ResultDesc":"The service request is processed successfully.","OriginatorConversationID":"${payoutId}","ConversationID":"AG_${payoutId.slice(0, 8)}","TransactionID":"SBXB2C${payoutId.slice(0, 4).toUpperCase()}","ResultParameters":{"ResultParameter":[{"Key":"TransactionAmount","Value":${amount}},{"Key":"TransactionReceipt","Value":"SBXB2C${payoutId.slice(0, 4).toUpperCase()}"},{"Key":"ReceiverPartyPublicName","Value":"254708374149 - SANDBOX TEST"},{"Key":"B2CRecipientIsRegisteredCustomer","Value":"Y"}]},"ReferenceData":{"ReferenceItem":{"Key":"QueueTimeoutURL","Value":"https://internalsandbox.safaricom.co.ke/mpesa/b2cresults/v1/submit"}}}}`
+        : `{"Result":{"ResultType":0,"ResultCode":2001,"ResultDesc":"The initiator information is invalid.","OriginatorConversationID":"${payoutId}","ConversationID":"AG_${payoutId.slice(0, 8)}","TransactionID":"SBX0000000"}}`;
+    },
+    statusResult(payoutId, status, amount) {
+      return `{"Result":{"ConversationID":"AG_status","OriginatorConversationID":"status-${payoutId.slice(0, 8)}","ResultCode":0,"ResultDesc":"The service request is processed successfully.","ResultParameters":{"ResultParameter":[{"Key":"OriginatorConversationID","Value":"${payoutId}"},{"Key":"TransactionStatus","Value":"${status}"},{"Key":"Amount","Value":"${amount}"},{"Key":"ReceiptNo","Value":"SBXSTAT001"}]},"ResultType":0,"TransactionID":"SBXSTAT001"}}`;
+    },
     callback(checkoutId, result, amount = '1.00') {
       const push = stub.pushes.find((entry) => entry['__checkout'] === checkoutId);
       const value = push?.['__merchant'];
@@ -142,6 +160,46 @@ export async function startDarajaStub(): Promise<DarajaStub> {
         return;
       }
 
+      if (url.pathname === '/mpesa/b2c/v3/paymentrequest') {
+        const behaviour = stub.b2cBehaviours.shift() ?? 'accept';
+        stub.b2cRequests.push(body);
+        if (!tokens.has(bearer)) {
+          send(404, {
+            requestId: 'r',
+            errorCode: '404.001.03',
+            errorMessage: 'Invalid Access Token',
+          });
+          return;
+        }
+        if (behaviour === 'timeout') await new Promise((resolve) => setTimeout(resolve, 3_000));
+        send(200, {
+          ConversationID: `AG_${randomUUID().slice(0, 12)}`,
+          OriginatorConversationID: body['OriginatorConversationID'],
+          ResponseCode: '0',
+          ResponseDescription: 'Accept the service request successfully.',
+        });
+        return;
+      }
+
+      if (url.pathname === '/mpesa/transactionstatus/v1/query') {
+        stub.statusRequests.push(body);
+        if (!tokens.has(bearer)) {
+          send(404, {
+            requestId: 'r',
+            errorCode: '404.001.03',
+            errorMessage: 'Invalid Access Token',
+          });
+          return;
+        }
+        send(200, {
+          OriginatorConversationID: `status-${randomUUID().slice(0, 8)}`,
+          ConversationID: 'AG_status',
+          ResponseCode: '0',
+          ResponseDescription: 'Accept the service request successfully.',
+        });
+        return;
+      }
+
       if (url.pathname === '/mpesa/stkpushquery/v1/query') {
         stub.queries.push(body);
         if (!tokens.has(bearer)) {
@@ -192,6 +250,12 @@ export async function startDarajaStub(): Promise<DarajaStub> {
     },
     set pushBehaviours(value) {
       stub.pushBehaviours = value;
+    },
+    get b2cBehaviours() {
+      return stub.b2cBehaviours;
+    },
+    set b2cBehaviours(value) {
+      stub.b2cBehaviours = value;
     },
     get tokenRequests() {
       return stub.tokenRequests;

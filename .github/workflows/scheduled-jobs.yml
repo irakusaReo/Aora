@@ -28,13 +28,13 @@ jobs:
       API: https://aora-api.vercel.app
       CRON_SECRET: ${{ secrets.STAGING_CRON_SECRET }}
     steps:
-      - name: Outbox, simulator webhooks, outbox again
+      - name: Outbox, simulator webhooks, outbox again, settlement
         run: |
           if [ -z "$CRON_SECRET" ]; then
             echo "::error::STAGING_CRON_SECRET is not set as a repository secret."
             exit 1
           fi
-          for job in outbox sim-webhooks outbox; do
+          for job in outbox sim-webhooks outbox settlement; do
             curl --fail --silent --show-error --max-time 60 \
               -H "Authorization: Bearer $CRON_SECRET" "$API/v1/internal/cron/$job"
             echo

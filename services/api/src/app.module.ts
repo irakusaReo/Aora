@@ -34,6 +34,16 @@ import {
   WebhooksController,
 } from './modules/payments/payments.controller.js';
 import { DarajaAdapter } from './modules/payments/daraja.js';
+import {
+  DarajaPayoutWebhooksController,
+  PayoutRecipientsController,
+  PayoutsController,
+  RefundsController,
+  SettlementsController,
+} from './modules/payments/money.controller.js';
+import { PayoutsService } from './modules/payments/payouts.service.js';
+import { RefundsService } from './modules/payments/refunds.service.js';
+import { SettlementService } from './modules/payments/settlement.service.js';
 import { DARAJA_ADAPTER, PaymentsService } from './modules/payments/payments.service.js';
 import { ReconciliationService } from './modules/payments/reconciliation.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
@@ -77,6 +87,9 @@ const SHARED = [
   SimulatorProvider,
   ReconciliationService,
   PaymentsService,
+  SettlementService,
+  PayoutsService,
+  RefundsService,
   IdentityService,
   OnboardingService,
   SessionGuard,
@@ -92,6 +105,11 @@ export const CONTROLLERS = [
   TariffsController,
   WebhooksController,
   DarajaWebhooksController,
+  DarajaPayoutWebhooksController,
+  SettlementsController,
+  PayoutRecipientsController,
+  PayoutsController,
+  RefundsController,
   OpsController,
   MembersController,
   InvitationsController,
