@@ -27,12 +27,14 @@ import { ProviderWebhooksController } from './modules/webhooks/provider-webhooks
 import { LedgerService } from './modules/ledger/ledger.service.js';
 import { OutboxService } from './modules/outbox/outbox.service.js';
 import {
+  DarajaWebhooksController,
   OpsController,
   PaymentIntentsController,
   TariffsController,
   WebhooksController,
 } from './modules/payments/payments.controller.js';
-import { PaymentsService } from './modules/payments/payments.service.js';
+import { DarajaAdapter } from './modules/payments/daraja.js';
+import { DARAJA_ADAPTER, PaymentsService } from './modules/payments/payments.service.js';
 import { ReconciliationService } from './modules/payments/reconciliation.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
 import {
@@ -89,6 +91,7 @@ export const CONTROLLERS = [
   PaymentIntentsController,
   TariffsController,
   WebhooksController,
+  DarajaWebhooksController,
   OpsController,
   MembersController,
   InvitationsController,
@@ -132,6 +135,11 @@ export class AppModule implements NestModule {
                   from: config.email.from,
                 })
               : simulated,
+        },
+        {
+          // Daraja serves the mpesa rail when it is configured; otherwise the simulator does.
+          provide: DARAJA_ADAPTER,
+          useFactory: () => (config.daraja ? new DarajaAdapter(config.daraja) : null),
         },
         { provide: APP_INTERCEPTOR, useClass: DrainAfterResponseInterceptor },
         { provide: APP_FILTER, useClass: ErrorFilter },

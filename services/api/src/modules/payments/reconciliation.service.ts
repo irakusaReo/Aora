@@ -140,11 +140,11 @@ export class ReconciliationService {
       }
 
       // 2. AORA's successful intents against the report and the ledger.
-      const succeeded = await tx.payment_intent.findMany({
-        where: { provider: SANDBOX_PROVIDER, status: 'succeeded' },
-      });
+      // Every provider's successes are checked against the ledger; only providers
+      // with a settlement report are checked against one (Daraja has none yet).
+      const succeeded = await tx.payment_intent.findMany({ where: { status: 'succeeded' } });
       for (const intent of succeeded) {
-        if (!byRef.has(intent.id)) {
+        if (intent.provider === SANDBOX_PROVIDER && !byRef.has(intent.id)) {
           await open({
             tenantId: intent.tenant_id,
             type: 'missing_at_provider',
@@ -185,7 +185,7 @@ export class ReconciliationService {
       // 3. Intents that have been unresolved for too long.
       const cutoff = new Date(Date.now() - this.config.payments.stuckUnknownAfterSeconds * 1000);
       const stuck = await tx.payment_intent.findMany({
-        where: { provider: SANDBOX_PROVIDER, status: 'status_unknown', updated_at: { lt: cutoff } },
+        where: { status: 'status_unknown', updated_at: { lt: cutoff } },
       });
       for (const intent of stuck) {
         await open({

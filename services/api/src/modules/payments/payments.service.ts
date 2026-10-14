@@ -13,7 +13,11 @@ import { PricingService } from '../pricing/pricing.service.js';
 import { TenancyService } from '../tenancy/tenancy.service.js';
 import { supports } from './adapter.js';
 import { ReconciliationService } from './reconciliation.service.js';
+import { DARAJA_PROVIDER, type DarajaAdapter } from './daraja.js';
 import { type Scenario, SimulatorProvider } from './simulator.js';
+
+/** The Daraja adapter, or null when Daraja is not configured (the simulator serves the mpesa rail). */
+export const DARAJA_ADAPTER = Symbol('DARAJA_ADAPTER');
 
 export type IntentStatus =
   | 'created'
@@ -54,6 +58,7 @@ export const TRANSITIONS: Readonly<Record<IntentStatus, readonly IntentStatus[]>
 export const EVENT_SUBMIT = 'payments.intent.submit';
 export const EVENT_INQUIRY = 'payments.intent.status_inquiry';
 export const EVENT_WEBHOOK = 'payments.webhook.process';
+export const EVENT_DARAJA_CALLBACK = 'payments.daraja.callback';
 
 type Intent = Prisma.payment_intentGetPayload<object>;
 
@@ -120,12 +125,14 @@ export class PaymentsService implements OnModuleInit {
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
     @Inject(PricingService) private readonly pricing: PricingService,
     @Inject(TenancyService) private readonly tenancy: TenancyService,
+    @Inject(DARAJA_ADAPTER) private readonly daraja: DarajaAdapter | null,
   ) {}
 
   onModuleInit(): void {
     this.outbox.register(EVENT_SUBMIT, (event) => this.handleSubmit(event));
     this.outbox.register(EVENT_INQUIRY, (event) => this.handleStatusInquiry(event));
     this.outbox.register(EVENT_WEBHOOK, (event) => this.handleWebhook(event));
+    this.outbox.register(EVENT_DARAJA_CALLBACK, (event) => this.handleDarajaCallback(event));
   }
 
   /**
@@ -143,14 +150,26 @@ export class PaymentsService implements OnModuleInit {
     branchId: string | null;
     reference: string | null;
     scenario: Scenario | null;
+    payerPhone: string | null;
   }): Promise<{ intent: IntentView; replayed: boolean }> {
-    if (
-      !supports(this.provider, 'collect') ||
-      !this.provider.declaration.assets.includes(input.assetCode)
-    ) {
+    // A scripted sandbox scenario always goes to the simulator; otherwise the
+    // mpesa rail goes to Daraja when it is configured (ADR 0022).
+    const daraja = !input.scenario && input.rail === 'mpesa' ? this.daraja : null;
+    const adapter = daraja ?? this.provider;
+    if (!supports(adapter, 'collect') || !adapter.declaration.assets.includes(input.assetCode)) {
       throw new AppError(
         'capability_not_supported',
         'This currency cannot be collected on this rail.',
+      );
+    }
+    if (daraja && !input.payerPhone) {
+      throw new AppError('invalid_request', 'Invalid request: payer_phone.');
+    }
+    // SANDBOX: an STK push may go only to Daraja's own test number, never to a real person.
+    if (daraja && input.payerPhone !== daraja.testPayer) {
+      throw new AppError(
+        'invalid_request',
+        'In the sandbox, only the Daraja test number can be asked to pay.',
       );
     }
     const requestHash = createHash('sha256')
@@ -162,6 +181,7 @@ export class PaymentsService implements OnModuleInit {
           input.rail,
           input.branchId,
           input.reference,
+          input.payerPhone,
         ]),
       )
       .digest('hex');
@@ -187,11 +207,17 @@ export class PaymentsService implements OnModuleInit {
       ) {
         throw new AppError('invalid_request', 'Invalid request: branch_id.');
       }
+      if (daraja) {
+        const asset = await tx.asset.findUniqueOrThrow({ where: { code: input.assetCode } });
+        if (input.amount % 10n ** BigInt(asset.exponent) !== 0n) {
+          throw new AppError('invalid_request', 'M-Pesa amounts are whole shillings.');
+        }
+      }
       // The fee is fixed now, from the tariff version in effect (ADR 0021).
       const quote = await this.pricing.quote(tx, {
         operation: 'collection',
         rail: input.rail,
-        country: this.provider.declaration.country,
+        country: adapter.declaration.country,
         assetCode: input.assetCode,
         amount: input.amount,
       });
@@ -204,7 +230,8 @@ export class PaymentsService implements OnModuleInit {
           (tenant_id, idempotency_key, request_hash, amount, asset_code, provider,
            sandbox_scenario, created_by, rail, fee_amount, tariff_version_id, branch_id, reference)
         values (${input.tenantId}::uuid, ${input.idempotencyKey}, ${requestHash}, ${input.amount},
-                ${input.assetCode}, ${SANDBOX_PROVIDER}, ${input.scenario}, ${input.accountId}::uuid,
+                ${input.assetCode}, ${adapter.declaration.provider}, ${input.scenario},
+                ${input.accountId}::uuid,
                 ${input.rail}, ${quote.fee}, ${quote.tariffVersionId}::uuid,
                 ${input.branchId}::uuid, ${input.reference})
         on conflict (tenant_id, idempotency_key) do nothing
@@ -232,6 +259,14 @@ export class PaymentsService implements OnModuleInit {
           source: 'api',
         },
       });
+      if (daraja && input.payerPhone) {
+        // The payer's number lives in the adapter's own record, never on the intent (ADR 0007).
+        await tx.$executeRaw`
+          insert into payments.provider_operation
+            (provider, operation_type, operation_id, tenant_id, msisdn)
+          values (${DARAJA_PROVIDER}, 'payment_intent', ${created.id}::uuid, ${input.tenantId}::uuid,
+                  ${input.payerPhone.slice(1)})`;
+      }
       await this.audit.record(tx, {
         tenantId: input.tenantId,
         actorKind: 'user',
@@ -424,6 +459,10 @@ export class PaymentsService implements OnModuleInit {
     });
     if (!proceed) return;
 
+    if (proceed.provider === DARAJA_PROVIDER) {
+      await this.submitToDaraja(proceed);
+      return;
+    }
     const outcome = await this.provider.collect({
       operationRef: proceed.id,
       amount: proceed.amount,
@@ -458,6 +497,10 @@ export class PaymentsService implements OnModuleInit {
     const current = await this.db.asPlatform((tx) =>
       tx.payment_intent.findUnique({ where: { id: intentId } }),
     );
+    if (current?.provider === DARAJA_PROVIDER) {
+      await this.inquireDaraja(intentId);
+      return;
+    }
     if (current?.status !== 'status_unknown') return;
 
     const status = supports(this.provider, 'status_inquiry')
@@ -663,6 +706,320 @@ export class PaymentsService implements OnModuleInit {
     return 'succeeded';
   }
 
+  // --- Daraja (ADR 0022) ---
+
+  /**
+   * Verifies the per-operation token in the callback URL, stores the body as
+   * received, and queues it. Never posts money: a callback only prompts a
+   * status query. Safe to receive any number of times.
+   */
+  async receiveDarajaCallback(input: {
+    intentId: string;
+    token: string;
+    rawBody: Buffer | undefined;
+    sourceIp: string | null;
+  }): Promise<void> {
+    const daraja = this.daraja;
+    const known =
+      daraja &&
+      UUID.test(input.intentId) &&
+      daraja.verifyCallbackToken(input.intentId, input.token);
+    const allowed = daraja?.allowedSource(input.sourceIp) ?? false;
+    if (!daraja || !known || !allowed) {
+      await this.db.asPlatform((tx) =>
+        this.audit.record(tx, {
+          actorKind: 'provider',
+          action: 'payments.webhook.rejected',
+          subjectType: 'webhook',
+          subjectId: DARAJA_PROVIDER,
+          outcome: 'denied',
+          // Never the token or the body.
+          detail: {
+            reason: known ? 'source_not_allowed' : 'invalid_callback_token',
+            source_ip: input.sourceIp,
+          },
+        }),
+      );
+      throw new AppError('invalid_signature', 'Webhook signature is missing or invalid.');
+    }
+    const body = input.rawBody?.toString('utf8') ?? '';
+    let callback: ReturnType<DarajaAdapter['parseCallback']>;
+    try {
+      callback = daraja.parseCallback(body);
+    } catch {
+      throw new AppError('invalid_request', 'Webhook payload is not a recognised event.');
+    }
+    await this.db.asPlatform(async (tx) => {
+      const inserted = await tx.$queryRaw<{ id: string }[]>`
+        insert into payments.webhook_event (provider, provider_event_id, payload_raw)
+        values (${DARAJA_PROVIDER}, ${`stk:${callback.checkoutId}:${callback.resultCode}`}, ${body})
+        on conflict (provider, provider_event_id) do nothing
+        returning id`;
+      const stored = inserted[0];
+      if (!stored) return; // Repeat delivery: already stored and queued.
+      await this.audit.record(tx, {
+        actorKind: 'provider',
+        action: 'payments.daraja.callback_received',
+        subjectType: 'payment_intent',
+        subjectId: input.intentId,
+        outcome: 'success',
+        // The gateway's address, recorded so the published allow-list can be confirmed.
+        detail: { source_ip: input.sourceIp, result_code: callback.resultCode },
+      });
+      await this.outbox.enqueue(tx, {
+        tenantId: null,
+        type: EVENT_DARAJA_CALLBACK,
+        payload: { webhook_event_id: stored.id, intent_id: input.intentId },
+      });
+    });
+  }
+
+  private async submitToDaraja(intent: Intent): Promise<void> {
+    const daraja = this.daraja;
+    const operation = await this.db.asPlatform((tx) =>
+      tx.provider_operation.findUnique({
+        where: {
+          provider_operation_type_operation_id: {
+            provider: DARAJA_PROVIDER,
+            operation_type: 'payment_intent',
+            operation_id: intent.id,
+          },
+        },
+      }),
+    );
+    const asset = await this.db.asPlatform((tx) =>
+      tx.asset.findUniqueOrThrow({ where: { code: intent.asset_code } }),
+    );
+    const outcome =
+      daraja && operation?.msisdn
+        ? await daraja.stkPush({
+            operationId: intent.id,
+            amount: intent.amount,
+            exponent: asset.exponent,
+            msisdn: operation.msisdn,
+            callbackUrl: `${this.config.publicApiUrl}/v1/webhooks/daraja/stk/${intent.id}/${daraja.callbackToken(intent.id)}`,
+          })
+        : ({ kind: 'rejected', reason: 'provider_not_configured' } as const);
+
+    await this.db.asPlatform(async (tx) => {
+      const current = await this.lock(tx, intent.id);
+      if (current.status !== 'submitting') return;
+      switch (outcome.kind) {
+        case 'accepted':
+          await tx.provider_operation.updateMany({
+            where: { provider: DARAJA_PROVIDER, operation_id: intent.id, external_ref: null },
+            data: {
+              external_ref: outcome.providerReference,
+              external_ref_2:
+                'merchantRequestId' in outcome ? (outcome.merchantRequestId ?? null) : null,
+            },
+          });
+          await this.transition(tx, current, 'pending_provider', 'adapter', null, {
+            provider_reference: outcome.providerReference,
+          });
+          // Callbacks can be lost (the gateway discards them if AORA is unreachable), so ask anyway.
+          await this.scheduleInquiry(tx, current);
+          break;
+        case 'rejected':
+          await this.transition(tx, current, 'failed', 'adapter', outcome.reason, {
+            failure_code: outcome.reason,
+          });
+          break;
+        case 'unknown':
+          await this.markUnknown(tx, current, 'provider_timeout');
+          break;
+      }
+    });
+  }
+
+  /** Records what a callback said, then asks the provider at once. */
+  private async handleDarajaCallback(event: OutboxEvent): Promise<void> {
+    const webhookEventId = payloadString(event, 'webhook_event_id');
+    const intentId = payloadString(event, 'intent_id');
+    const daraja = this.daraja;
+    if (!daraja) throw new Error('Daraja is not configured.');
+    await this.db.asPlatform(async (tx) => {
+      const stored = await tx.webhook_event.findUniqueOrThrow({ where: { id: webhookEventId } });
+      if (stored.processed_at) return;
+      const callback = daraja.parseCallback(stored.payload_raw);
+      const operation = await tx.provider_operation.findFirst({
+        where: { provider: DARAJA_PROVIDER, operation_id: intentId },
+      });
+      let outcome = 'recorded';
+      if (!operation) {
+        outcome = 'unmatched';
+      } else if (operation.external_ref && operation.external_ref !== callback.checkoutId) {
+        // A valid token for this intent, but another checkout: never applied, always reviewed.
+        await this.reconciliation.openException(tx, {
+          runId: null,
+          tenantId: operation.tenant_id,
+          type: 'provider_result_conflict',
+          subjectType: 'payment_intent',
+          subjectRef: intentId,
+          detail: { reason: 'callback_for_another_checkout' },
+        });
+        outcome = 'checkout_mismatch';
+      } else {
+        await tx.provider_operation.update({
+          where: { id: operation.id },
+          data: {
+            ...(operation.external_ref ? {} : { external_ref: callback.checkoutId }),
+            ...(callback.merchantId && !operation.external_ref_2
+              ? { external_ref_2: callback.merchantId }
+              : {}),
+            callback_result_code: callback.resultCode,
+            callback_amount: callback.amountText,
+            receipt: callback.receipt,
+          },
+        });
+        const intent = await this.lock(tx, intentId);
+        if (intent.status === 'succeeded' || intent.status === 'failed') {
+          // The query already settled it; the late callback can only confirm or contradict.
+          await this.checkLateCallback(tx, intent, callback);
+        } else {
+          await this.outbox.enqueue(tx, {
+            tenantId: intent.tenant_id,
+            type: EVENT_INQUIRY,
+            payload: { intent_id: intentId },
+          });
+        }
+      }
+      await tx.webhook_event.update({
+        where: { id: stored.id },
+        data: { processed_at: new Date(), outcome },
+      });
+    });
+  }
+
+  /** A callback arriving after the query settled the intent: confirm, or flag for an operator. */
+  private async checkLateCallback(
+    tx: Tx,
+    intent: Intent,
+    callback: ReturnType<DarajaAdapter['parseCallback']>,
+  ): Promise<void> {
+    const callbackSaysPaid = callback.resultCode === '0';
+    if (callbackSaysPaid !== (intent.status === 'succeeded')) {
+      await this.reconciliation.openException(tx, {
+        runId: null,
+        tenantId: intent.tenant_id,
+        type: 'provider_result_conflict',
+        subjectType: 'payment_intent',
+        subjectRef: intent.id,
+        detail: {
+          reason: 'callback_contradicts_query',
+          callback: callback.resultCode,
+          status: intent.status,
+        },
+      });
+      return;
+    }
+    if (intent.status === 'succeeded' && callback.amountText !== null) {
+      const asset = await tx.asset.findUniqueOrThrow({ where: { code: intent.asset_code } });
+      if (decimalToMinor(callback.amountText, asset.exponent) !== intent.amount) {
+        await this.transition(tx, intent, 'reconciliation_required', 'webhook', 'amount_mismatch');
+        await this.reconciliation.openException(tx, {
+          runId: null,
+          tenantId: intent.tenant_id,
+          type: 'amount_mismatch',
+          subjectType: 'payment_intent',
+          subjectRef: intent.id,
+          detail: {
+            reason: 'late_callback_amount',
+            intent_amount_minor: intent.amount.toString(),
+            callback_amount: callback.amountText,
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * The only path by which a Daraja collection is settled: the status query.
+   * A callback's claim is compared with it, never used instead of it.
+   */
+  private async inquireDaraja(intentId: string): Promise<void> {
+    const daraja = this.daraja;
+    const before = await this.db.asPlatform(async (tx) => ({
+      intent: await tx.payment_intent.findUniqueOrThrow({ where: { id: intentId } }),
+      operation: await tx.provider_operation.findFirst({
+        where: { provider: DARAJA_PROVIDER, operation_id: intentId },
+      }),
+    }));
+    if (!['pending_provider', 'status_unknown'].includes(before.intent.status)) return;
+    const checkout = before.operation?.external_ref ?? null;
+    const result =
+      daraja && checkout ? await daraja.queryStk(checkout) : ({ kind: 'unknown' } as const);
+
+    await this.db.asPlatform(async (tx) => {
+      const intent = await this.lock(tx, intentId);
+      if (!['pending_provider', 'status_unknown'].includes(intent.status)) return;
+      const operation = await tx.provider_operation.findFirst({
+        where: { provider: DARAJA_PROVIDER, operation_id: intentId },
+      });
+      if (operation && result.kind !== 'unknown') {
+        await tx.provider_operation.update({
+          where: { id: operation.id },
+          data: {
+            last_query_result_code: result.kind === 'succeeded' ? '0' : (result.resultCode ?? null),
+          },
+        });
+      }
+      if (result.kind === 'succeeded' || result.kind === 'failed') {
+        const claimed = operation?.callback_result_code ?? null;
+        const confirmed = result.kind === 'succeeded' ? '0' : result.resultCode;
+        if (claimed !== null && (claimed === '0') !== (confirmed === '0')) {
+          // The callback said one thing and the provider's own query another.
+          await this.reconciliation.openException(tx, {
+            runId: null,
+            tenantId: intent.tenant_id,
+            type: 'provider_result_conflict',
+            subjectType: 'payment_intent',
+            subjectRef: intent.id,
+            detail: { reason: 'callback_contradicts_query', callback: claimed, query: confirmed },
+          });
+        }
+        // The query carries no amount: the STK amount is set by AORA's own request.
+        // A callback amount, when present, must agree with it to the minor unit.
+        const asset = await tx.asset.findUniqueOrThrow({ where: { code: intent.asset_code } });
+        const amount =
+          operation?.callback_amount && claimed === '0'
+            ? decimalToMinor(operation.callback_amount, asset.exponent)
+            : intent.amount;
+        await this.applyProviderResult(tx, intent, {
+          outcome: result.kind,
+          amount: result.kind === 'succeeded' ? amount : null,
+          providerReference: operation?.external_ref ?? intent.provider_reference,
+          source: 'inquiry',
+        });
+        return;
+      }
+      const inquiries = intent.status_inquiries + 1;
+      await tx.payment_intent.update({
+        where: { id: intent.id },
+        data: { status_inquiries: inquiries },
+      });
+      if (inquiries >= this.config.payments.maxStatusInquiries) {
+        await this.transition(
+          tx,
+          intent,
+          'reconciliation_required',
+          'inquiry',
+          'inquiries_exhausted',
+        );
+        await this.reconciliation.openException(tx, {
+          runId: null,
+          tenantId: intent.tenant_id,
+          type: 'stuck_status_unknown',
+          subjectType: 'payment_intent',
+          subjectRef: intent.id,
+          detail: { inquiries, last_known: intent.status },
+        });
+      } else {
+        await this.scheduleInquiry(tx, intent);
+      }
+    });
+  }
+
   private async markUnknown(tx: Tx, intent: Intent, reason: string): Promise<void> {
     await this.transition(tx, intent, 'status_unknown', 'adapter', reason);
     await this.scheduleInquiry(tx, intent);
@@ -739,6 +1096,15 @@ function decodeCursor(cursor: string): { id: string; created: string } {
     throw new AppError('invalid_request', 'Invalid request: cursor.');
   }
   return { created: match[1], id: match[2] };
+}
+
+/** `"150.00"`, 2 → 15000n, exactly. Null if the text has more precision than the asset. */
+function decimalToMinor(text: string, exponent: number): bigint | null {
+  const match = /^([0-9]+)(?:\.([0-9]+))?$/.exec(text);
+  if (!match) return null;
+  const fraction = (match[2] ?? '').replace(/0+$/, '');
+  if (fraction.length > exponent) return null;
+  return BigInt((match[1] ?? '0') + fraction.padEnd(exponent, '0'));
 }
 
 function payloadString(event: OutboxEvent, key: string): string {
