@@ -21,6 +21,18 @@ export type DarajaQueryResult =
   | { readonly kind: 'pending'; readonly resultCode: string | null }
   | { readonly kind: 'unknown' };
 
+/**
+ * The part of a fetch reply this adapter reads. Typed structurally because the
+ * hosting platform's build resolves the global `Response` type differently from
+ * a local build (the same reason as in jobs.ts).
+ */
+interface Reply {
+  readonly status: number;
+  readonly ok: boolean;
+  text(): Promise<string>;
+  json(): Promise<unknown>;
+}
+
 interface CachedToken {
   readonly value: string;
   readonly expiresAt: number;
@@ -208,12 +220,12 @@ export class DarajaAdapter implements ProviderAdapter {
       let status: number;
       let json: Record<string, unknown>;
       try {
-        const response = await fetch(`${this.config.baseUrl}${path}`, {
+        const response = (await fetch(`${this.config.baseUrl}${path}`, {
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(this.config.requestTimeoutMs),
-        });
+        })) as unknown as Reply;
         status = response.status;
         const text = await response.text();
         try {
@@ -247,13 +259,13 @@ export class DarajaAdapter implements ProviderAdapter {
         const basic = Buffer.from(
           `${this.config.consumerKey}:${this.config.consumerSecret}`,
         ).toString('base64');
-        const response = await fetch(
+        const response = (await fetch(
           `${this.config.baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
           {
             headers: { authorization: `Basic ${basic}` },
             signal: AbortSignal.timeout(this.config.requestTimeoutMs),
           },
-        );
+        )) as unknown as Reply;
         const json = (await response.json()) as { access_token?: unknown; expires_in?: unknown };
         if (!response.ok || typeof json.access_token !== 'string') {
           throw new Error('Daraja access token request failed.');
