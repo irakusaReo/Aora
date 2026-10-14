@@ -20,6 +20,11 @@ export type ErrorCode =
   | 'invalid_state_transition'
   | 'capability_not_supported'
   | 'limit_exceeded'
+  | 'insufficient_funds'
+  | 'fee_changed'
+  | 'recipient_not_confirmed'
+  | 'recipient_cooling_off'
+  | 'refund_exceeds_collection'
   | 'invalid_signature'
   | 'too_many_attempts'
   | 'pin_not_set'
@@ -39,6 +44,11 @@ const STATUS: Record<ErrorCode, number> = {
   invalid_state_transition: 409,
   capability_not_supported: 422,
   limit_exceeded: 422,
+  insufficient_funds: 422,
+  fee_changed: 409,
+  recipient_not_confirmed: 409,
+  recipient_cooling_off: 409,
+  refund_exceeds_collection: 409,
   invalid_signature: 401,
   too_many_attempts: 429,
   pin_not_set: 409,

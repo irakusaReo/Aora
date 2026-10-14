@@ -2,7 +2,7 @@
 
 Everything here was read from Safaricom's developer portal on **2026-10-13**. Nothing is from memory. Each section names its page. Re-read the page before changing the adapter; record the new date here.
 
-Pages that did not render on that date and are still to be read: `apis/TransactionStatus`, `apis/Reversal`. `apis/MpesaExpressQuery` was read on 2026-10-14. Nothing that depends on them is built until they are read.
+`apis/MpesaExpressQuery`, `apis/TransactionStatus` and `apis/Reversal` were read on 2026-10-14 (they did not render on 2026-10-13). Nothing that depends on them is built until they are read.
 
 ## Environment (pages: `apis/GettingStarted`, `apis/Authorization`)
 
@@ -56,3 +56,21 @@ Real requests from AORA's sandbox app, test number only, KES 1. Behaviour seen h
 - **The test number's payment ended `1032`** ("Request Cancelled by user.") about 25 seconds after the push, with nobody acting on it.
 - **Rate limiting:** HTTP 429 with a body in a different shape from the documented errors: `{"fault":{"faultstring":"Spike arrest violation. Allowed rate : MessageRate{messagesPerPeriod=30, periodInMicroseconds=60000000, maxBurstMessageCount=3.0}","detail":{"errorcode":"policies.ratelimit.SpikeArrestViolation"}}}`. Token requests count towards it. It triggered even with five-second gaps after a burst, so the limiter's window is longer than it looks.
 - **Token invalidation** (the Authorization FAQ says each new token invalidates the previous one): not confirmed either way; the rate limiter blocked the test. A token fetched after another one worked.
+
+## Transaction Status (page: `apis/TransactionStatus`, read 2026-10-14)
+
+- `POST /mpesa/transactionstatus/v1/query`. **Asynchronous:** the reply only acknowledges; the status itself is sent to `ResultURL` (or `QueueTimeOutURL` on timeout).
+- Request: `Initiator`, `SecurityCredential`, `CommandID` = `TransactionStatusQuery`, `TransactionID` (the M-Pesa receipt) **or** `OriginalConversationID` (the `OriginatorConversationID` of the transaction being checked), `PartyA` (shortcode), `IdentifierType` (`4` = organisation shortcode), `ResultURL`, `QueueTimeOutURL`, `Remarks` (up to 100 characters), `Occasion` (optional).
+- Acknowledgement: `OriginatorConversationID`, `ConversationID`, `ResponseCode` (`0` = accepted), `ResponseDescription`.
+- Result: `Result` with `ResultCode` (`0` = the query succeeded), `ResultDesc`, `OriginatorConversationID`, `ConversationID`, `TransactionID`, and `ResultParameters.ResultParameter[]` including `TransactionStatus` (for example `Completed`), `Amount`, `ReceiptNo`, `DebitPartyName`, `InitiatedTime`, `FinalisedTime`.
+- The page lists transaction statuses as: initiated (pending revalidation); authorised or pending authorised; and final: `Cancelled`, `Declined`, `Completed` or `Expired`.
+- Works for C2B, B2B, B2C, reversal and IMT transactions. Described as "a secondary reconciliation mechanism when callbacks are not received".
+- Errors listed include `400.003.01` (invalid access token on this page; note it differs from the `404.001.03` given elsewhere), `400.003.02`, `500.003.02` (spike arrest), `500.003.03` (quota), `404.003.01`, `400.002.05`.
+
+## Reversal (page: `apis/Reversal`, read 2026-10-14)
+
+- `POST /mpesa/reversal/v1/request`. Asynchronous; result to `ResultURL`.
+- Request: `Initiator`, `SecurityCredential`, `CommandID` = `TransactionReversal`, `TransactionID` (**the M-Pesa receipt of the transaction being reversed**), `Amount`, `ReceiverParty` (organisation shortcode), `RecieverIdentifierType` (`11`, spelt so by the API), `ResultURL`, `QueueTimeOutURL`, `Remarks` (2 to 100 characters).
+- Result codes: `0` success; `R000001` already reversed; `R000002` original transaction id invalid; `1` insufficient balance; `11`, `2006` account state; `21`, `2001`, `8006` initiator problems; `2028` not permitted.
+- Reverses C2B transactions only. B2C reversals are manual, on the M-PESA portal.
+- **Consequence for AORA:** a refund through Daraja needs a successful collection's receipt. In the sandbox every collection to the test number ended cancelled (above), so a Daraja reversal cannot be exercised there. Not built in Phase 3; Daraja collections answer `capability_not_supported` for refunds.

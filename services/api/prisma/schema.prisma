@@ -106,7 +106,11 @@ model user_account {
   person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   notification                                                                     notification[]
   payment_intent                                                                   payment_intent[]
+  payout                                                                           payout[]
+  payout_recipient_payout_recipient_confirmed_byTouser_account                     payout_recipient[]         @relation("payout_recipient_confirmed_byTouser_account")
+  payout_recipient_payout_recipient_created_byTouser_account                       payout_recipient[]         @relation("payout_recipient_created_byTouser_account")
   reconciliation_exception                                                         reconciliation_exception[]
+  refund                                                                           refund[]
   invitation_invitation_accepted_byTouser_account                                  invitation[]               @relation("invitation_accepted_byTouser_account")
   invitation_invitation_invited_byTouser_account                                   invitation[]               @relation("invitation_invited_byTouser_account")
   membership                                                                       membership[]
@@ -151,10 +155,15 @@ model workspace {
   posting                   posting[]
   notification              notification[]
   outbox_event              outbox_event[]
+  operation_transition      operation_transition[]
   payment_intent            payment_intent[]
   payment_intent_transition payment_intent_transition[]
+  payout                    payout[]
+  payout_recipient          payout_recipient[]
   provider_operation        provider_operation[]
   reconciliation_exception  reconciliation_exception[]
+  refund                    refund[]
+  settlement_batch          settlement_batch[]
   branch                    branch[]
   invitation                invitation[]
   membership                membership[]
@@ -202,14 +211,18 @@ model account_balance {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model asset {
-  code           String           @id
-  kind           String
-  exponent       Int              @db.SmallInt
-  account        account[]
-  posting        posting[]
-  payment_intent payment_intent[]
-  tariff_version tariff_version[]
-  tier_limit     tier_limit[]
+  code             String             @id
+  kind             String
+  exponent         Int                @db.SmallInt
+  account          account[]
+  posting          posting[]
+  payment_intent   payment_intent[]
+  payout           payout[]
+  payout_policy    payout_policy[]
+  refund           refund[]
+  settlement_batch settlement_batch[]
+  tariff_version   tariff_version[]
+  tier_limit       tier_limit[]
 
   @@schema("ledger")
 }
@@ -304,12 +317,15 @@ model payment_intent {
   branch_id                 String?                     @db.Uuid
   reference                 String?
   net_amount                BigInt?                     @default(dbgenerated("(amount - fee_amount)"))
+  settlement_batch_id       String?                     @db.Uuid
   asset                     asset                       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   branch                    branch?                     @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction, map: "payment_intent_branch_same_workspace")
   user_account              user_account                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  settlement_batch          settlement_batch?           @relation(fields: [settlement_batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tariff_version            tariff_version?             @relation(fields: [tariff_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace                 workspace                   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   payment_intent_transition payment_intent_transition[]
+  refund                    refund[]
 
   @@unique([tenant_id, idempotency_key])
   @@index([status, updated_at], map: "payment_intent_status")
@@ -402,6 +418,7 @@ model sim_transaction {
   report_copies        Int                    @default(1)
   mode                 String                 @default("sandbox")
   created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  kind                 String                 @default("collection")
   sim_webhook_delivery sim_webhook_delivery[]
 
   @@schema("sim")
@@ -589,6 +606,7 @@ model tariff_version {
   created_at     DateTime         @default(now()) @db.Timestamptz(6)
   created_txid   BigInt           @default(dbgenerated("txid_current()"))
   payment_intent payment_intent[]
+  payout         payout[]
   tariff_band    tariff_band[]
   asset          asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
 
@@ -741,5 +759,147 @@ model provider_operation {
 
   @@unique([provider, external_ref], map: "provider_operation_external_ref", where: raw("(external_ref IS NOT NULL)"))
   @@unique([provider, operation_type, operation_id])
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model operation_transition {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operation_type String
+  operation_id   String    @db.Uuid
+  tenant_id      String    @db.Uuid
+  from_status    String?
+  to_status      String
+  source         String
+  reason         String?
+  mode           String    @default("sandbox")
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  workspace      workspace @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([operation_id, created_at], map: "operation_transition_operation")
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payout {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id          String           @db.Uuid
+  idempotency_key    String
+  request_hash       String
+  recipient_id       String           @db.Uuid
+  amount             BigInt
+  fee_amount         BigInt
+  tariff_version_id  String           @db.Uuid
+  asset_code         String
+  provider           String
+  status             String           @default("created")
+  failure_code       String?
+  provider_reference String?
+  receipt            String?
+  status_inquiries   Int              @default(0)
+  sandbox_scenario   String?
+  created_by         String           @db.Uuid
+  mode               String           @default("sandbox")
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime         @default(now()) @db.Timestamptz(6)
+  asset              asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account       user_account     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payout_recipient   payout_recipient @relation(fields: [recipient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tariff_version     tariff_version   @relation(fields: [tariff_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace          workspace        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, idempotency_key])
+  @@index([tenant_id, created_at(sort: Desc)], map: "payout_tenant_created")
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payout_policy {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  asset_code          String
+  version             Int
+  effective_from      DateTime @db.Timestamptz(6)
+  cooling_off_seconds Int
+  first_payout_cap    BigInt
+  min_amount          BigInt
+  mode                String   @default("sandbox")
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  asset               asset    @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([asset_code, version])
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payout_recipient {
+  id                                                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                                String        @db.Uuid
+  rail                                                     String
+  label                                                    String
+  msisdn                                                   String
+  status                                                   String        @default("unconfirmed")
+  created_by                                               String        @db.Uuid
+  confirmed_by                                             String?       @db.Uuid
+  confirmed_at                                             DateTime?     @db.Timestamptz(6)
+  mode                                                     String        @default("sandbox")
+  created_at                                               DateTime      @default(now()) @db.Timestamptz(6)
+  payout                                                   payout[]
+  user_account_payout_recipient_confirmed_byTouser_account user_account? @relation("payout_recipient_confirmed_byTouser_account", fields: [confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_payout_recipient_created_byTouser_account   user_account  @relation("payout_recipient_created_byTouser_account", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                workspace     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, rail, msisdn])
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model refund {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id          String         @db.Uuid
+  idempotency_key    String
+  request_hash       String
+  intent_id          String         @db.Uuid
+  amount             BigInt
+  asset_code         String
+  provider           String
+  status             String         @default("created")
+  failure_code       String?
+  provider_reference String?
+  status_inquiries   Int            @default(0)
+  sandbox_scenario   String?
+  created_by         String         @db.Uuid
+  mode               String         @default("sandbox")
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime       @default(now()) @db.Timestamptz(6)
+  asset              asset          @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account       user_account   @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent     payment_intent @relation(fields: [intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace          workspace      @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, idempotency_key])
+  @@index([intent_id], map: "refund_intent")
+  @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model settlement_batch {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id      String           @db.Uuid
+  asset_code     String
+  gross_amount   BigInt
+  fee_amount     BigInt
+  net_amount     BigInt
+  intent_count   Int
+  mode           String           @default("sandbox")
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  payment_intent payment_intent[]
+  asset          asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  workspace      workspace        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   @@schema("payments")
 }

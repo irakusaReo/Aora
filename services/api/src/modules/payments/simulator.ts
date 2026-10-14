@@ -173,10 +173,46 @@ export class SimulatorProvider
     };
   }
 
+  /**
+   * A payout or refund at the simulated provider. Same scripted behaviour as a
+   * collection: success, decline, or a timeout after which the caller must ask.
+   * Idempotent on the operation reference.
+   */
+  async moveMoney(input: {
+    kind: 'payout' | 'refund';
+    operationRef: string;
+    amount: bigint;
+    assetCode: string;
+    scenario: string | null;
+  }): Promise<MoneyOutcome> {
+    const scenario = input.scenario ?? 'success';
+    return this.db.asPlatform(async (tx) => {
+      const existing = await tx.sim_transaction.findUnique({
+        where: { operation_ref: input.operationRef },
+      });
+      if (existing) return { kind: 'accepted', providerReference: existing.id };
+      const failed = scenario === 'decline' || scenario === 'timeout_then_failure';
+      const record = await tx.sim_transaction.create({
+        data: {
+          operation_ref: input.operationRef,
+          amount: input.amount,
+          asset_code: input.assetCode,
+          scenario,
+          status: failed ? 'failed' : 'succeeded',
+          kind: input.kind,
+          report_copies: 0,
+        },
+      });
+      if (scenario === 'decline') return { kind: 'rejected', reason: 'declined' };
+      if (scenario.startsWith('timeout')) return { kind: 'unknown' };
+      return { kind: 'accepted', providerReference: record.id };
+    });
+  }
+
   async fetchSettlementReport(): Promise<SettlementLine[]> {
     const records = await this.db.asPlatform((tx) =>
       tx.sim_transaction.findMany({
-        where: { status: 'succeeded' },
+        where: { status: 'succeeded', kind: 'collection' },
         orderBy: { created_at: 'asc' },
       }),
     );

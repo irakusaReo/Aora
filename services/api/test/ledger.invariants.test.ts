@@ -257,7 +257,9 @@ describe('tenant and asset rules', () => {
     expect(seen.entries.every((row) => row.tenant_id === h.seed.tenantB)).toBe(true);
     expect(seen.postings.every((row) => row.tenant_id === h.seed.tenantB)).toBe(true);
     expect(seen.balances.map((row) => row.account_id)).toEqual([pendingB]);
-    expect(seen.accounts.map((row) => row.id)).toEqual([pendingB]);
+    // A workspace has several accounts of its own (pending, available, in flight); never another's.
+    expect(seen.accounts.every((row) => row.tenant_id === h.seed.tenantB)).toBe(true);
+    expect(seen.accounts.map((row) => row.id)).toContain(pendingB);
     const none = await h.db.withoutTenantForTest((tx) => tx.posting.findMany());
     expect(none).toEqual([]);
   });

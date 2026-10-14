@@ -1,6 +1,7 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { constants, createHmac, publicEncrypt, timingSafeEqual } from 'node:crypto';
 import type { DarajaConfig } from '../../platform/config.js';
 import type { CapabilityDeclaration, MoneyOutcome, ProviderAdapter } from './adapter.js';
+import { DARAJA_SANDBOX_CERTIFICATE } from './daraja-sandbox-certificate.js';
 
 /** Name of the Daraja provider; also the qualifier of its clearing account. */
 export const DARAJA_PROVIDER = 'daraja';
@@ -14,6 +15,20 @@ export interface DarajaCallback {
   readonly amountText: string | null;
   readonly receipt: string | null;
 }
+
+/** A B2C result, or a Transaction Status result, reduced to what AORA decides on. */
+export interface DarajaPayoutResult {
+  /** The payout id AORA sent as OriginatorConversationID. */
+  readonly payoutId: string;
+  readonly outcome: 'succeeded' | 'failed' | 'pending';
+  /** Decimal text exactly as sent; null when absent. */
+  readonly amountText: string | null;
+  readonly receipt: string | null;
+  readonly resultCode: string;
+}
+
+/** Each kind of callback URL has its own token, so one cannot be used for another. */
+export type CallbackPurpose = 'stk' | 'b2c' | 'b2c_status';
 
 export type DarajaQueryResult =
   | { readonly kind: 'succeeded' }
@@ -63,14 +78,18 @@ export class DarajaAdapter implements ProviderAdapter {
   constructor(private readonly config: DarajaConfig) {}
 
   /** The unguessable part of a callback URL for one operation. */
-  callbackToken(operationId: string): string {
+  callbackToken(operationId: string, purpose: CallbackPurpose = 'stk'): string {
     return createHmac('sha256', this.config.callbackSecret)
-      .update(`stk:${operationId}`)
+      .update(`${purpose}:${operationId}`)
       .digest('hex');
   }
 
-  verifyCallbackToken(operationId: string, token: string): boolean {
-    const expected = Buffer.from(this.callbackToken(operationId));
+  verifyCallbackToken(
+    operationId: string,
+    token: string,
+    purpose: CallbackPurpose = 'stk',
+  ): boolean {
+    const expected = Buffer.from(this.callbackToken(operationId, purpose));
     const given = Buffer.from(token);
     return given.length === expected.length && timingSafeEqual(given, expected);
   }
@@ -143,6 +162,126 @@ export class DarajaAdapter implements ProviderAdapter {
     }
     // Anything else (other 5xx, an unrecognised body) may or may not have been processed.
     return { kind: 'unknown' };
+  }
+
+  get payoutsEnabled(): boolean {
+    return Boolean(this.config.b2c);
+  }
+
+  /**
+   * A B2C payment to a customer. `OriginatorConversationID` is AORA's payout
+   * id, so Daraja refuses a second request with the same id ("Duplicate
+   * OriginatorConversationID"); that refusal means an earlier request exists,
+   * so it is treated as unknown, never as a failure.
+   */
+  async b2cPayment(input: {
+    payoutId: string;
+    amount: bigint;
+    exponent: number;
+    msisdn: string;
+    resultUrl: string;
+  }): Promise<MoneyOutcome> {
+    const b2c = this.config.b2c;
+    if (!b2c) return { kind: 'rejected', reason: 'provider_not_configured' };
+    const unit = 10n ** BigInt(input.exponent);
+    if (input.amount % unit !== 0n) return { kind: 'rejected', reason: 'amount_not_whole_units' };
+    const reply = await this.call('/mpesa/b2c/v3/paymentrequest', {
+      OriginatorConversationID: input.payoutId,
+      InitiatorName: b2c.initiatorName,
+      SecurityCredential: this.securityCredential(),
+      CommandID: 'BusinessPayment',
+      Amount: (input.amount / unit).toString(),
+      PartyA: b2c.shortcode,
+      PartyB: input.msisdn,
+      Remarks: 'AORA sandbox payout',
+      QueueTimeOutURL: input.resultUrl,
+      ResultURL: input.resultUrl,
+    });
+    if (reply.kind === 'unreachable') return { kind: 'unknown' };
+    const { status, json } = reply;
+    if (status === 200 && json['ResponseCode'] === '0') {
+      const conversation = json['ConversationID'];
+      return {
+        kind: 'accepted',
+        providerReference: typeof conversation === 'string' ? conversation : input.payoutId,
+      };
+    }
+    if (json['errorCode'] === '500.002.1001') return { kind: 'unknown' };
+    if (status === 429) return { kind: 'rejected', reason: 'provider_busy' };
+    if (status === 400 || status === 404) return { kind: 'rejected', reason: 'provider_rejected' };
+    return { kind: 'unknown' };
+  }
+
+  /** Asks for a payout's status. Asynchronous: the answer arrives at `resultUrl`. */
+  async transactionStatus(input: { payoutId: string; resultUrl: string }): Promise<boolean> {
+    const b2c = this.config.b2c;
+    if (!b2c) return false;
+    const reply = await this.call('/mpesa/transactionstatus/v1/query', {
+      Initiator: b2c.initiatorName,
+      SecurityCredential: this.securityCredential(),
+      CommandID: 'TransactionStatusQuery',
+      OriginalConversationID: input.payoutId,
+      PartyA: b2c.shortcode,
+      IdentifierType: '4',
+      ResultURL: input.resultUrl,
+      QueueTimeOutURL: input.resultUrl,
+      Remarks: 'AORA status',
+    });
+    return reply.kind === 'reply' && reply.status === 200 && reply.json['ResponseCode'] === '0';
+  }
+
+  /** Reads a B2C result body. Amounts are taken as decimal text from the raw body. */
+  parseB2cResult(raw: string): DarajaPayoutResult {
+    const result = (JSON.parse(raw) as { Result?: Record<string, unknown> }).Result;
+    const payoutId = result?.['OriginatorConversationID'];
+    const code = result?.['ResultCode'];
+    if (typeof payoutId !== 'string' || (typeof code !== 'string' && typeof code !== 'number')) {
+      throw new Error('Not a B2C result.');
+    }
+    const resultCode = String(code);
+    return {
+      payoutId,
+      outcome: resultCode === '0' ? 'succeeded' : 'failed',
+      amountText: parameterText(raw, 'TransactionAmount'),
+      receipt: parameterText(raw, 'TransactionReceipt'),
+      resultCode,
+    };
+  }
+
+  /** Reads a Transaction Status result body for a payout. */
+  parseStatusResult(raw: string): DarajaPayoutResult {
+    const result = (JSON.parse(raw) as { Result?: Record<string, unknown> }).Result;
+    const code = result?.['ResultCode'];
+    const payoutId = parameterText(raw, 'OriginatorConversationID');
+    if (!payoutId || (typeof code !== 'string' && typeof code !== 'number')) {
+      throw new Error('Not a status result.');
+    }
+    const status = parameterText(raw, 'TransactionStatus');
+    // Final statuses per the documentation: Completed; Cancelled, Declined or Expired.
+    const outcome =
+      String(code) !== '0'
+        ? 'pending'
+        : status === 'Completed'
+          ? 'succeeded'
+          : status === 'Cancelled' || status === 'Declined' || status === 'Expired'
+            ? 'failed'
+            : 'pending';
+    return {
+      payoutId,
+      outcome,
+      amountText: parameterText(raw, 'Amount'),
+      receipt: parameterText(raw, 'ReceiptNo'),
+      resultCode: String(code),
+    };
+  }
+
+  /** The initiator password encrypted with the sandbox certificate: RSA, PKCS #1 v1.5, base64. */
+  private securityCredential(): string {
+    const password = this.config.b2c?.initiatorPassword ?? '';
+    return publicEncrypt(
+      { key: DARAJA_SANDBOX_CERTIFICATE, padding: constants.RSA_PKCS1_PADDING },
+      Buffer.from(password),
+    ).toString('base64');
   }
 
   async queryStk(checkoutId: string): Promise<DarajaQueryResult> {
@@ -284,6 +423,12 @@ export class DarajaAdapter implements ProviderAdapter {
     })();
     return this.pendingToken;
   }
+}
+
+/** The value of a `{"Key": name, "Value": …}` parameter, as text, read from the raw body. */
+function parameterText(raw: string, name: string): string | null {
+  const pattern = new RegExp(`"Key"\\s*:\\s*"${name}"\\s*,\\s*"Value"\\s*:\\s*"?([^",}]*)"?`);
+  return pattern.exec(raw)?.[1]?.trim() ?? null;
 }
 
 /** YYYYMMDDHHmmss in Kenya time (UTC+3, no daylight saving); accepted by the sandbox (2026-10-14). */

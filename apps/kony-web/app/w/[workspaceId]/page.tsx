@@ -61,6 +61,7 @@ export default async function Collections({
     <>
       {query['error'] && <p className="error">{query['error']}</p>}
       {quoteError && <p className="error">{quoteError}</p>}
+      {query['ok'] === 'refund' && <p className="ok">Refund started.</p>}
       {query['ok'] === 'collected' && (
         <p className="ok">Collection started. Its status updates below as the provider answers.</p>
       )}
@@ -176,6 +177,7 @@ export default async function Collections({
                 <th className="num">Net</th>
                 <th>Branch</th>
                 <th>Reference</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -190,6 +192,13 @@ export default async function Collections({
                   <td className="num">{money(intent.net_minor)}</td>
                   <td>{intent.branch_id ? (branchName.get(intent.branch_id) ?? '') : ''}</td>
                   <td>{intent.reference ?? ''}</td>
+                  <td>
+                    {role !== 'cashier' &&
+                      intent.status === 'succeeded' &&
+                      intent.provider === 'sandbox_sim' && (
+                        <a href={`/w/${workspaceId}/refund?intent=${intent.id}`}>Refund</a>
+                      )}
+                  </td>
                 </tr>
               ))}
             </tbody>
