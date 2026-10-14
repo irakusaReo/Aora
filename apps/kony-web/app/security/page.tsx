@@ -1,3 +1,4 @@
+import { auth } from '@clerk/nextjs/server';
 import { setPin, stepUp } from './actions';
 
 const NOTICES: Record<string, string> = {
@@ -10,6 +11,8 @@ export default async function Security({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }): Promise<React.JSX.Element> {
+  const session = await auth();
+  if (!session.userId) return session.redirectToSignIn();
   const params = await searchParams;
   return (
     <>
