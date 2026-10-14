@@ -32,7 +32,6 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | R-9 | Collection points with parent and child (lessons §3) are not in mvp-scope 3A; Phase 3 builds branches and an attribution reference only | Owner | 4 | Open: confirm they belong with the multi-rail phase |
 | X-14 | Refunds of Daraja (M-Pesa) collections through the Reversal API are not built: the sandbox test number never produces a successful collection to reverse | Eng | Pilot | Open: build and test once a sandbox or pilot collection can succeed |
 | X-13 | The Daraja sandbox consumer key and secret were exposed in a chat transcript and could not be regenerated (2026-10-14) | Owner | Production | Accepted for the sandbox by the owner; a new Daraja app with new credentials is required before any production use |
-| X-14 | Refunds of Daraja (M-Pesa) collections through the Reversal API are not built: the sandbox test number never produces a successful collection to reverse | Eng | Pilot | Open: build and test once a sandbox or pilot collection can succeed |
 | [D-1](#d-1) | Custody model | Owner | 5 [4], 7 [6] | Open; testnet interim ruling |
 | [D-2](#d-2) | Wallet and signing provider | Owner | 5 [4] | Open; testnet interim ruling |
 | [D-3](#d-3) | Local payment provider for sandbox | Owner | 3 [2] | MVP: Daraja sandbox + simulator |
