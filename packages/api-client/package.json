@@ -1,0 +1,13 @@
+{
+  "name": "@aora/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Typed client and money formatting for AORA web apps (sandbox only)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

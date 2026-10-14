@@ -12,3 +12,5 @@ services/*/src/generated
 services/*/prisma/schema.prisma
 .local
 .vercel
+.next
+**/next-env.d.ts

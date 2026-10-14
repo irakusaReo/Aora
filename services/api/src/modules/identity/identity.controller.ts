@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Put, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { z } from 'zod';
+import { Database } from '../../platform/database.js';
 import { contextOf, parseBody, sessionOf } from '../../platform/http.js';
 import { RateLimiter } from '../../platform/rate-limit.js';
 import { SessionGuard } from './guards.js';
@@ -18,7 +19,17 @@ export class IdentityController {
   constructor(
     @Inject(IdentityService) private readonly identity: IdentityService,
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
+    @Inject(Database) private readonly db: Database,
   ) {}
+
+  /** Assets and their minor-unit exponents, so no screen assumes two decimal places. */
+  @Get('assets')
+  async assets(): Promise<{ data: { code: string; kind: string; exponent: number }[] }> {
+    const rows = await this.db.asPlatform((tx) => tx.asset.findMany({ orderBy: { code: 'asc' } }));
+    return {
+      data: rows.map((row) => ({ code: row.code, kind: row.kind, exponent: row.exponent })),
+    };
+  }
 
   @Get('me')
   me(@Req() request: Request): {

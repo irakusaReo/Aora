@@ -19,3 +19,6 @@ services/*/src/generated/
 
 # Vercel CLI project link (machine-local)
 .vercel/
+
+# Next.js build output.
+.next/
