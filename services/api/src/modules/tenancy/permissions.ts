@@ -21,6 +21,10 @@ export const PERMISSIONS = {
   'payout.create': ['admin', 'finance'],
   'refund.read': ['admin', 'finance'],
   'refund.create': ['admin', 'finance'],
+  'api_key.read': ['admin'],
+  'api_key.manage': ['admin'],
+  'webhook.read': ['admin', 'finance'],
+  'webhook.manage': ['admin'],
   'member.read': ['admin', 'finance'],
   'member.manage': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;

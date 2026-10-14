@@ -1287,6 +1287,175 @@ paths:
               schema: { $ref: '#/components/schemas/ReceivedBody' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
+  /v1/api-keys:
+    get:
+      tags: [Developer]
+      operationId: listApiKeys
+      summary: List the workspace's API keys
+      description: >
+        Permission: `api_key.read` (admin). Keys themselves are never shown again.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ApiKey' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Developer]
+      operationId: createApiKey
+      summary: Create an API key, shown once
+      description: >
+        Permission: `api_key.manage` (admin). Requires a PIN step-up. Stored only as a hash. Scope `collect` acts like a cashier; `full` like finance. A key can never pass a step-up, so it can never pay out, refund, invite or manage keys (ADR 0023).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, scope]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 60 }
+                scope: { enum: [collect, full] }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { allOf: [{ $ref: '#/components/schemas/ApiKey' }, { type: object, required: [key], properties: { key: { type: string, description: Shown only in this response. } } }] }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/api-keys/{id}:
+    delete:
+      tags: [Developer]
+      operationId: revokeApiKey
+      summary: Revoke an API key
+      description: >
+        Permission: `api_key.manage`. Requires a PIN step-up. Immediate and permanent.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiKey' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/webhook-endpoints:
+    get:
+      tags: [Developer]
+      operationId: listWebhookEndpoints
+      summary: List webhook endpoints
+      description: >
+        Permission: `webhook.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/WebhookEndpoint' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Developer]
+      operationId: createWebhookEndpoint
+      summary: Register a webhook endpoint
+      description: >
+        Permission: `webhook.manage` (admin). Requires a PIN step-up. On deployed environments HTTPS only, never a private or loopback address.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url, event_types]
+              properties:
+                url: { type: string, format: uri }
+                event_types:
+                  type: array
+                  minItems: 1
+                  items: { enum: [payment_intent.succeeded, payment_intent.failed, payout.succeeded, payout.failed, refund.succeeded, refund.failed] }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/webhook-deliveries:
+    get:
+      tags: [Developer]
+      operationId: listWebhookDeliveries
+      summary: The delivery log, newest first
+      description: >
+        Permission: `webhook.read` (admin, finance). Every attempt is counted; a delivery that keeps failing becomes `dead`.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/WebhookDelivery' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/webhook-deliveries/{id}/replay:
+    post:
+      tags: [Developer]
+      operationId: replayWebhookDelivery
+      summary: Send a delivery again
+      description: >
+        Permission: `webhook.manage`. Requires a PIN step-up. Same event id and body, so a receiver that deduplicates on the id sees no second effect.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [id, replay_of], properties: { id: { type: string, format: uuid }, replay_of: { type: string, format: uuid }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/webhook-signing-key:
+    get:
+      tags: [Developer]
+      operationId: getWebhookSigningKey
+      summary: The public key that verifies every AORA webhook
+      description: >
+        Public. Each webhook carries `Aora-Signature: t=<unix seconds>,v1=<base64 Ed25519 signature of "t.body">` and `Aora-Event-Id`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [algorithm, key_id, public_key_pem], properties: { algorithm: { const: ed25519 }, key_id: { type: string }, public_key_pem: { type: string }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '422': { $ref: '#/components/responses/Error' }
   /v1/ledger/balances:
     get:
       tags: [Workspace]
@@ -1462,6 +1631,10 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: An AORA API key (`aora_sk_sandbox_…`), in place of a session token, on workspace routes only.
     session:
       type: http
       scheme: bearer
@@ -1675,6 +1848,42 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         mode: { $ref: '#/components/schemas/Mode' }
+    ApiKey:
+      type: object
+      required: [id, name, prefix, scope, created_at, last_used_at, revoked_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string, description: The first characters of the key, to tell keys apart. }
+        scope: { enum: [collect, full] }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    WebhookEndpoint:
+      type: object
+      required: [id, url, event_types, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        event_types: { type: array, items: { enum: [payment_intent.succeeded, payment_intent.failed, payout.succeeded, payout.failed, refund.succeeded, refund.failed] } }
+        status: { enum: [active, disabled] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    WebhookDelivery:
+      type: object
+      required: [id, event_id, event_type, endpoint_id, status, attempts, last_response_status, replay_of, created_at, delivered_at]
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        event_type: { type: string }
+        endpoint_id: { type: string, format: uuid }
+        status: { enum: [pending, delivered, dead] }
+        attempts: { type: integer }
+        last_response_status: { type: [integer, 'null'] }
+        replay_of: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+        delivered_at: { type: [string, 'null'], format: date-time }
     Branch:
       type: object
       required: [id, name, status, created_at]

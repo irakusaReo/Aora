@@ -36,6 +36,8 @@ const schema = z.object({
     .regex(/^254[0-9]{9}$/)
     .optional(),
   DARAJA_CALLBACK_SECRET: z.string().min(32).optional(),
+  // Ed25519 private key, PKCS #8 DER, base64 (pnpm secrets:generate). Signs outbound webhooks.
+  WEBHOOK_SIGNING_PRIVATE_KEY: z.string().min(40).optional(),
   DARAJA_B2C_SHORTCODE: z
     .string()
     .regex(/^[0-9]{5,7}$/)
@@ -105,6 +107,7 @@ export interface AppConfig {
   readonly port: number;
   readonly publicApiUrl: string;
   readonly daraja: DarajaConfig | null;
+  readonly webhooks: { readonly signingPrivateKey: string | null; readonly maxAttempts: number };
   readonly auth: {
     readonly stepUpTtlSeconds: number;
     readonly maxPinAttempts: number;
@@ -172,6 +175,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     if (!value.CLERK_JWT_KEY) missing('CLERK_JWT_KEY');
     if (!value.RESEND_API_KEY) missing('RESEND_API_KEY');
     if (!value.RESEND_WEBHOOK_SECRET) missing('RESEND_WEBHOOK_SECRET');
+    if (!value.WEBHOOK_SIGNING_PRIVATE_KEY) missing('WEBHOOK_SIGNING_PRIVATE_KEY');
   }
 
   return {
@@ -201,6 +205,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     port: value.PORT,
     publicApiUrl: value.PUBLIC_API_URL,
     daraja,
+    webhooks: { signingPrivateKey: value.WEBHOOK_SIGNING_PRIVATE_KEY ?? null, maxAttempts: 6 },
     auth: {
       stepUpTtlSeconds: 300,
       maxPinAttempts: 5,

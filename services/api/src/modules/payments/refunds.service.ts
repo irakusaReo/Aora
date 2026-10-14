@@ -7,6 +7,7 @@ import { AppError } from '../../platform/errors.js';
 import { SANDBOX_PROVIDER } from '../../seed-data.js';
 import { AuditService } from '../audit/audit.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { DeveloperService } from '../developer/developer.service.js';
 import { type OutboxEvent, OutboxService } from '../outbox/outbox.service.js';
 import { type OperationStatus, transitionOperation } from './operations.js';
 import { ReconciliationService } from './reconciliation.service.js';
@@ -63,6 +64,7 @@ export class RefundsService implements OnModuleInit {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(SimulatorProvider) private readonly simulator: SimulatorProvider,
     @Inject(ReconciliationService) private readonly reconciliation: ReconciliationService,
+    @Inject(DeveloperService) private readonly developer: DeveloperService,
   ) {}
 
   onModuleInit(): void {
@@ -311,6 +313,7 @@ export class RefundsService implements OnModuleInit {
 
   private async succeed(tx: Tx, row: Refund): Promise<void> {
     await transitionOperation(tx, this.audit, 'refund', row, 'succeeded', 'inquiry', null);
+    await this.notify(tx, row, 'refund.succeeded');
     await this.ledger.post(tx, {
       idempotencyKey: `refund:${row.id}:sent`,
       tenantId: row.tenant_id,
@@ -351,8 +354,29 @@ export class RefundsService implements OnModuleInit {
     await transitionOperation(tx, this.audit, 'refund', row, 'failed', source, reason, {
       failure_code: reason,
     });
+    await this.notify(tx, row, 'refund.failed');
     const reservation = await this.ledger.findEntryByKey(tx, reservationKey(row.id));
     if (reservation) await this.ledger.reverse(tx, reservation.id, `refund:${row.id}:released`);
+  }
+
+  /** The merchant's own systems hear about it through their webhook, in this same transaction. */
+  private async notify(
+    tx: Tx,
+    row: Refund,
+    type: 'refund.succeeded' | 'refund.failed',
+  ): Promise<void> {
+    await this.developer.emit(tx, {
+      tenantId: row.tenant_id,
+      type,
+      subjectId: row.id,
+      data: {
+        id: row.id,
+        status: type === 'refund.succeeded' ? 'succeeded' : 'failed',
+        payment_intent_id: row.intent_id,
+        amount_minor: row.amount.toString(),
+        currency: row.asset_code,
+      },
+    });
   }
 
   private async scheduleInquiry(tx: Tx, row: Refund, delayed: boolean): Promise<void> {

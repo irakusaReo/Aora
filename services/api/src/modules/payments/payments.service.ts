@@ -8,6 +8,7 @@ import { SANDBOX_PROVIDER } from '../../seed-data.js';
 import { AuditService } from '../audit/audit.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { DeveloperService } from '../developer/developer.service.js';
 import { type OutboxEvent, OutboxService } from '../outbox/outbox.service.js';
 import { PricingService } from '../pricing/pricing.service.js';
 import { TenancyService } from '../tenancy/tenancy.service.js';
@@ -126,6 +127,7 @@ export class PaymentsService implements OnModuleInit {
     @Inject(PricingService) private readonly pricing: PricingService,
     @Inject(TenancyService) private readonly tenancy: TenancyService,
     @Inject(DARAJA_ADAPTER) private readonly daraja: DarajaAdapter | null,
+    @Inject(DeveloperService) private readonly developer: DeveloperService,
   ) {}
 
   onModuleInit(): void {
@@ -151,6 +153,7 @@ export class PaymentsService implements OnModuleInit {
     reference: string | null;
     scenario: Scenario | null;
     payerPhone: string | null;
+    apiKeyId?: string | null;
   }): Promise<{ intent: IntentView; replayed: boolean }> {
     // A scripted sandbox scenario always goes to the simulator; otherwise the
     // mpesa rail goes to Daraja when it is configured (ADR 0022).
@@ -276,7 +279,11 @@ export class PaymentsService implements OnModuleInit {
         subjectId: created.id,
         outcome: 'success',
         requestId: input.requestId,
-        detail: { amount_minor: input.amount.toString(), currency: input.assetCode },
+        detail: {
+          amount_minor: input.amount.toString(),
+          currency: input.assetCode,
+          ...(input.apiKeyId ? { api_key_id: input.apiKeyId } : {}),
+        },
       });
       await this.outbox.enqueue(tx, {
         tenantId: input.tenantId,
@@ -1071,6 +1078,23 @@ export class PaymentsService implements OnModuleInit {
         reason,
       },
     });
+    if (to === 'succeeded' || to === 'failed') {
+      // A merchant's own systems hear about it through their webhook, in this same transaction.
+      await this.developer.emit(tx, {
+        tenantId: intent.tenant_id,
+        type: to === 'succeeded' ? 'payment_intent.succeeded' : 'payment_intent.failed',
+        subjectId: intent.id,
+        data: {
+          id: intent.id,
+          status: to,
+          amount_minor: intent.amount.toString(),
+          fee_minor: intent.fee_amount.toString(),
+          net_minor: (intent.amount - intent.fee_amount).toString(),
+          currency: intent.asset_code,
+          reference: intent.reference,
+        },
+      });
+    }
     await this.audit.record(tx, {
       tenantId: intent.tenant_id,
       actorKind: source === 'webhook' || source === 'inquiry' ? 'provider' : 'system',
