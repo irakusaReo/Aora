@@ -68,40 +68,12 @@ model business_identifier {
   @@schema("business")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model auth_challenge {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  account_id   String       @db.Uuid
-  purpose      String
-  code_hash    String
-  attempts     Int          @default(0)
-  expires_at   DateTime     @db.Timestamptz(6)
-  consumed_at  DateTime?    @db.Timestamptz(6)
-  created_at   DateTime     @default(now()) @db.Timestamptz(6)
-  user_account user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@schema("identity")
-}
-
 model person {
   id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   created_at     DateTime         @default(now()) @db.Timestamptz(6)
   business       business[]
   consent_record consent_record[]
   user_account   user_account[]
-
-  @@schema("identity")
-}
-
-model session {
-  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  account_id    String       @db.Uuid
-  token_hash    String       @unique
-  expires_at    DateTime     @db.Timestamptz(6)
-  revoked_at    DateTime?    @db.Timestamptz(6)
-  step_up_until DateTime?    @db.Timestamptz(6)
-  created_at    DateTime     @default(now()) @db.Timestamptz(6)
-  user_account  user_account @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("identity")
 }
@@ -130,8 +102,6 @@ model user_account {
   onboarding_application_onboarding_application_applicant_account_idTouser_account onboarding_application[]   @relation("onboarding_application_applicant_account_idTouser_account")
   onboarding_application_onboarding_application_decided_byTouser_account           onboarding_application[]   @relation("onboarding_application_decided_byTouser_account")
   consent_record                                                                   consent_record[]
-  auth_challenge                                                                   auth_challenge[]
-  session                                                                          session[]
   step_up                                                                          step_up[]
   person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   notification                                                                     notification[]
@@ -506,18 +476,6 @@ model rate_limit {
   @@id([bucket, window_start])
   @@index([window_start], map: "rate_limit_window")
   @@schema("ops")
-}
-
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model sim_sms {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  phone_e164 String
-  body       String
-  mode       String   @default("sandbox")
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([phone_e164, created_at], map: "sim_sms_phone")
-  @@schema("sim")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
