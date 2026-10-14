@@ -21,7 +21,7 @@ export default async function Onboarding({
   ]);
   return (
     <>
-      <h1>Get started</h1>
+      <h1>Your details and your business</h1>
       {params['error'] && <p className="error">{params['error']}</p>}
       {params['ok'] === 'phone' && <p className="ok">Phone number saved.</p>}
 

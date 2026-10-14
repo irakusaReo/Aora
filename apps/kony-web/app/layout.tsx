@@ -25,6 +25,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
             </Link>
             <nav>
               <Show when="signed-in">
+                <Link href="/">Workspaces</Link>
+                <Link href="/onboarding">Your details</Link>
                 <Link href="/security">Security</Link>
                 <UserButton />
               </Show>

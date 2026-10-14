@@ -18,12 +18,18 @@ export default async function Home(): Promise<React.JSX.Element> {
   const client = await api();
   const me = await client.get<Me>('/v1/me');
   const invitations = await client.get<List<MyInvitation>>('/v1/me/invitations');
-  if (me.memberships.length === 1 && invitations.data.length === 0) {
+  if (me.memberships.length === 1 && invitations.data.length === 0 && me.phone_set) {
     redirect(`/w/${me.memberships[0]?.workspace_id ?? ''}`);
   }
   return (
     <>
       <h1>Your workspaces</h1>
+      {!me.phone_set && (
+        <div className="card">
+          <strong>Add your phone number.</strong> It is your payment identity on AORA.{' '}
+          <Link href="/onboarding">Add it now</Link>
+        </div>
+      )}
       {me.memberships.length === 0 ? (
         <div className="card">
           <p>You are not part of a workspace yet.</p>

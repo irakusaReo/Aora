@@ -83,8 +83,11 @@ describe('request authentication', () => {
       account_id: h.seed.accounts.adminA,
       is_platform_operator: false,
       memberships: [{ workspace_id: h.seed.tenantA, role: 'admin' }],
+      phone_set: true,
       mode: 'sandbox',
     });
+    // Whether a phone number is set, never the number itself.
+    expect(JSON.stringify(me.body)).not.toContain('+999');
   });
 
   it('never stores a request token', async () => {

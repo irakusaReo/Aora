@@ -212,6 +212,9 @@ paths:
                       properties:
                         workspace_id: { type: string, format: uuid }
                         role: { enum: [admin, finance, cashier] }
+                  phone_set:
+                    type: boolean
+                    description: Whether the account has a phone number. The number itself is never returned here.
                   mode: { $ref: '#/components/schemas/Mode' }
         '401': { $ref: '#/components/responses/Error' }
   /v1/payment-intents:

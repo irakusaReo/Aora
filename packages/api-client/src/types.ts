@@ -5,6 +5,7 @@ export interface Me {
   account_id: string;
   is_platform_operator: boolean;
   memberships: { workspace_id: string; role: 'admin' | 'finance' | 'cashier' }[];
+  phone_set: boolean;
 }
 
 export interface Workspace {

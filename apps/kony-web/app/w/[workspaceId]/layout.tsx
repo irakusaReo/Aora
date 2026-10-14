@@ -18,6 +18,12 @@ export default async function WorkspaceLayout({
   const base = `/w/${workspaceId}`;
   return (
     <>
+      {!me.phone_set && (
+        <div className="card">
+          <strong>Add your phone number.</strong> It is your payment identity on AORA.{' '}
+          <Link href="/onboarding">Add it now</Link>
+        </div>
+      )}
       <div className="card">
         <strong>{workspace.name}</strong> <span className="pill">{workspace.kind}</span>{' '}
         <span className="pill">{workspace.tier}</span>{' '}
