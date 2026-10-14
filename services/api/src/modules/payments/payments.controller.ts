@@ -97,6 +97,7 @@ export class PaymentIntentsController {
       reference: input.reference ?? null,
       scenario: input.sandbox_scenario ?? null,
       payerPhone: input.payer_phone ?? null,
+      apiKeyId: sessionOf(request).apiKeyId ?? null,
     });
     response.status(result.replayed ? 200 : 201);
     if (result.replayed) response.setHeader('Idempotent-Replay', 'true');

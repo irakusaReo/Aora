@@ -7,6 +7,7 @@ import { AppError } from '../../platform/errors.js';
 import { SANDBOX_PROVIDER } from '../../seed-data.js';
 import { AuditService } from '../audit/audit.service.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { DeveloperService } from '../developer/developer.service.js';
 import { type OutboxEvent, OutboxService } from '../outbox/outbox.service.js';
 import { PricingService } from '../pricing/pricing.service.js';
 import { TenancyService } from '../tenancy/tenancy.service.js';
@@ -111,6 +112,7 @@ export class PayoutsService implements OnModuleInit {
     @Inject(TenancyService) private readonly tenancy: TenancyService,
     @Inject(SimulatorProvider) private readonly simulator: SimulatorProvider,
     @Inject(ReconciliationService) private readonly reconciliation: ReconciliationService,
+    @Inject(DeveloperService) private readonly developer: DeveloperService,
     @Inject(DARAJA_ADAPTER) private readonly daraja: DarajaAdapter | null,
   ) {}
 
@@ -763,6 +765,7 @@ export class PayoutsService implements OnModuleInit {
       null,
       receipt ? { receipt } : {},
     );
+    await this.notify(tx, row, 'payout.succeeded');
     const inFlight = await this.ledger.findAccount(tx, {
       tenantId: row.tenant_id,
       type: 'merchant_payouts_in_flight',
@@ -813,8 +816,29 @@ export class PayoutsService implements OnModuleInit {
     await transitionOperation(tx, this.audit, 'payout', row, 'failed', source, reason, {
       failure_code: reason,
     });
+    await this.notify(tx, row, 'payout.failed');
     const reservation = await this.ledger.findEntryByKey(tx, reservationKey(row.id));
     if (reservation) await this.ledger.reverse(tx, reservation.id, `payout:${row.id}:released`);
+  }
+
+  /** The merchant's own systems hear about it through their webhook, in this same transaction. */
+  private async notify(
+    tx: Tx,
+    row: Payout,
+    type: 'payout.succeeded' | 'payout.failed',
+  ): Promise<void> {
+    await this.developer.emit(tx, {
+      tenantId: row.tenant_id,
+      type,
+      subjectId: row.id,
+      data: {
+        id: row.id,
+        status: type === 'payout.succeeded' ? 'succeeded' : 'failed',
+        amount_minor: row.amount.toString(),
+        fee_minor: row.fee_amount.toString(),
+        currency: row.asset_code,
+      },
+    });
   }
 
   private async scheduleInquiry(tx: Tx, row: Payout, delayed: boolean): Promise<void> {

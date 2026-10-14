@@ -53,6 +53,13 @@ import {
 } from './modules/onboarding/onboarding.controller.js';
 import { OnboardingService } from './modules/onboarding/onboarding.service.js';
 import { OpsLookupController } from './modules/ops/ops.controller.js';
+import {
+  ApiKeysController,
+  WebhookDeliveriesController,
+  WebhookEndpointsController,
+  WebhookSigningKeyController,
+} from './modules/developer/developer.controller.js';
+import { DeveloperService } from './modules/developer/developer.service.js';
 import { PricingService } from './modules/pricing/pricing.service.js';
 import {
   BalancesController,
@@ -92,6 +99,7 @@ const SHARED = [
   RefundsService,
   IdentityService,
   OnboardingService,
+  DeveloperService,
   SessionGuard,
   WorkspaceGuard,
   OperatorGuard,
@@ -119,6 +127,10 @@ export const CONTROLLERS = [
   OnboardingController,
   OnboardingReviewsController,
   OpsLookupController,
+  ApiKeysController,
+  WebhookEndpointsController,
+  WebhookDeliveriesController,
+  WebhookSigningKeyController,
   BalancesController,
   ConsentController,
   CronController,

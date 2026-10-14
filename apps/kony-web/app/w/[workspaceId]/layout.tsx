@@ -33,6 +33,7 @@ export default async function WorkspaceLayout({
           <Link href={`${base}/branches`}>Branches</Link>
           {membership.role !== 'cashier' && <Link href={`${base}/money`}>Money</Link>}
           {membership.role !== 'cashier' && <Link href={`${base}/team`}>Team</Link>}
+          {membership.role === 'admin' && <Link href={`${base}/developers`}>Developers</Link>}
         </nav>
       </div>
       {children}

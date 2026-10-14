@@ -28,6 +28,8 @@ export interface SessionContext {
   /** Minutes since the sign-in factor was last verified on this session; null if unknown. */
   readonly firstFactorAgeMinutes: number | null;
   readonly memberships: readonly Membership[];
+  /** Set when the request authenticated with an API key instead of a person's session (ADR 0023). */
+  readonly apiKeyId?: string;
 }
 
 export interface RequestContext {

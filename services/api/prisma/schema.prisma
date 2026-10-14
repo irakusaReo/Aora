@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "consent", "identity", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
+  schemas  = ["audit", "business", "consent", "developer", "identity", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -102,6 +102,9 @@ model user_account {
   onboarding_application_onboarding_application_applicant_account_idTouser_account onboarding_application[]   @relation("onboarding_application_applicant_account_idTouser_account")
   onboarding_application_onboarding_application_decided_byTouser_account           onboarding_application[]   @relation("onboarding_application_decided_byTouser_account")
   consent_record                                                                   consent_record[]
+  api_key_api_key_created_byTouser_account                                         api_key[]                  @relation("api_key_created_byTouser_account")
+  api_key_api_key_revoked_byTouser_account                                         api_key[]                  @relation("api_key_revoked_byTouser_account")
+  webhook_endpoint                                                                 webhook_endpoint[]
   step_up                                                                          step_up[]
   person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   notification                                                                     notification[]
@@ -149,6 +152,10 @@ model workspace {
   audit_event               audit_event[]
   onboarding_application    onboarding_application[]
   consent_record            consent_record[]
+  api_key                   api_key[]
+  webhook_delivery          webhook_delivery[]
+  webhook_endpoint          webhook_endpoint[]
+  webhook_event             developer_webhook_event[]
   account                   account[]
   account_balance           account_balance[]
   journal_entry             journal_entry[]
@@ -902,4 +909,85 @@ model settlement_batch {
   workspace      workspace        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("payments")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model api_key {
+  id                                            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                     String        @db.Uuid
+  name                                          String
+  prefix                                        String
+  key_hash                                      String        @unique
+  scope                                         String
+  created_by                                    String        @db.Uuid
+  revoked_at                                    DateTime?     @db.Timestamptz(6)
+  revoked_by                                    String?       @db.Uuid
+  last_used_at                                  DateTime?     @db.Timestamptz(6)
+  mode                                          String        @default("sandbox")
+  created_at                                    DateTime      @default(now()) @db.Timestamptz(6)
+  user_account_api_key_created_byTouser_account user_account  @relation("api_key_created_byTouser_account", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_api_key_revoked_byTouser_account user_account? @relation("api_key_revoked_byTouser_account", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                     workspace     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("developer")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_delivery {
+  id                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id               String                  @db.Uuid
+  endpoint_id            String                  @db.Uuid
+  tenant_id              String                  @db.Uuid
+  status                 String                  @default("pending")
+  attempts               Int                     @default(0)
+  last_response_status   Int?
+  replay_of              String?                 @db.Uuid
+  mode                   String                  @default("sandbox")
+  created_at             DateTime                @default(now()) @db.Timestamptz(6)
+  delivered_at           DateTime?               @db.Timestamptz(6)
+  webhook_endpoint       webhook_endpoint        @relation(fields: [endpoint_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  webhook_event          developer_webhook_event @relation(fields: [event_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  webhook_delivery       webhook_delivery?       @relation("webhook_deliveryTowebhook_delivery", fields: [replay_of], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_webhook_delivery webhook_delivery[]      @relation("webhook_deliveryTowebhook_delivery")
+  workspace              workspace               @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenant_id, created_at(sort: Desc)], map: "webhook_delivery_tenant")
+  @@schema("developer")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_endpoint {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String             @db.Uuid
+  url              String
+  event_types      String[]
+  status           String             @default("active")
+  created_by       String             @db.Uuid
+  mode             String             @default("sandbox")
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  webhook_delivery webhook_delivery[]
+  user_account     user_account       @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace        workspace          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("developer")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model developer_webhook_event {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String             @db.Uuid
+  type             String
+  dedupe_key       String             @unique
+  body             String
+  mode             String             @default("sandbox")
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  webhook_delivery webhook_delivery[]
+  workspace        workspace          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("webhook_event")
+  @@schema("developer")
 }

@@ -128,6 +128,7 @@ describe('Clerk configuration', () => {
       ...env,
       VERCEL: '1',
       CRON_SECRET: 'c'.repeat(32),
+      WEBHOOK_SIGNING_PRIVATE_KEY: 'k'.repeat(48),
       DATABASE_URL_APP: 'postgresql://aora_app:x@ep-a-pooler.eu-central-1.aws.neon.tech/neondb',
       DATABASE_URL_PLATFORM:
         'postgresql://aora_platform:x@ep-a-pooler.eu-central-1.aws.neon.tech/neondb',
