@@ -92,12 +92,13 @@ describe('request authentication', () => {
     await h.http().get('/v1/me').set('Authorization', `Bearer ${token}`);
     const found = await h.owner((client) =>
       client.query(
-        `select (select count(*) from identity.session) as sessions,
+        `select to_regclass('identity.session') is null as no_session_table,
                 (select count(*) from identity.step_up where session_ref = $1) as tokens_as_refs`,
         [token],
       ),
     );
-    expect(found.rows[0]).toEqual({ sessions: '0', tokens_as_refs: '0' });
+    // AORA keeps no session table at all since sign-in moved to Clerk (ADR 0019).
+    expect(found.rows[0]).toEqual({ no_session_table: true, tokens_as_refs: '0' });
   });
 
   it('returns a stable error envelope', async () => {

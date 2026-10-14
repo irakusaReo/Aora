@@ -78,3 +78,12 @@ So before a domain exists, **only the owner's own address can receive a real sig
 - [R4] Resend, "What email addresses to use for testing?" — https://resend.com/docs/knowledge-base/what-email-addresses-to-use-for-testing
 - [R5] Resend, "Template emails with React Email" — https://resend.com/docs/knowledge-base/template-emails-with-react-email (listed in Resend's index; its details are confirmed when templates are built)
 - [C10] Clerk, "Email and SMS templates" — https://clerk.com/docs/guides/customizing-clerk/email-sms-templates
+
+## Addendum, 2026-10-14: sign-in codes delivered by Clerk again
+
+- **Change:** the Clerk `verification_code` email template was switched back to "delivered by Clerk" on 2026-10-14 (owner decision), through Clerk's Backend API. Before the change the template was self-delivered (Clerk sent an `email.created` webhook and AORA delivered it through Resend); the API confirmed `delivered_by_clerk = true` after the change.
+- **Why:** with no verified sending domain (O-13), Resend delivers only to the Resend account owner's address, so nobody else could sign in to staging and journey J3 could not be tested with a second person.
+- **What stays on Resend:** transaction alerts, repayment reminders and staff invitations, through the notifications module. The `email.created` handler stays in place and is idle while Clerk delivers.
+- **Consequence:** sign-in emails no longer carry AORA's sandbox banner; Clerk's own development-instance emails are sent instead.
+- **To reverse** once a domain is verified: `POST https://api.clerk.com/v1/templates/email/verification_code/toggle_delivery` with body `{"delivered_by_clerk": false}` and the instance's secret key as a Bearer token. Check first with `GET https://api.clerk.com/v1/templates/email/verification_code`.
+
