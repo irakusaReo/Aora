@@ -1,0 +1,22 @@
+{
+  "name": "@aora/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared UI pieces for AORA web apps (sandbox only)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

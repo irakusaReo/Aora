@@ -1,0 +1,34 @@
+import type { Me, Workspace } from '@aora/api-client';
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { api } from '../../../lib/api';
+
+export default async function WorkspaceLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ workspaceId: string }>;
+}): Promise<React.JSX.Element> {
+  const { workspaceId } = await params;
+  const me = await (await api()).get<Me>('/v1/me');
+  const membership = me.memberships.find((entry) => entry.workspace_id === workspaceId);
+  if (!membership) notFound();
+  const workspace = await (await api(workspaceId)).get<Workspace>('/v1/workspace');
+  const base = `/w/${workspaceId}`;
+  return (
+    <>
+      <div className="card">
+        <strong>{workspace.name}</strong> <span className="pill">{workspace.kind}</span>{' '}
+        <span className="pill">{workspace.tier}</span>{' '}
+        <span className="pill">you: {membership.role}</span>
+        <nav style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+          <Link href={base}>Collections</Link>
+          <Link href={`${base}/branches`}>Branches</Link>
+          {membership.role !== 'cashier' && <Link href={`${base}/team`}>Team</Link>}
+        </nav>
+      </div>
+      {children}
+    </>
+  );
+}

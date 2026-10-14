@@ -160,6 +160,33 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
+  /v1/assets:
+    get:
+      tags: [Identity]
+      operationId: listAssets
+      summary: Assets and the number of minor-unit digits of each
+      description: Any signed-in person. Screens use the exponent to show and read amounts; nothing assumes two decimal places.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: Assets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [code, kind, exponent]
+                      properties:
+                        code: { type: string }
+                        kind: { enum: [fiat, token] }
+                        exponent: { type: integer, minimum: 0, maximum: 18 }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
   /v1/me:
     get:
       tags: [Auth]

@@ -1,5 +1,6 @@
 # Globs are added when the first package of that kind is created (ADR 0001).
 packages:
+  - 'apps/*'
   - 'packages/*'
   - 'services/*'
 

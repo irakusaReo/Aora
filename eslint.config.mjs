@@ -79,11 +79,13 @@ export default tseslint.config(
       '.claude/**',
       '.local/**',
       '.vercel/**',
+      '**/.next/**',
+      '**/next-env.d.ts',
     ],
   },
   js.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     extends: [tseslint.configs.strictTypeChecked],
     languageOptions: {
       parserOptions: {

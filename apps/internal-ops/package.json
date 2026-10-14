@@ -1,0 +1,25 @@
+{
+  "name": "internal-ops",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AORA internal operations console (sandbox only)",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3002",
+    "build": "next build",
+    "start": "next start --port 3002",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aora/api-client": "workspace:*",
+    "@aora/ui": "workspace:*",
+    "@clerk/nextjs": "7.9.8",
+    "next": "16.3.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
+  }
+}

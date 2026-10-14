@@ -87,6 +87,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+      # The web apps must compile. The publishable key is a syntactically valid
+      # placeholder for an instance that does not exist: nothing is fetched at build.
+      - name: Build the web apps
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2ktYnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA==
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: pnpm --filter kony-web --filter internal-ops build
+
   # Applies SQL migrations to AORA staging (Neon `main`) through the DIRECT
   # connection, only on `main` and only after the tests above pass. Migrations
   # never run from the Vercel build, and are backward-compatible: expand first,
