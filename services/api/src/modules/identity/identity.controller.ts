@@ -32,11 +32,12 @@ export class IdentityController {
   }
 
   @Get('me')
-  me(@Req() request: Request): {
+  async me(@Req() request: Request): Promise<{
     account_id: string;
     is_platform_operator: boolean;
     memberships: { workspace_id: string; role: string }[];
-  } {
+    phone_set: boolean;
+  }> {
     // Contact details are not returned here; the phone number is shown masked by PUT /v1/me/phone.
     const session = sessionOf(request);
     return {
@@ -46,6 +47,14 @@ export class IdentityController {
         workspace_id: entry.tenantId,
         role: entry.role,
       })),
+      // Lets an app ask for the phone number (the financial identity) until it is set.
+      phone_set: await this.db.asPlatform(async (tx) => {
+        const account = await tx.user_account.findUniqueOrThrow({
+          where: { id: session.accountId },
+          select: { phone_e164: true },
+        });
+        return account.phone_e164 !== null;
+      }),
     };
   }
 
