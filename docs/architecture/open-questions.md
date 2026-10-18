@@ -48,7 +48,7 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [E-3](#e-3) | Node, TypeScript and test-runner versions | Eng | 1 | Resolved at checkpoint 1A |
 | [E-4](#e-4) | Read-only mainnet fork under the sandbox-only rule | Owner | 5 [4] | Open |
 | [M-1..M-7](#m-flags-raised-by-the-mvp-definition) | Flags raised by the MVP definition | mixed | various | Resolved 2026-10-13 (second ruling) |
-| [O-1..O-13](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO, hosting, Clerk and Resend rulings | Owner | various | See the 2026-10-18 rulings: O-5, O-7 to O-11 decided; O-6 deferred; O-12, O-13 unchanged; O-14 open |
+| [O-1..O-13](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO, hosting, Clerk and Resend rulings | Owner | various | See the 2026-10-18 rulings: O-5, O-7 to O-11 decided; O-6 deferred; O-12, O-13 unchanged; O-14 open; O-15 Eng default |
 | [X-1..X-12](#x-requirements-that-cannot-be-tested-without-external-access) | Requirements that cannot be tested without external access | mixed | various | Open |
 
 ## Owner rulings (2026-10-18)
@@ -79,6 +79,13 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 - **Current code:** ADR 0022 sends STK pushes to the Daraja test number only, so nothing changes until this is decided.
 - **Options:** (a) keep test-number only (current); (b) allow the owner's number with an instruction to **cancel** the prompt, never approve it (proves the prompt reaches a real handset; a mistaken approval still debits real money); (c) allow it and approve KES 1, accepting a next-day reversal (moves real money: needs an explicit rule-10 exception).
 - **Recommended default:** (a). No step for a real number is in the walk-through until the owner chooses.
+- **Blocks:** nothing.
+
+### O-15 (new, Eng default): the twelve KELO launch categories
+
+- **Question:** which twelve categories does KELO launch with? The MVP scope and ADRs 0017 and 0018 refer to "the twelve launch categories" but the repository never lists them.
+- **Default in use** (sandbox seed data, [phase-4.md](../plans/phase-4.md) P4-1): electronics and phones; home appliances; furniture; solar home systems; motorbikes; holidays and travel; courses and exams; optical; dental; medical-cosmetic; moving; home repairs and installation. Each is drawn from a category the brief or an ADR names, or an obvious neighbour of one.
+- **Changing it** is a data change (a new taxonomy version), not a code change.
 - **Blocks:** nothing.
 
 ## Pre-pilot list (carried, 2026-10-18)

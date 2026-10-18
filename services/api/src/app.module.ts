@@ -53,6 +53,14 @@ import {
 } from './modules/onboarding/onboarding.controller.js';
 import { OnboardingService } from './modules/onboarding/onboarding.service.js';
 import { OpsLookupController } from './modules/ops/ops.controller.js';
+import { ProvisioningService } from './modules/kelo/provisioning.service.js';
+import {
+  KeloProvisioningController,
+  KeloStoresController,
+  KeloStoreVettingController,
+  WorkspaceRestrictionsController,
+} from './modules/kelo/stores.controller.js';
+import { StoresService } from './modules/kelo/stores.service.js';
 import {
   ApiKeysController,
   WebhookDeliveriesController,
@@ -100,6 +108,8 @@ const SHARED = [
   IdentityService,
   OnboardingService,
   DeveloperService,
+  StoresService,
+  ProvisioningService,
   SessionGuard,
   WorkspaceGuard,
   OperatorGuard,
@@ -133,6 +143,10 @@ export const CONTROLLERS = [
   WebhookSigningKeyController,
   BalancesController,
   ConsentController,
+  KeloStoresController,
+  KeloStoreVettingController,
+  KeloProvisioningController,
+  WorkspaceRestrictionsController,
   CronController,
   NotificationsController,
   ProviderWebhooksController,

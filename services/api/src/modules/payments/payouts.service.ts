@@ -229,6 +229,7 @@ export class PayoutsService implements OnModuleInit {
     tariff_version: number;
   }> {
     return this.db.asPlatform(async (tx) => {
+      await this.tenancy.assertNotRestricted(tx, tenantId, 'payouts_suspended');
       const recipient = await tx.payout_recipient.findFirst({
         where: { id: input.recipientId, tenant_id: tenantId },
       });
@@ -293,6 +294,7 @@ export class PayoutsService implements OnModuleInit {
         }
         // Payouts of one workspace take turns, so limits and balances are checked one at a time.
         await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`payout:${actor.tenantId}`}::text, 0))`;
+        await this.tenancy.assertNotRestricted(tx, actor.tenantId, 'payouts_suspended');
 
         const recipient = await tx.payout_recipient.findFirst({
           where: { id: input.recipientId, tenant_id: actor.tenantId },

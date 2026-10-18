@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "consent", "developer", "identity", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
+  schemas  = ["audit", "business", "consent", "developer", "identity", "kelo", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -47,6 +47,8 @@ model business {
   business_identifier    business_identifier[]
   match_decision         match_decision[]
   onboarding_application onboarding_application[]
+  provisioning           provisioning[]
+  store                  store[]
   workspace              workspace[]
 
   @@unique([owner_person_id, name_normalised, location_key], map: "business_unregistered_identity", where: raw("(kind = 'unregistered'::text)"))
@@ -107,6 +109,9 @@ model user_account {
   webhook_endpoint                                                                 webhook_endpoint[]
   step_up                                                                          step_up[]
   person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  provisioning                                                                     provisioning[]
+  store_store_applicant_account_idTouser_account                                   store[]                    @relation("store_applicant_account_idTouser_account")
+  store_store_decided_byTouser_account                                             store[]                    @relation("store_decided_byTouser_account")
   notification                                                                     notification[]
   payment_intent                                                                   payment_intent[]
   payout                                                                           payout[]
@@ -117,6 +122,7 @@ model user_account {
   invitation_invitation_accepted_byTouser_account                                  invitation[]               @relation("invitation_accepted_byTouser_account")
   invitation_invitation_invited_byTouser_account                                   invitation[]               @relation("invitation_invited_byTouser_account")
   membership                                                                       membership[]
+  workspace_restriction                                                            workspace_restriction[]
 
   @@schema("identity")
 }
@@ -143,38 +149,42 @@ model membership {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model workspace {
-  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  business_id               String                      @db.Uuid
-  product                   String
-  mode                      String                      @default("sandbox")
-  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
-  tier                      String                      @default("tier_0")
-  audit_event               audit_event[]
-  onboarding_application    onboarding_application[]
-  consent_record            consent_record[]
-  api_key                   api_key[]
-  webhook_delivery          webhook_delivery[]
-  webhook_endpoint          webhook_endpoint[]
-  webhook_event             developer_webhook_event[]
-  account                   account[]
-  account_balance           account_balance[]
-  journal_entry             journal_entry[]
-  posting                   posting[]
-  notification              notification[]
-  outbox_event              outbox_event[]
-  operation_transition      operation_transition[]
-  payment_intent            payment_intent[]
-  payment_intent_transition payment_intent_transition[]
-  payout                    payout[]
-  payout_recipient          payout_recipient[]
-  provider_operation        provider_operation[]
-  reconciliation_exception  reconciliation_exception[]
-  refund                    refund[]
-  settlement_batch          settlement_batch[]
-  branch                    branch[]
-  invitation                invitation[]
-  membership                membership[]
-  business                  business                    @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_id                               String                      @db.Uuid
+  product                                   String
+  mode                                      String                      @default("sandbox")
+  created_at                                DateTime                    @default(now()) @db.Timestamptz(6)
+  tier                                      String                      @default("tier_0")
+  audit_event                               audit_event[]
+  onboarding_application                    onboarding_application[]
+  consent_record                            consent_record[]
+  api_key                                   api_key[]
+  webhook_delivery                          webhook_delivery[]
+  webhook_endpoint                          webhook_endpoint[]
+  webhook_event                             developer_webhook_event[]
+  provisioning                              provisioning[]
+  store_store_existing_tenant_idToworkspace store[]                     @relation("store_existing_tenant_idToworkspace")
+  store_store_tenant_idToworkspace          store?                      @relation("store_tenant_idToworkspace")
+  account                                   account[]
+  account_balance                           account_balance[]
+  journal_entry                             journal_entry[]
+  posting                                   posting[]
+  notification                              notification[]
+  outbox_event                              outbox_event[]
+  operation_transition                      operation_transition[]
+  payment_intent                            payment_intent[]
+  payment_intent_transition                 payment_intent_transition[]
+  payout                                    payout[]
+  payout_recipient                          payout_recipient[]
+  provider_operation                        provider_operation[]
+  reconciliation_exception                  reconciliation_exception[]
+  refund                                    refund[]
+  settlement_batch                          settlement_batch[]
+  branch                                    branch[]
+  invitation                                invitation[]
+  membership                                membership[]
+  business                                  business                    @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace_restriction                     workspace_restriction[]
 
   @@unique([business_id, product])
   @@schema("tenancy")
@@ -990,4 +1000,127 @@ model developer_webhook_event {
 
   @@map("webhook_event")
   @@schema("developer")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model workspace_restriction {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String        @db.Uuid
+  kind         String
+  source       String
+  source_id    String?       @db.Uuid
+  lifted_at    DateTime?     @db.Timestamptz(6)
+  lifted_by    String?       @db.Uuid
+  lift_reason  String?
+  mode         String        @default("sandbox")
+  created_at   DateTime      @default(now()) @db.Timestamptz(6)
+  user_account user_account? @relation(fields: [lifted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace    workspace     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, kind], map: "workspace_restriction_active", where: raw("(lifted_at IS NULL)"))
+  @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model category {
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id            String?          @db.Uuid
+  slug                 String
+  name                 String
+  version              Int
+  effective_from       DateTime         @db.Timestamptz(6)
+  effective_to         DateTime?        @db.Timestamptz(6)
+  listing_types        String[]
+  vetting_requirements String[]         @default([])
+  restricted           Boolean          @default(false)
+  fulfilment_evidence  String
+  mode                 String           @default("sandbox")
+  created_at           DateTime         @default(now()) @db.Timestamptz(6)
+  category             category?        @relation("categoryTocategory", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_category       category[]       @relation("categoryTocategory")
+  store_category       store_category[]
+
+  @@unique([slug, version])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model provisioning {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id         String        @unique @db.Uuid
+  status           String        @default("requested")
+  last_step        String        @default("requested")
+  business_id      String?       @db.Uuid
+  tenant_id        String?       @db.Uuid
+  admin_account_id String?       @db.Uuid
+  attempts         Int           @default(0)
+  reason           String?
+  mode             String        @default("sandbox")
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime      @default(now()) @db.Timestamptz(6)
+  user_account     user_account? @relation(fields: [admin_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business         business?     @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  store            store         @relation(fields: [store_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace        workspace?    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, updated_at], map: "provisioning_status")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model store {
+  id                                                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicant_account_id                                  String           @db.Uuid
+  idempotency_key                                       String
+  request_hash                                          String
+  display_name                                          String
+  category_slugs                                        String[]
+  existing_tenant_id                                    String?          @db.Uuid
+  kind                                                  String?
+  name                                                  String?
+  country                                               String?
+  registration_type                                     String?
+  registration_value                                    String?
+  location                                              Json?
+  verification                                          String?
+  status                                                String           @default("submitted")
+  restrictions                                          String[]         @default([])
+  business_id                                           String?          @db.Uuid
+  tenant_id                                             String?          @unique(map: "store_one_per_workspace", where: raw("(tenant_id IS NOT NULL)")) @db.Uuid
+  decided_by                                            String?          @db.Uuid
+  decision_reason                                       String?
+  decided_at                                            DateTime?        @db.Timestamptz(6)
+  mode                                                  String           @default("sandbox")
+  created_at                                            DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at                                            DateTime         @default(now()) @db.Timestamptz(6)
+  provisioning                                          provisioning?
+  user_account_store_applicant_account_idTouser_account user_account     @relation("store_applicant_account_idTouser_account", fields: [applicant_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business                                              business?        @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_store_decided_byTouser_account           user_account?    @relation("store_decided_byTouser_account", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace_store_existing_tenant_idToworkspace         workspace?       @relation("store_existing_tenant_idToworkspace", fields: [existing_tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace_store_tenant_idToworkspace                  workspace?       @relation("store_tenant_idToworkspace", fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  store_category                                        store_category[]
+
+  @@unique([applicant_account_id, idempotency_key])
+  @@index([applicant_account_id, created_at], map: "store_applicant")
+  @@index([status, created_at], map: "store_status")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model store_category {
+  store_id         String   @db.Uuid
+  category_slug    String
+  category_version Int
+  attested         String[]
+  mode             String   @default("sandbox")
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  category         category @relation(fields: [category_slug, category_version], references: [slug, version], onDelete: NoAction, onUpdate: NoAction)
+  store            store    @relation(fields: [store_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([store_id, category_slug])
+  @@schema("kelo")
 }

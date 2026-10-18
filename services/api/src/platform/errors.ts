@@ -29,6 +29,7 @@ export type ErrorCode =
   | 'too_many_attempts'
   | 'pin_not_set'
   | 'phone_required'
+  | 'workspace_restricted'
   | 'conflict'
   | 'internal_error';
 
@@ -53,6 +54,7 @@ const STATUS: Record<ErrorCode, number> = {
   too_many_attempts: 429,
   pin_not_set: 409,
   phone_required: 409,
+  workspace_restricted: 409,
   conflict: 409,
   internal_error: 500,
 };

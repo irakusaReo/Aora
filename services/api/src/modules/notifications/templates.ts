@@ -24,6 +24,9 @@ const COPY: Record<string, Copy> = {
     'workspace.invitation.subject': 'You have been invited to {workspace}',
     'workspace.invitation.body':
       'You have been invited to join {workspace} on AORA as {role}. Open AORA and sign in with this email address to accept or ignore the invitation.',
+    'kelo.store.ready.subject': 'Your KELO store {store} is ready',
+    'kelo.store.ready.body':
+      'Your KELO store {store} has been approved and is linked to your KONY workspace. Open KONY and sign in to add your first listing. Being an administrator of the workspace does not by itself let anyone pay out money.',
     'sign_in.footer': 'If you did not try to sign in, you can ignore this email.',
   },
 };
@@ -100,6 +103,17 @@ const TEMPLATES: Record<string, (params: Params, locale: string) => RenderedEmai
     return layout(
       locale,
       copy(locale, 'workspace.invitation.subject', values),
+      `<p>${escapeHtml(body)}</p>`,
+      body,
+    );
+  },
+  // KELO store provisioned (ADR 0008, last step). Params: store_name.
+  'kelo.store.ready': (params, locale) => {
+    const values = { store: text(params, 'store_name') };
+    const body = copy(locale, 'kelo.store.ready.body', values);
+    return layout(
+      locale,
+      copy(locale, 'kelo.store.ready.subject', values),
       `<p>${escapeHtml(body)}</p>`,
       body,
     );

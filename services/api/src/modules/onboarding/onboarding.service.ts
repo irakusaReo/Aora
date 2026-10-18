@@ -7,11 +7,15 @@ import { AuditService } from '../audit/audit.service.js';
 import {
   type BusinessLocation,
   BusinessService,
-  locationKey,
   NORMALISATION_VERSION,
-  normaliseIdentifier,
-  normaliseName,
 } from '../business/business.service.js';
+import {
+  lockMatchKeys,
+  locationOf,
+  matchBusiness,
+  matchInputs,
+  type MatchSubject,
+} from '../business/matching.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { TenancyService } from '../tenancy/tenancy.service.js';
 
@@ -59,12 +63,6 @@ export interface ReviewView extends ApplicationView {
 }
 
 type Application = Prisma.onboarding_applicationGetPayload<object>;
-
-interface Match {
-  readonly rule: string;
-  readonly outcome: 'same' | 'new' | 'review';
-  readonly matchedBusinessId: string | null;
-}
 
 function view(row: Application): ApplicationView {
   return {
@@ -147,16 +145,15 @@ export class OnboardingService {
 
       // Applications that could be the same business take turns, so two of them
       // can never both conclude "new".
-      for (const key of lockKeys(application, account.person_id)) {
-        await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${key}::text, 0))`;
-      }
-      const match = await this.match(tx, application, account.person_id);
+      const subject = subjectOf(application);
+      await lockMatchKeys(tx, subject, account.person_id);
+      const match = await matchBusiness(tx, subject, account.person_id);
       await tx.match_decision.create({
         data: {
           application_id: application.id,
           rule: match.rule,
           normalisation_version: NORMALISATION_VERSION,
-          inputs: matchInputs(application),
+          inputs: matchInputs(subject),
           outcome: match.outcome,
           matched_business_id: match.matchedBusinessId,
         },
@@ -288,81 +285,6 @@ export class OnboardingService {
 
   // --- Internals ---
 
-  /** ADR 0012's matching rule, in its stated order. Reads only; decides nothing. */
-  private async match(tx: Tx, application: Application, ownerPersonId: string): Promise<Match> {
-    const name = normaliseName(application.name);
-    if (application.kind === 'registered') {
-      const identifier = await tx.business_identifier.findFirst({
-        where: {
-          type: application.registration_type ?? '',
-          country: application.country,
-          value_normalised: normaliseIdentifier(application.registration_value ?? ''),
-        },
-      });
-      if (identifier) {
-        // Only a verified identifier, on both sides, can match automatically.
-        return identifier.verified_at && application.verification === 'verified'
-          ? {
-              rule: 'registered_identifier_match',
-              outcome: 'same',
-              matchedBusinessId: identifier.business_id,
-            }
-          : {
-              rule: 'unverified_identifier_match',
-              outcome: 'review',
-              matchedBusinessId: identifier.business_id,
-            };
-      }
-      const informal = await tx.business.findFirst({
-        where: { kind: 'unregistered', owner_person_id: ownerPersonId, name_normalised: name },
-      });
-      if (informal) {
-        return {
-          rule: 'owner_has_unregistered_same_name',
-          outcome: 'review',
-          matchedBusinessId: informal.id,
-        };
-      }
-      return { rule: 'new_business', outcome: 'new', matchedBusinessId: null };
-    }
-
-    const place = locationKey(locationOf(application));
-    const candidates = await tx.business.findMany({
-      where: {
-        kind: 'unregistered',
-        OR: [
-          { owner_person_id: ownerPersonId, location_key: place },
-          { owner_person_id: ownerPersonId, name_normalised: name },
-          { name_normalised: name, location_key: place },
-        ],
-      },
-    });
-    const find = (test: (row: (typeof candidates)[number]) => boolean): string | null =>
-      candidates.find(test)?.id ?? null;
-    const mine = (row: (typeof candidates)[number]): boolean =>
-      row.owner_person_id === ownerPersonId;
-
-    const exact = find(
-      (row) => mine(row) && row.name_normalised === name && row.location_key === place,
-    );
-    if (exact) {
-      return { rule: 'unregistered_identity_match', outcome: 'same', matchedBusinessId: exact };
-    }
-    const samePlace = find((row) => mine(row) && row.location_key === place);
-    if (samePlace) {
-      return { rule: 'same_owner_same_location', outcome: 'review', matchedBusinessId: samePlace };
-    }
-    const sameName = find((row) => mine(row) && row.name_normalised === name);
-    if (sameName) {
-      return { rule: 'same_owner_same_name', outcome: 'review', matchedBusinessId: sameName };
-    }
-    const otherOwner = find((row) => row.name_normalised === name && row.location_key === place);
-    if (otherOwner) {
-      return { rule: 'same_name_same_location', outcome: 'review', matchedBusinessId: otherOwner };
-    }
-    return { rule: 'new_business', outcome: 'new', matchedBusinessId: null };
-  }
-
   /**
    * Creates the business, its workspace, the applicant's admin membership and
    * the workspace's ledger accounts, in the caller's transaction. Being a
@@ -388,7 +310,7 @@ export class OnboardingService {
         : await this.businesses.createUnregistered(tx, {
             name: application.name,
             ownerPersonId,
-            location: locationOf(application),
+            location: locationOf(subjectOf(application)),
           });
     // Tier follows verification (lessons §7): a verified registration starts higher.
     const tier = application.kind === 'registered' && verified ? 'tier_1' : 'tier_0';
@@ -431,45 +353,14 @@ export class OnboardingService {
   }
 }
 
-function locationOf(application: Application): BusinessLocation {
-  const location = (application.location ?? {}) as Record<string, unknown>;
-  const part = (key: string): string => (typeof location[key] === 'string' ? location[key] : '');
+function subjectOf(application: Application): MatchSubject {
   return {
+    kind: application.kind as MatchSubject['kind'],
+    name: application.name,
     country: application.country,
-    area: part('area'),
-    locality: part('locality'),
-    place: part('place'),
+    registrationType: application.registration_type,
+    registrationValue: application.registration_value,
+    location: application.location,
+    verification: application.verification as MatchSubject['verification'],
   };
-}
-
-function lockKeys(application: Application, ownerPersonId: string): string[] {
-  const name = normaliseName(application.name);
-  if (application.kind === 'registered') {
-    return [
-      `onboarding:id:${application.registration_type ?? ''}:${application.country}:${normaliseIdentifier(application.registration_value ?? '')}`,
-      `onboarding:owner:${ownerPersonId}`,
-    ].sort();
-  }
-  return [
-    `onboarding:owner:${ownerPersonId}`,
-    `onboarding:place:${name}:${locationKey(locationOf(application))}`,
-  ].sort();
-}
-
-/** What the decision was based on. Normalised values only; no contact details. */
-function matchInputs(application: Application): Prisma.InputJsonObject {
-  return application.kind === 'registered'
-    ? {
-        kind: 'registered',
-        name_normalised: normaliseName(application.name),
-        registration_type: application.registration_type,
-        registration_value_normalised: normaliseIdentifier(application.registration_value ?? ''),
-        verification: application.verification,
-      }
-    : {
-        kind: 'unregistered',
-        name_normalised: normaliseName(application.name),
-        location_key: locationKey(locationOf(application)),
-        verification: application.verification,
-      };
 }
