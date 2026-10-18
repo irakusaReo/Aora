@@ -36,3 +36,14 @@ Base is the only chain. The brief wants one dedicated integration module, mainta
 - Unknown states are first-class, so some operations will wait for an operator rather than retry; this is intended.
 - Anything that submits a transaction is blocked on D-1 and D-2; read-only verification is not.
 - Whether tests may fork mainnet read-only needs an explicit answer (E-4).
+
+## Addendum, 2026-10-18: what checkpoint 5A built (phase-5 plan)
+
+- **Library:** viem 2.57.2, pinned exact (P5-1). A lint rule lets only `services/api/src/modules/chain` import it. Public clients run with `cacheTime: 0`: viem otherwise caches the block number for about four seconds.
+- **Config:** `chain/config.ts` holds Base Sepolia only, with the native USDC address and its provenance. Environment: `BASE_SEPOLIA_RPC_URL` (https; a plain-http loopback address only on a developer machine) and `SANDBOX_SIGNER_PRIVATE_KEY`. No RPC URL: every chain feature is off and `/v1/health` says `not_configured`.
+- **Startup verification on serverless:** Vercel has no long-lived process, so the check (chain ID, code at the USDC address, `decimals()`, ledger exponent) runs once per instance on its first chain call, before anything else may run. A wrong chain, token or exponent stays refused for the life of the instance; an unreachable RPC may be retried. `/v1/health` reports the result.
+- **State machine** as decided above, with the signed transaction, hash and nonce committed as `submitted` before broadcast; sends never retry at the transport level; recovery is by receipt, by the node's pool, and by the sender's nonce. An operation whose nonce was used by another transaction, or that stays unknown past a time limit, goes to `reconciliation_required` and opens a `chain_operation_unresolved` exception.
+- **Nonces** are allocated from a locked `chain.signer_nonce` row (the larger of the stored next nonce and the node's pending count).
+- **Inbound observation** scans `Transfer` events to the sandbox wallet from every token contract over bounded ranges from a stored cursor. Native USDC is `observed`, then `confirmed` under `chain.confirmation_policy`, or `dropped` if its block is reorganised away. Any other token is `unexpected_asset` with an exception (ADR 0005 point 6). Nothing is credited in 5A; crediting needs attribution (5C).
+- **Local chain:** anvil with chain ID 84532 and a TEST-ONLY token's code at the configured USDC address (P5-2), so tests exercise the real config entry and never relax the signer's chain guard. No mainnet fork (E-4 stays open).
+- **Network fees** are recorded on each operation and not ledgered in the sandbox (P5-7).

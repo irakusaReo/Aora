@@ -90,7 +90,7 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 
 ## Pre-pilot list (carried, 2026-10-18)
 
-Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); ADRs 0009, 0010, 0011 decided.
+Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); network fees (ETH) posted to the ledger, not only recorded (phase-5 P5-7); make `BLOB_READ_WRITE_TOKEN` a sensitive Vercel variable; ADRs 0009, 0010, 0011 decided.
 
 ## Owner rulings (2026-10-13)
 

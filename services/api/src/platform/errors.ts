@@ -33,6 +33,8 @@ export type ErrorCode =
   | 'prohibited_item'
   | 'sold_out'
   | 'conflict'
+  | 'invalid_destination'
+  | 'chain_unavailable'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -60,6 +62,8 @@ const STATUS: Record<ErrorCode, number> = {
   prohibited_item: 422,
   sold_out: 409,
   conflict: 409,
+  invalid_destination: 422,
+  chain_unavailable: 503,
   internal_error: 500,
 };
 

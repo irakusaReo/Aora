@@ -22,3 +22,8 @@ services/*/src/generated/
 
 # Next.js build output.
 .next/
+
+# Foundry build output.
+contracts/out/
+contracts/cache/
+contracts/broadcast/

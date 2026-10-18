@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "consent", "developer", "identity", "kelo", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
+  schemas  = ["audit", "business", "chain", "consent", "developer", "identity", "kelo", "ledger", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -166,6 +166,9 @@ model workspace {
   tier                                      String                      @default("tier_0")
   audit_event                               audit_event[]
   onboarding_application                    onboarding_application[]
+  observed_transfer                         observed_transfer[]
+  operation                                 operation[]
+  transition                                transition[]
   consent_record                            consent_record[]
   api_key                                   api_key[]
   webhook_delivery                          webhook_delivery[]
@@ -238,24 +241,27 @@ model account_balance {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model asset {
-  code             String             @id
-  kind             String
-  exponent         Int                @db.SmallInt
-  layaway_refund   layaway_refund[]
-  listing          listing[]
-  plan_template    plan_template[]
-  purchase         purchase[]
-  quote            quote[]
-  refund_rule      refund_rule[]
-  account          account[]
-  posting          posting[]
-  payment_intent   payment_intent[]
-  payout           payout[]
-  payout_policy    payout_policy[]
-  refund           refund[]
-  settlement_batch settlement_batch[]
-  tariff_version   tariff_version[]
-  tier_limit       tier_limit[]
+  code                String                @id
+  kind                String
+  exponent            Int                   @db.SmallInt
+  confirmation_policy confirmation_policy[]
+  observed_transfer   observed_transfer[]
+  operation           operation[]
+  layaway_refund      layaway_refund[]
+  listing             listing[]
+  plan_template       plan_template[]
+  purchase            purchase[]
+  quote               quote[]
+  refund_rule         refund_rule[]
+  account             account[]
+  posting             posting[]
+  payment_intent      payment_intent[]
+  payout              payout[]
+  payout_policy       payout_policy[]
+  refund              refund[]
+  settlement_batch    settlement_batch[]
+  tariff_version      tariff_version[]
+  tier_limit          tier_limit[]
 
   @@schema("ledger")
 }
@@ -263,19 +269,20 @@ model asset {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model journal_entry {
-  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id           String?        @db.Uuid
-  idempotency_key     String         @unique
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String?             @db.Uuid
+  idempotency_key     String              @unique
   entry_type          String
   operation_type      String
   operation_id        String
-  reverses_entry_id   String?        @unique @db.Uuid
-  mode                String         @default("sandbox")
-  posted_at           DateTime       @default(now()) @db.Timestamptz(6)
-  created_txid        BigInt         @default(dbgenerated("txid_current()"))
-  journal_entry       journal_entry? @relation("journal_entryTojournal_entry", fields: [reverses_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  other_journal_entry journal_entry? @relation("journal_entryTojournal_entry")
-  workspace           workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reverses_entry_id   String?             @unique @db.Uuid
+  mode                String              @default("sandbox")
+  posted_at           DateTime            @default(now()) @db.Timestamptz(6)
+  created_txid        BigInt              @default(dbgenerated("txid_current()"))
+  observed_transfer   observed_transfer[]
+  journal_entry       journal_entry?      @relation("journal_entryTojournal_entry", fields: [reverses_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_journal_entry journal_entry?      @relation("journal_entryTojournal_entry")
+  workspace           workspace?          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   posting             posting[]
 
   @@index([operation_type, operation_id], map: "journal_entry_operation")
@@ -1515,4 +1522,133 @@ model refund_rule {
 
   @@unique([category_slug, version])
   @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model confirmation_policy {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  asset_code               String
+  version                  Int
+  effective_from           DateTime  @db.Timestamptz(6)
+  effective_to             DateTime? @db.Timestamptz(6)
+  min_confirmations        Int
+  high_value_threshold     Decimal   @db.Decimal(78, 0)
+  high_value_confirmations Int
+  mode                     String    @default("sandbox")
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+  asset                    asset     @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([asset_code, version])
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model observed_transfer {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  network          String         @default("base-sepolia")
+  tx_hash          String
+  log_index        Int
+  block_number     BigInt
+  block_hash       String
+  token_address    String
+  from_address     String
+  to_address       String
+  amount           Decimal        @db.Decimal(78, 0)
+  asset_code       String?
+  status           String         @default("observed")
+  confirmations    Int            @default(0)
+  tenant_id        String?        @db.Uuid
+  journal_entry_id String?        @db.Uuid
+  mode             String         @default("sandbox")
+  observed_at      DateTime       @default(now()) @db.Timestamptz(6)
+  confirmed_at     DateTime?      @db.Timestamptz(6)
+  updated_at       DateTime       @default(now()) @db.Timestamptz(6)
+  asset            asset?         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  journal_entry    journal_entry? @relation(fields: [journal_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace        workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tx_hash, log_index])
+  @@index([status], map: "observed_transfer_pending", where: raw("(status = 'observed'::text)"))
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model operation {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  network             String       @default("base-sepolia")
+  tenant_id           String?      @db.Uuid
+  kind                String
+  idempotency_key     String       @unique
+  status              String       @default("prepared")
+  from_address        String
+  to_address          String?
+  recipient_address   String?
+  asset_code          String?
+  amount              Decimal?     @db.Decimal(78, 0)
+  call_data           String
+  nonce               BigInt?
+  tx_hash             String?      @unique
+  raw_transaction     String?
+  submitted_at        DateTime?    @db.Timestamptz(6)
+  block_number        BigInt?
+  block_hash          String?
+  confirmations       Int          @default(0)
+  gas_used            Decimal?     @db.Decimal(78, 0)
+  effective_gas_price Decimal?     @db.Decimal(78, 0)
+  contract_address    String?
+  failure_reason      String?
+  related_entry_ids   String[]     @default([]) @db.Uuid
+  mode                String       @default("sandbox")
+  created_at          DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
+  asset               asset?       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transition          transition[]
+
+  @@unique([from_address, nonce], map: "operation_sender_nonce", where: raw("(nonce IS NOT NULL)"))
+  @@index([status], map: "operation_open", where: raw("(status = ANY (ARRAY['submitted'::text, 'pending_confirmation'::text, 'status_unknown'::text]))"))
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model scan_cursor {
+  name       String   @id
+  network    String   @default("base-sepolia")
+  last_block BigInt
+  mode       String   @default("sandbox")
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model signer_nonce {
+  address    String   @id
+  network    String   @default("base-sepolia")
+  next_nonce BigInt
+  mode       String   @default("sandbox")
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model transition {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operation_id String     @db.Uuid
+  tenant_id    String?    @db.Uuid
+  from_status  String?
+  to_status    String
+  source       String
+  reason       String?
+  mode         String     @default("sandbox")
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  operation    operation  @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace    workspace? @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([operation_id, created_at], map: "chain_transition_operation")
+  @@schema("chain")
 }

@@ -57,3 +57,7 @@ These contracts will have had no independent review. They are fit for a testnet 
 - The chain phase must come before the NAM vault backend.
 - A second toolchain (Foundry) and a Solidity review burden enter the repository.
 - Needs from the owner: a Base Sepolia RPC URL, a funded testnet key, and a block-explorer API key for verification.
+
+## Addendum, 2026-10-18: source verification without a paid explorer plan (phase-5 plan P5-8)
+
+Etherscan's supported-chains page lists Base Sepolia as "Paid Tier Only" (read 2026-10-18), so the block-explorer API key named under Consequences would need a paid plan, a billable resource. Engineering rule 6's "source is verified on the Base Sepolia block explorer" is met with a free verifier instead (Blockscout or Sourcify, whichever Foundry's current documentation supports for Base Sepolia, confirmed in checkpoint 5B). No `ETHERSCAN_API_KEY` is requested.

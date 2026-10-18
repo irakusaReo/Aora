@@ -48,6 +48,18 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Anvil is the local chain for the API's chain tests (phase-5 plan P5-2);
+      # forge checks the TEST-ONLY token artifact is current. Pinned (ADR 0006).
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.4
+
+      - name: Check the local-chain test tokens match their source
+        run: |
+          (cd contracts && forge build)
+          node contracts/scripts/export-test-tokens.mjs
+          git diff --exit-code -- services/api/test/support/test-tokens.json
+
       - name: Start a transaction-mode pooler in front of the test database
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq pgbouncer

@@ -1,0 +1,23 @@
+# AORA contracts (ADR 0006, ADR 0015). Base Sepolia only; never mainnet.
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+# Pinned compiler (newest release at least two weeks old on 2026-10-18).
+solc_version = "0.8.37"
+# Cancun is the newest EVM version Base is known to run; re-checked against Base's docs in 5B.
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+cbor_metadata = false
+
+[fuzz]
+runs = 1024
+
+[invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
