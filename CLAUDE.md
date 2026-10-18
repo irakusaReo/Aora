@@ -21,6 +21,7 @@ On-chain: Base only. Stablecoin: native USDC on Base only.
 | `docs/product/kony-competitive-lessons.md` | Requirements derived from competitor research (KONY, KELO, developer platform) |
 | `docs/research/kopo-kopo-teardown.md` | Background market research. Context, not requirements. |
 | `docs/architecture/open-questions.md` | Unresolved decisions. Check here before assuming anything. |
+| `docs/architecture/country-provider-model.md` | Markets and rails, and which rails are real or simulated |
 | `docs/adr/` | Accepted and proposed architecture decisions |
 | `docs/architecture/delivery-plan.md` | Phases, entry and exit criteria |
 | `docs/product/mvp-scope.md` | What the sandbox MVP must do, in build order |
@@ -34,8 +35,9 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 
 - Repository: greenfield, started 2026-10-13.
 - Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) on Vercel and Neon, against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 2 — hosting foundation and real sign-in** (`docs/plans/phase-2.md`). All checkpoints (2A to 2F, including Clerk and Resend) are built, merged and verified on staging at `https://aora-api.vercel.app` (sandbox, not live). The end-of-phase report is still owed; do not start Phase 3 until Phase 2 is approved.
-- Last approved milestone: Phase 1 (2026-10-13)
+- Current phase: **Phase 4 — KELO commerce** (`docs/plans/phase-4.md`), under the owner's run mode of 2026-10-18: build the remaining MVP phases in the order of `docs/product/mvp-scope.md` §3 without waiting for approval between phases, stopping only for a needed credential, an owner decision with no safe default, unfixable CI or staging, a CLAUDE.md rule, a billable resource, a Vercel Production setting or a delete, or the MVP gate.
+- Rails: M-Pesa through Daraja is the only real rail in the MVP; Airtel, MTN, Vodacom and the bank wait for the post-gate Rails expansion phase. Do not request their credentials until the owner says so.
+- Last approved milestone: Phase 3 (2026-10-18). The owner's signed-in staging walk-through is pending and blocks nothing.
 - Live status, next steps and blockers: `docs/progress.md`
 
 Update this block at the end of each approved phase.
@@ -49,7 +51,7 @@ Full detail and build order: `docs/product/mvp-scope.md`.
 - **KELO:** consumer BNPL marketplace (web and mobile) plus a KELO section in the merchant's KONY workspace. Plan types: Pay in N, monthly financing, layaway; asset financing in the data model only. All credit behind a feature flag.
 - **CHIWO:** consumer sign-up, pay a merchant, send and receive USDC, requests, receipts. Web and mobile.
 - **NAM Vault:** one product inside CHIWO and KONY, backed by an AORA vault contract on Base Sepolia.
-- **Rails:** M-Pesa (Daraja, Kenya), Airtel Money (Kenya), MTN MoMo (one non-Kenyan market, sandbox only), one bank. Simulator until credentials arrive.
+- **Rails:** M-Pesa (Daraja, Kenya) is the only real rail. Airtel Money, MTN MoMo, Vodacom M-Pesa and the bank stay on the simulator until the post-gate Rails expansion phase (`docs/architecture/country-provider-model.md`).
 - **Contracts:** at most three AORA contracts, Base Sepolia only, Foundry, non-upgradeable.
 - **Apps:** `kony-web`, `chiwo-web`, `kelo-web`, `internal-ops` (Next.js); `kony-mobile`, `chiwo-mobile`, `kelo-mobile` (Expo). Business logic stays in the API.
 - **Out of scope:** card acceptance, a real fiat-to-USDC conversion provider, production custody, live money, mainnet, merchant cash advances, device-lock integration, in-store QR for KELO.

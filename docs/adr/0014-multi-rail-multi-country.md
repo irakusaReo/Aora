@@ -1,6 +1,6 @@
 # ADR 0014 — Multi-rail and multi-country model
 
-- **Status:** Accepted (owner scope decision, 2026-10-13). The MTN market and the bank are proposals awaiting the owner.
+- **Status:** Accepted (owner scope decision, 2026-10-13). Markets and MTN coverage decided 2026-10-18 (addendum below); the bank is deferred until the owner names it.
 - **Related:** ADR 0003, 0007; lessons §1, §3; brief §3.3, §5.1; open questions D-3, M-7, O-5, O-6
 
 No provider's API behaviour, limits, currencies or prices are stated here. Each is read from the provider's current documentation in the checkpoint that integrates it, and recorded with source and date in `docs/architecture/country-provider-model.md`.
@@ -24,7 +24,7 @@ The MVP adds real rails: M-Pesa through Safaricom Daraja (Kenya), Airtel Money (
 - **Selection is configuration:** each environment declares which adapter serves each rail (`simulator` or the real one). A rail whose credentials are missing falls back to the simulator and is reported as simulated, never as integrated.
 - **One rail per checkpoint.** A rail is "integrated" only when the shared adapter contract suite passes against its real sandbox and reconciliation is clean.
 
-### Proposals for the owner
+### Proposals for the owner (superseded by the 2026-10-18 addendum)
 
 - **MTN market: Ghana.** The research ranks Ghana as the second export market and moves Uganda down because of its withdrawal tax; Tanzania, the first export market, has no MTN. Integrating Ghana therefore exercises the model against the more likely future market. Open question O-5.
 - **Bank:** candidates with public developer programmes, all **to verify**: Equity Bank (Jenga), KCB (Buni), Co-operative Bank, Stanbic, I&M. The choice depends on which sandbox the owner can obtain. Open question O-6.
@@ -42,3 +42,12 @@ The MVP adds real rails: M-Pesa through Safaricom Daraja (Kenya), Airtel Money (
 - Reports must group by asset; a single "total collected" across currencies is never shown.
 - The Phase 1 payment intent gains `rail` and `country`; its `provider` column becomes the adapter name.
 - Each real rail needs credentials and a reachable callback URL, so each checkpoint starts with a credential request.
+
+## Addendum, 2026-10-18 (owner decisions)
+
+- **Markets:** Kenya is home and the only launch market. Tanzania is the first export market, then Ghana and Uganda. **Nigeria is a partnership / API tier only, with no direct merchant acquiring.** Table and rail list in [country-provider-model.md](../architecture/country-provider-model.md).
+- **O-5 resolved:** MTN MoMo covers Ghana and Uganda (`mtn_gh`, `mtn_ug`). Airtel Money covers Kenya, Uganda and Tanzania (`airtel_ke`, `airtel_ug`, `airtel_tz`). Each is a separate rail; per-country API differences are verified when each is integrated.
+- **M-Pesa in Tanzania** is Vodacom's service with its own API. It is a separate future adapter (`mpesa_tz`), sharing nothing with the Daraja adapter except the ADR 0007 interfaces. Everything about it is **to verify**.
+- **O-6:** the bank is deferred; the owner names it with the credentials.
+- **MVP rails:** M-Pesa through Daraja (`mpesa_ke`) is the only real rail. Every other rail runs on the simulator, labelled as simulated. The real Airtel, MTN, Vodacom and bank adapters move to a **Rails expansion** phase after the MVP gate ([mvp-scope.md](../product/mvp-scope.md) §3), and their credentials are not requested until the owner says so.
+- **Consequence:** the "one rail per checkpoint" rule above now applies to the Rails expansion phase. The model does not change: it was already country-neutral and rail-neutral.
