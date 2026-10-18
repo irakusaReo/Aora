@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 4 — KELO commerce ([plan](plans/phase-4.md)), under the owner's run mode of 2026-10-18 (see CLAUDE.md): phases continue without approval stops; the MVP gate is Phase 10.
+- **Current phase:** Phase 4 — KELO commerce ([plan](plans/phase-4.md)) is complete and on staging (end-of-phase report 2026-10-18). Next: Phase 5 — chain and contracts, under the owner's run mode of 2026-10-18 (see CLAUDE.md); the MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-18
+- **Last updated:** 2026-10-18 (Phase 4 complete)
 
 ## Owner decisions of 2026-10-18
 
@@ -59,9 +59,9 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Next
 
-1. Merge 4C (migration to staging first), then the Phase 4 report.
-2. Deploy `kelo-web` once the owner approves the Vercel project and the `CLERK_AUTHORIZED_PARTIES` change.
-3. Phase 5 (chain and contracts) under the run mode.
+1. **4C merged and on staging (PR #17):** migration `…000400_kelo_layaway` applied to staging first; health, plans route, layaway terms and all five cron jobs pass; reconciliation clean. 490 tests pass.
+2. Deploy `kelo-web` once the owner approves the Vercel project and the `CLERK_AUTHORIZED_PARTIES` change (stop condition: Vercel Production settings).
+3. Phase 5 (chain and contracts): write `docs/plans/phase-5.md`; contracts need Foundry installed locally (ADR 0006); build against a local chain until the Base Sepolia batch (requested 2026-10-18) arrives.
 2. Phase 5 (chain and contracts) needs the Base Sepolia batch (RPC URL, funded testnet signer key, explorer API key), requested on 2026-10-18 ahead of time. Until it arrives, chain work runs against a local chain.
 
 ## Blocked
@@ -70,7 +70,8 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Waiting on the owner
 
-- Vercel Blob store connected to `aora-api` (Phase 4 credential request, 2026-10-18).
+- Approval to create the Vercel project `kelo-web` (Hobby, Root Directory `apps/kelo-web`, Clerk keys and `AORA_API_URL` on Production) and to add its origin to `CLERK_AUTHORIZED_PARTIES` on `aora-api`.
+- Vercel Blob store (public) connected to `aora-api` (Phase 4 credential request, 2026-10-18; corrected to Public).
 - Base Sepolia RPC URL, funded signer key and explorer API key (Phase 5, requested early).
 - O-14: whether a real Safaricom number may be used in the Daraja sandbox.
 - The signed-in staging walk-through (non-blocking).
