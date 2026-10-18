@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 5 — chain and contracts ([plan](plans/phase-5.md)) is built, merged (PRs #20, #21, #22) and on staging with the chain switched off until the sandbox wallet is funded. Next: Phase 6 — NAM Vault, under the owner's run mode of 2026-10-18 (see CLAUDE.md). The MVP gate is Phase 10.
+- **Current phase:** Phase 7 — CHIWO web, next (not started). Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-18 (Phase 5 built and merged; staging chain activation waits for wallet funding)
+- **Last updated:** 2026-10-18 (Phase 6 merged and on staging; Phase 7 next)
 
 ## Owner decisions of 2026-10-18
 
@@ -69,7 +69,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Phase 6 checkpoints
 
-- **6A and 6B built (2026-10-18), branch `phase-6`:** NAM module (`services/api/src/modules/nam/`). It covers the product facts and the disclosure as data; business investor profiles; orders funded from the USDC treasury (reservation plus business-capacity consent, one-time vault approval, deposit); holdings only from the vault's confirmed `Deposit` events; redemptions back to the treasury only from confirmed `Withdraw` events, with rounding to `nam_vault_rounding`; and NAM reconciliation against the vault. All vault calls go through `chain/nam-vault.gateway.ts`. Vault-to-wallet transfers are `internal`, never deposits, and the 5C three-way reconciliation counts NAM flows. kony-web page `/w/<id>/nam`. Migration `20261018000800_nam` (expand-only). 14 NAM tests; the vault spec's invariant 2 is corrected (ADR 0015 addendum). On staging NAM answers `chain_unavailable` until the vault is deployed.
+- **6A and 6B built, merged and on staging (2026-10-18, PR #23):** migration `…000800_nam` applied to staging first; `neon:verify staging` passes; health ok; all six cron jobs 200; `/v1/nam` live (401 signed out, `chain_unavailable` until the vault exists). 590 API tests and 25 Foundry tests pass. NAM module (`services/api/src/modules/nam/`). It covers the product facts and the disclosure as data; business investor profiles; orders funded from the USDC treasury (reservation plus business-capacity consent, one-time vault approval, deposit); holdings only from the vault's confirmed `Deposit` events; redemptions back to the treasury only from confirmed `Withdraw` events, with rounding to `nam_vault_rounding`; and NAM reconciliation against the vault. All vault calls go through `chain/nam-vault.gateway.ts`. Vault-to-wallet transfers are `internal`, never deposits, and the 5C three-way reconciliation counts NAM flows. kony-web page `/w/<id>/nam`. Migration `20261018000800_nam` (expand-only). 14 NAM tests; the vault spec's invariant 2 is corrected (ADR 0015 addendum). On staging NAM answers `chain_unavailable` until the vault is deployed.
 
 ## Owner approvals of 2026-10-18 — carried out
 
