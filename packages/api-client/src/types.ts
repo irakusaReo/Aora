@@ -353,3 +353,44 @@ export interface KeloPlanOption {
   merchant_fee_bps: number;
   offered: boolean;
 }
+
+// USDC treasury on Base Sepolia (phase 5C). SANDBOX: testnet only.
+export interface Treasury {
+  network: { name: string; label: string; chain_id: number };
+  deposit_address: string;
+  wallet_label: string;
+  asset: { code: string; decimals: number; contract: string };
+  balances: { available_minor: string; withdrawals_in_flight_minor: string };
+  explorer_url: string;
+  note: string;
+}
+
+export interface TreasuryAddress {
+  id: string;
+  address: string;
+  label: string | null;
+  status: 'active' | 'revoked';
+  registered_at: string;
+}
+
+export interface TreasuryTransfer {
+  direction: 'in' | 'out';
+  tx_hash: string | null;
+  amount_minor: string;
+  currency: string;
+  counterparty: string;
+  status: string;
+  at: string;
+}
+
+export interface Withdrawal {
+  id: string;
+  amount_minor: string;
+  currency: string;
+  destination: string;
+  status: string;
+  created_by: string;
+  decided_by: string | null;
+  tx_hash: string | null;
+  created_at: string;
+}

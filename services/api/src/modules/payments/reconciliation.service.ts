@@ -18,7 +18,11 @@ export type ExceptionType =
   | 'ledger_mismatch'
   | 'provider_result_conflict'
   | 'unexpected_asset'
-  | 'chain_operation_unresolved';
+  | 'chain_operation_unresolved'
+  | 'unattributed_deposit'
+  | 'chain_balance_mismatch'
+  | 'chain_operation_mismatch'
+  | 'anchor_mismatch';
 
 export interface ExceptionInput {
   readonly runId: string | null;

@@ -103,6 +103,11 @@ model user_account {
   audit_event                                                                      audit_event[]
   onboarding_application_onboarding_application_applicant_account_idTouser_account onboarding_application[]   @relation("onboarding_application_applicant_account_idTouser_account")
   onboarding_application_onboarding_application_decided_byTouser_account           onboarding_application[]   @relation("onboarding_application_decided_byTouser_account")
+  address_challenge                                                                address_challenge[]
+  registered_address_registered_address_registered_byTouser_account                registered_address[]       @relation("registered_address_registered_byTouser_account")
+  registered_address_registered_address_revoked_byTouser_account                   registered_address[]       @relation("registered_address_revoked_byTouser_account")
+  withdrawal_withdrawal_created_byTouser_account                                   withdrawal[]               @relation("withdrawal_created_byTouser_account")
+  withdrawal_withdrawal_decided_byTouser_account                                   withdrawal[]               @relation("withdrawal_decided_byTouser_account")
   consent_record                                                                   consent_record[]
   api_key_api_key_created_byTouser_account                                         api_key[]                  @relation("api_key_created_byTouser_account")
   api_key_api_key_revoked_byTouser_account                                         api_key[]                  @relation("api_key_revoked_byTouser_account")
@@ -166,9 +171,12 @@ model workspace {
   tier                                      String                      @default("tier_0")
   audit_event                               audit_event[]
   onboarding_application                    onboarding_application[]
+  address_challenge                         address_challenge[]
   observed_transfer                         observed_transfer[]
   operation                                 operation[]
+  registered_address                        registered_address[]
   transition                                transition[]
+  withdrawal                                withdrawal[]
   consent_record                            consent_record[]
   api_key                                   api_key[]
   webhook_delivery                          webhook_delivery[]
@@ -247,6 +255,7 @@ model asset {
   confirmation_policy confirmation_policy[]
   observed_transfer   observed_transfer[]
   operation           operation[]
+  withdrawal          withdrawal[]
   layaway_refund      layaway_refund[]
   listing             listing[]
   plan_template       plan_template[]
@@ -279,6 +288,7 @@ model journal_entry {
   mode                String              @default("sandbox")
   posted_at           DateTime            @default(now()) @db.Timestamptz(6)
   created_txid        BigInt              @default(dbgenerated("txid_current()"))
+  anchor_leaf         anchor_leaf[]
   observed_transfer   observed_transfer[]
   journal_entry       journal_entry?      @relation("journal_entryTojournal_entry", fields: [reverses_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_journal_entry journal_entry?      @relation("journal_entryTojournal_entry")
@@ -1576,36 +1586,38 @@ model observed_transfer {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model operation {
-  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  network             String       @default("base-sepolia")
-  tenant_id           String?      @db.Uuid
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  network             String         @default("base-sepolia")
+  tenant_id           String?        @db.Uuid
   kind                String
-  idempotency_key     String       @unique
-  status              String       @default("prepared")
+  idempotency_key     String         @unique
+  status              String         @default("prepared")
   from_address        String
   to_address          String?
   recipient_address   String?
   asset_code          String?
-  amount              Decimal?     @db.Decimal(78, 0)
+  amount              Decimal?       @db.Decimal(78, 0)
   call_data           String
   nonce               BigInt?
-  tx_hash             String?      @unique
+  tx_hash             String?        @unique
   raw_transaction     String?
-  submitted_at        DateTime?    @db.Timestamptz(6)
+  submitted_at        DateTime?      @db.Timestamptz(6)
   block_number        BigInt?
   block_hash          String?
-  confirmations       Int          @default(0)
-  gas_used            Decimal?     @db.Decimal(78, 0)
-  effective_gas_price Decimal?     @db.Decimal(78, 0)
+  confirmations       Int            @default(0)
+  gas_used            Decimal?       @db.Decimal(78, 0)
+  effective_gas_price Decimal?       @db.Decimal(78, 0)
   contract_address    String?
   failure_reason      String?
-  related_entry_ids   String[]     @default([]) @db.Uuid
-  mode                String       @default("sandbox")
-  created_at          DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
-  asset               asset?       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
-  workspace           workspace?   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  related_entry_ids   String[]       @default([]) @db.Uuid
+  mode                String         @default("sandbox")
+  created_at          DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime       @default(now()) @db.Timestamptz(6)
+  anchor_period       anchor_period?
+  asset               asset?         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transition          transition[]
+  withdrawal          withdrawal?
 
   @@unique([from_address, nonce], map: "operation_sender_nonce", where: raw("(nonce IS NOT NULL)"))
   @@index([status], map: "operation_open", where: raw("(status = ANY (ARRAY['submitted'::text, 'pending_confirmation'::text, 'status_unknown'::text]))"))
@@ -1650,5 +1662,108 @@ model transition {
   workspace    workspace? @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([operation_id, created_at], map: "chain_transition_operation")
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model address_challenge {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id          String              @db.Uuid
+  nonce              String
+  message            String
+  created_by         String              @db.Uuid
+  expires_at         DateTime            @db.Timestamptz(6)
+  used_at            DateTime?           @db.Timestamptz(6)
+  mode               String              @default("sandbox")
+  created_at         DateTime            @default(now()) @db.Timestamptz(6)
+  user_account       user_account        @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace          workspace           @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registered_address registered_address?
+
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model registered_address {
+  id                                                          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                                   String            @db.Uuid
+  network                                                     String            @default("base-sepolia")
+  address                                                     String            @unique(map: "registered_address_active", where: raw("(status = 'active'::text)"))
+  label                                                       String?
+  challenge_id                                                String            @unique @db.Uuid
+  status                                                      String            @default("active")
+  registered_by                                               String            @db.Uuid
+  registered_at                                               DateTime          @default(now()) @db.Timestamptz(6)
+  revoked_by                                                  String?           @db.Uuid
+  revoked_at                                                  DateTime?         @db.Timestamptz(6)
+  mode                                                        String            @default("sandbox")
+  address_challenge                                           address_challenge @relation(fields: [challenge_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_registered_address_registered_byTouser_account user_account      @relation("registered_address_registered_byTouser_account", fields: [registered_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_registered_address_revoked_byTouser_account    user_account?     @relation("registered_address_revoked_byTouser_account", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                   workspace         @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model withdrawal {
+  id                                               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                        String        @db.Uuid
+  idempotency_key                                  String
+  request_hash                                     String
+  amount                                           BigInt
+  asset_code                                       String        @default("USDC")
+  destination                                      String
+  status                                           String        @default("requested")
+  created_by                                       String        @db.Uuid
+  decided_by                                       String?       @db.Uuid
+  decided_at                                       DateTime?     @db.Timestamptz(6)
+  decision_reason                                  String?
+  operation_id                                     String?       @unique @db.Uuid
+  mode                                             String        @default("sandbox")
+  created_at                                       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime      @default(now()) @db.Timestamptz(6)
+  asset                                            asset         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account_withdrawal_created_byTouser_account user_account  @relation("withdrawal_created_byTouser_account", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_withdrawal_decided_byTouser_account user_account? @relation("withdrawal_decided_byTouser_account", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  operation                                        operation?    @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                        workspace     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, idempotency_key])
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model anchor_leaf {
+  label         String
+  entry_id      String        @db.Uuid
+  leaf          String
+  mode          String        @default("sandbox")
+  journal_entry journal_entry @relation(fields: [entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  anchor_period anchor_period @relation(fields: [label], references: [label], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([label, entry_id])
+  @@schema("chain")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model anchor_period {
+  label        String        @id
+  network      String        @default("base-sepolia")
+  period_hash  String        @unique
+  salt         Bytes
+  root         String
+  entry_count  Int
+  status       String        @default("closed")
+  operation_id String?       @unique @db.Uuid
+  mode         String        @default("sandbox")
+  created_at   DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime      @default(now()) @db.Timestamptz(6)
+  anchor_leaf  anchor_leaf[]
+  operation    operation?    @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   @@schema("chain")
 }

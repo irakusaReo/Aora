@@ -104,10 +104,14 @@ contract NamUsdcVault is ERC20, ReentrancyGuard {
 
         uint256 before = asset.balanceOf(address(this));
         asset.safeTransferFrom(msg.sender, address(this), assets);
+        // Exact equality is the point: only the amount actually received is accounted.
+        // forge-lint: disable-next-line(incorrect-strict-equality)
         if (asset.balanceOf(address(this)) - before != assets) revert UnexpectedTransferAmount();
 
         accountedAssets += assets;
         _mint(receiver, shares);
+        // After the transfer by necessity (the received amount is checked first); nonReentrant.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit Deposit(msg.sender, receiver, assets, shares);
     }
 
@@ -120,8 +124,10 @@ contract NamUsdcVault is ERC20, ReentrancyGuard {
 
         _burn(owner, shares);
         accountedAssets -= assets;
-        asset.safeTransfer(receiver, assets);
+        // Emitted before the only external call (the transfer below); nonReentrant.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit Withdraw(msg.sender, receiver, owner, assets, shares);
+        asset.safeTransfer(receiver, assets);
     }
 
     // ---------------------------------------------------------------------

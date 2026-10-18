@@ -27,7 +27,13 @@ import { BASE_SEPOLIA } from '../../src/modules/chain/config.js';
 const tokens = JSON.parse(readFileSync(new URL('./test-tokens.json', import.meta.url), 'utf8')) as {
   TestUsdc: Hex;
   TestOtherToken: Hex;
+  AnchorRegistryCreation: Hex;
 };
+
+/** Compiled code from the exported test artifact (see contracts/scripts/export-test-tokens.mjs). */
+export function testContractCode(name: 'AnchorRegistryCreation'): Hex {
+  return tokens[name];
+}
 
 // Throwaway keys generated for this test run, funded with local ETH when anvil
 // starts. Nothing is hard-coded, and they exist only on the local process.

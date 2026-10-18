@@ -1864,6 +1864,296 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/treasury:
+    get:
+      tags: [Treasury]
+      operationId: getTreasury
+      summary: USDC treasury on Base Sepolia (sandbox)
+      description: >
+        Permission: `treasury.read` (admin, finance). SANDBOX: testnet USDC on Base Sepolia only (phase-5 plan 5C). USDC balances are
+        separate from KES and from every other balance. Deposits go to AORA's
+        sandbox testnet wallet and count only from a registered address, after the
+        confirmation policy. `chain_unavailable` when Base Sepolia is not configured.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Treasury' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/treasury/address-challenges:
+    post:
+      tags: [Treasury]
+      operationId: createTreasuryAddressChallenge
+      summary: A one-time message to sign, proving control of a deposit address
+      description: >
+        Permission: `treasury.manage` (admin). The message names no workspace and
+        moves nothing. Expires after ten minutes; usable once.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [id, message, expires_at], properties: { id: { type: string, format: uuid }, message: { type: string }, expires_at: { type: string, format: date-time }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/treasury/addresses:
+    get:
+      tags: [Treasury]
+      operationId: listTreasuryAddresses
+      summary: Registered deposit addresses
+      description: Permission `treasury.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/TreasuryAddress' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Treasury]
+      operationId: registerTreasuryAddress
+      summary: Register a deposit address with its signature of a challenge
+      description: >
+        Permission: `treasury.manage` (admin). Requires a PIN step-up. The
+        signature is an EIP-191 personal signature of the challenge message,
+        checked off chain. `invalid_signature` if it does not match;
+        `conflict` if the challenge was used or expired, or the address is already
+        registered to any workspace. Only deposits observed after registration
+        are credited.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challenge_id, address, signature]
+              properties:
+                challenge_id: { type: string, format: uuid }
+                address: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
+                signature: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+                label: { type: string, minLength: 1, maxLength: 60 }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TreasuryAddress' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/treasury/addresses/{id}/revocation:
+    post:
+      tags: [Treasury]
+      operationId: revokeTreasuryAddress
+      summary: Stop crediting deposits from an address
+      description: Permission `treasury.manage` (admin). Requires a PIN step-up.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TreasuryAddress' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/treasury/transfers:
+    get:
+      tags: [Treasury]
+      operationId: listTreasuryTransfers
+      summary: Deposits credited to the workspace and its withdrawals
+      description: Permission `treasury.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/TreasuryTransfer' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/treasury/withdrawals:
+    get:
+      tags: [Treasury]
+      operationId: listTreasuryWithdrawals
+      summary: USDC withdrawals, newest first
+      description: Permission `treasury.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/Withdrawal' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Treasury]
+      operationId: requestTreasuryWithdrawal
+      summary: Request a USDC withdrawal (needs a second person's approval)
+      description: >
+        Permission: `treasury.withdraw` (admin, finance). Requires a PIN step-up.
+        Reserves the amount at once. Refused with `invalid_destination` (zero
+        address, the USDC contract, AORA's wallet, or any contract),
+        `limit_exceeded` (tier limits, as data) or `insufficient_funds`. Nothing is
+        sent until a different admin approves.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor, destination]
+              properties:
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                destination: { type: string, pattern: '^0x[0-9a-fA-F]{40}$' }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Withdrawal' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Withdrawal' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/treasury/withdrawals/{id}/approval:
+    post:
+      tags: [Treasury]
+      operationId: approveTreasuryWithdrawal
+      summary: Approve a withdrawal; it is then signed and broadcast once
+      description: >
+        Permission: `treasury.approve` (admin). Requires a PIN step-up. Refused
+        (`forbidden`) for the person who requested it. A transaction hash is not
+        completion: the withdrawal completes after the confirmation policy, and a
+        transaction whose outcome is unknown is never sent again.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Withdrawal' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/treasury/withdrawals/{id}/rejection:
+    post:
+      tags: [Treasury]
+      operationId: rejectTreasuryWithdrawal
+      summary: Reject a withdrawal and release its reserve
+      description: Permission `treasury.approve` (admin).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, minLength: 1, maxLength: 500 } } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Withdrawal' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/ops/chain/transfers:
+    get:
+      tags: [Ops]
+      operationId: listOpsChainTransfers
+      summary: Inbound Base Sepolia transfers that need an operator (sandbox)
+      description: >
+        Operators only. Default: `unattributed` USDC and `unexpected_asset` (any
+        other token, never credited). Filter with `status`.
+      security: [{ session: [] }]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { enum: [unattributed, unexpected_asset, credited, confirmed, observed, dropped] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/chain/transfers/{id}/attribution:
+    post:
+      tags: [Ops]
+      operationId: attributeOpsChainTransfer
+      summary: Attribute an unattributed USDC deposit, with a reason (sandbox)
+      description: >
+        Operators only. To a workspace (`workspace_id`, for a deposit sent before
+        its address was registered) or, without one, to AORA's own sandbox
+        funding (faucet USDC). One journal entry; audited with the reason.
+        `conflict` unless the transfer is unattributed USDC.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                workspace_id: { type: string, format: uuid }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [id, status, attributed_to], properties: { id: { type: string, format: uuid }, status: { const: credited }, attributed_to: { type: string }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /v1/internal/cron/chain:
     get:
       tags: [Internal]
@@ -2754,6 +3044,61 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    Treasury:
+      type: object
+      required: [network, deposit_address, wallet_label, asset, balances, explorer_url, note]
+      properties:
+        network:
+          type: object
+          properties: { name: { const: base-sepolia }, label: { type: string }, chain_id: { const: 84532 } }
+        deposit_address: { type: string, description: "AORA's sandbox testnet wallet." }
+        wallet_label: { const: AORA sandbox testnet wallet }
+        asset:
+          type: object
+          properties: { code: { const: USDC }, decimals: { type: integer }, contract: { type: string } }
+        balances:
+          type: object
+          properties:
+            available_minor: { type: string, description: USDC base units (decimals from `asset.decimals`). }
+            withdrawals_in_flight_minor: { type: string }
+        explorer_url: { type: string }
+        note: { type: string }
+        mode: { $ref: '#/components/schemas/Mode' }
+    TreasuryAddress:
+      type: object
+      required: [id, address, status, registered_at]
+      properties:
+        id: { type: string, format: uuid }
+        address: { type: string }
+        label: { type: [string, 'null'] }
+        status: { enum: [active, revoked] }
+        registered_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    TreasuryTransfer:
+      type: object
+      required: [direction, amount_minor, currency, counterparty, status, at]
+      properties:
+        direction: { enum: [in, out] }
+        tx_hash: { type: [string, 'null'] }
+        amount_minor: { type: string }
+        currency: { const: USDC }
+        counterparty: { type: string }
+        status: { type: string }
+        at: { type: string, format: date-time }
+    Withdrawal:
+      type: object
+      required: [id, amount_minor, currency, destination, status, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        amount_minor: { type: string }
+        currency: { const: USDC }
+        destination: { type: string }
+        status: { enum: [requested, rejected, submitted, completed, failed, reconciliation_required] }
+        created_by: { type: string, format: uuid }
+        decided_by: { type: [string, 'null'], format: uuid }
+        tx_hash: { type: [string, 'null'], description: A hash is not completion. }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
     Mode:
       const: sandbox
       description: Every record and response is sandbox data.

@@ -18,6 +18,9 @@ import { Database } from '../../platform/database.js';
 import { AppError } from '../../platform/errors.js';
 import { RateLimiter } from '../../platform/rate-limit.js';
 import { ChainService } from '../chain/chain.service.js';
+import { AnchoringService } from '../chain/anchoring.service.js';
+import { ChainReconciliationService } from '../chain/chain-reconciliation.service.js';
+import { TreasuryService } from '../chain/treasury.service.js';
 import { ProvisioningService } from '../kelo/provisioning.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { ReconciliationService } from '../payments/reconciliation.service.js';
@@ -101,6 +104,9 @@ export class CronController {
     @Inject(SettlementService) private readonly settlement: SettlementService,
     @Inject(ProvisioningService) private readonly provisioning: ProvisioningService,
     @Inject(ChainService) private readonly chain: ChainService,
+    @Inject(TreasuryService) private readonly treasury: TreasuryService,
+    @Inject(ChainReconciliationService) private readonly chainRecon: ChainReconciliationService,
+    @Inject(AnchoringService) private readonly anchoring: AnchoringService,
   ) {}
 
   /** Settles succeeded collections (ADR 0021). Idempotent; concurrent runs take different rows. */
@@ -123,6 +129,13 @@ export class CronController {
         transfers_observed: number;
         transfers_confirmed: number;
         transfers_dropped: number;
+        deposits_credited: number;
+        deposits_unattributed: number;
+        withdrawals_completed: number;
+        withdrawals_failed: number;
+        anchors_closed: number;
+        anchors_submitted: number;
+        reconciliation_exceptions_opened: number | null;
         caught_up: boolean;
       }
   > {
@@ -139,12 +152,25 @@ export class CronController {
       caughtUp = scan.caught_up;
     }
     const confirmed = await this.chain.confirmObserved();
+    const deposits = await this.treasury.creditConfirmed();
+    const withdrawals = await this.treasury.settleWithdrawals();
+    const closed = await this.anchoring.closePeriods();
+    const anchored = await this.anchoring.commitPeriods();
+    // Three-way reconciliation only describes one moment once the scan has caught up.
+    const reconciled = caughtUp ? await this.chainRecon.run() : null;
     return {
       job: 'chain',
       operations_changed: monitored.changed,
       transfers_observed: observed,
       transfers_confirmed: confirmed.confirmed,
       transfers_dropped: confirmed.dropped,
+      deposits_credited: deposits.credited,
+      deposits_unattributed: deposits.unattributed,
+      withdrawals_completed: withdrawals.completed,
+      withdrawals_failed: withdrawals.failed,
+      anchors_closed: closed.closed,
+      anchors_submitted: anchored.submitted,
+      reconciliation_exceptions_opened: reconciled?.exceptions_opened ?? null,
       caught_up: caughtUp,
     };
   }

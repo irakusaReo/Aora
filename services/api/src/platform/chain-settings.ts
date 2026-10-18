@@ -14,6 +14,11 @@ export interface ChainSettings {
   readonly requestTimeoutMs: number;
   /** How long a status_unknown operation may stay unresolved before a person must look. */
   readonly unknownAfterSeconds: number;
+  /**
+   * Overrides the AnchorRegistry address recorded in the chain config. Tests
+   * only (a registry deployed to the local chain); never read from the environment.
+   */
+  readonly anchorRegistry?: Hex | null;
 }
 
 const KEY = /^0x[0-9a-fA-F]{64}$/;
