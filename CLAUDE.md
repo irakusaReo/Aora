@@ -35,9 +35,9 @@ If these documents conflict, the master brief wins. Record the conflict in `open
 
 - Repository: greenfield, started 2026-10-13.
 - Goal: a fully functional **sandbox MVP** (`docs/product/mvp-scope.md`) on Vercel and Neon, against provider sandboxes and Base Sepolia.
-- Current phase: **Phase 4 — KELO commerce** (`docs/plans/phase-4.md`) is built, merged (PRs #16, #17) and on staging; its end-of-phase report was delivered on 2026-10-18. Under the owner's run mode of 2026-10-18 the next phase is **Phase 5 — chain and contracts**, started without an approval stop. Run mode: build the remaining MVP phases in the order of `docs/product/mvp-scope.md` §3, stopping only for a needed credential, an owner decision with no safe default, unfixable CI or staging, a CLAUDE.md rule, a billable resource, a Vercel Production setting or a delete, or the MVP gate. `kelo-web` is deployed at https://kelo-web.vercel.app (2026-10-18).
+- Current phase: **Phase 5 — chain and contracts** (`docs/plans/phase-5.md`) is built and merged (PRs #20–#22) and on staging, with the chain **switched off on staging** until the owner funds the sandbox wallet `0xEfBB9b5761BB2633cCB94a294628Dd63124Cedb5`; then the key, `BASE_SEPOLIA_RPC_URL` and `BASE_SEPOLIA_SCAN_START_BLOCK=48284000` go on `aora-api`, and the contracts are deployed with `node contracts/scripts/deploy.mjs` (Sourcify verification, no Etherscan key). Next under the owner's run mode of 2026-10-18: **Phase 6 — NAM Vault**, built against the local chain until the vault is deployed. Run mode: build the remaining MVP phases in the order of `docs/product/mvp-scope.md` §3, stopping only for a needed credential, an owner decision with no safe default, unfixable CI or staging, a CLAUDE.md rule, a billable resource, a Vercel Production setting or a delete, or the MVP gate. `kelo-web` is deployed at https://kelo-web.vercel.app (2026-10-18).
 - Rails: M-Pesa through Daraja is the only real rail in the MVP; Airtel, MTN, Vodacom and the bank wait for the post-gate Rails expansion phase. Do not request their credentials until the owner says so.
-- Last approved milestone: Phase 3 (2026-10-18); Phase 4 continues under the run mode. The owner's signed-in staging walk-through is pending and blocks nothing.
+- Last approved milestone: Phase 3 (2026-10-18); Phases 4 and 5 continue under the run mode. The owner's signed-in staging walk-through is pending and blocks nothing.
 - Live status, next steps and blockers: `docs/progress.md`
 
 Update this block at the end of each approved phase.
@@ -170,7 +170,7 @@ Requires Node 24 (`nvm use`), pnpm through corepack (`corepack enable`), and Pos
 | Neon: migrate | `pnpm db:migrate:staging`, `pnpm db:migrate:development` (direct connection) |
 | Neon: verify through the pooler | `pnpm neon:verify staging\|development` (pass or fail only) |
 | Deploy to staging | `vercel deploy --prod --yes --scope andres-projects-85e1a425` from the repository root (Vercel "Production" is AORA staging). Ask first |
-| Contract tests | Not available. No smart contracts exist yet (ADR 0015). |
+| Contract tests | `cd contracts && forge test` (Foundry v1.8.4; `git submodule update --init --recursive` first). The API's chain tests need `anvil` on the PATH or in `~/.foundry/bin` |
 
 Run `format:check`, `lint`, `typecheck` and `test` before reporting any work as done. CI runs the same four, plus a check that `schema.prisma` matches the migrations.
 

@@ -394,3 +394,41 @@ export interface Withdrawal {
   tx_hash: string | null;
   created_at: string;
 }
+
+// NAM Vault (phase 6). SANDBOX: testnet only; no return is offered.
+export interface NamOverview {
+  product: {
+    name: string;
+    kind: string;
+    asset: string;
+    fee_bps: number;
+    returns_claimed: false;
+    asset_control: string;
+    customer_owns: string;
+    withdrawal_terms: string;
+    vault_address: string;
+    network: string;
+  };
+  disclosure: { key: string; version: string; title: string; body: string };
+  holding: { shares: string; current_value_minor: string; cost_minor: string };
+  funding_pending_minor: string;
+  note: string;
+}
+
+export interface NamOrder {
+  id: string;
+  amount_minor: string;
+  status: string;
+  shares: string | null;
+  tx_hash: string | null;
+  created_at: string;
+}
+
+export interface NamRedemption {
+  id: string;
+  shares: string;
+  status: string;
+  assets_minor: string | null;
+  tx_hash: string | null;
+  created_at: string;
+}

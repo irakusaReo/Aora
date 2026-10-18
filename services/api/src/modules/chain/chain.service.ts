@@ -204,9 +204,11 @@ export class ChainService {
    */
   async prepareContractCall(input: {
     readonly idempotencyKey: string;
-    readonly kind: 'anchor_commit' | 'vault_deposit' | 'vault_redeem';
+    readonly kind: 'anchor_commit' | 'usdc_approve' | 'vault_deposit' | 'vault_redeem';
     readonly to: Address;
     readonly data: Hex;
+    /** The workspace an operation acts for, so its members can see it (row-level security). */
+    readonly tenantId?: string | null;
   }): Promise<ChainOperationView> {
     const { signer } = await this.signerOrFail();
     const contents = {
@@ -216,9 +218,9 @@ export class ChainService {
     };
     return this.db.asPlatform(async (tx) => {
       const inserted = await tx.$queryRaw<{ id: string }[]>`
-        insert into chain.operation (idempotency_key, kind, from_address, to_address, call_data)
-        values (${input.idempotencyKey}, ${input.kind}, ${contents.from_address},
-                ${contents.to_address}, ${contents.call_data})
+        insert into chain.operation (idempotency_key, kind, tenant_id, from_address, to_address, call_data)
+        values (${input.idempotencyKey}, ${input.kind}, ${input.tenantId ?? null}::uuid,
+                ${contents.from_address}, ${contents.to_address}, ${contents.call_data})
         on conflict (idempotency_key) do nothing
         returning id`;
       const row = await tx.operation.findUniqueOrThrow({
@@ -236,7 +238,13 @@ export class ChainService {
       }
       if (inserted.length === 1) {
         await tx.transition.create({
-          data: { operation_id: row.id, from_status: null, to_status: 'prepared', source: 'api' },
+          data: {
+            operation_id: row.id,
+            tenant_id: row.tenant_id,
+            from_status: null,
+            to_status: 'prepared',
+            source: 'api',
+          },
         });
       }
       return view(row);
@@ -247,6 +255,12 @@ export class ChainService {
   anchorRegistry(): Address | null {
     const override = this.config.chain?.anchorRegistry;
     return override ? getAddress(override) : BASE_SEPOLIA.contracts.anchorRegistry;
+  }
+
+  /** The NamUsdcVault this environment uses, or null if none is deployed. */
+  namVault(): Address | null {
+    const override = this.config.chain?.namVault;
+    return override ? getAddress(override) : BASE_SEPOLIA.contracts.namUsdcVault;
   }
 
   /** AORA's sandbox testnet wallet: where deposits go and withdrawals come from. */

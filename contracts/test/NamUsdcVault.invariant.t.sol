@@ -99,9 +99,10 @@ contract NamUsdcVaultInvariantTest is Test {
         assertLe(vault.totalAssets(), usdc.balanceOf(address(vault)));
     }
 
+    /// With virtual shares, redeeming every share can leave rounding dust in
+    /// accounted assets; that dust is never payable to anyone holding no shares.
     function invariant_allSharesRedeemForAtMostAccountedAssets() public view {
         assertLe(vault.convertToAssets(vault.totalSupply()), vault.totalAssets());
-        if (vault.totalSupply() == 0) assertEq(vault.totalAssets(), 0);
     }
 
     /// The vault never pays out value nobody deposited: donations are not

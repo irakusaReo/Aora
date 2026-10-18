@@ -148,6 +148,28 @@ contract NamUsdcVaultTest is Test {
         vault.deposit(ONE, bob);
     }
 
+    function test_fullExitCanLeaveDustThatNobodyCanTake() public {
+        vm.prank(alice);
+        vault.deposit(15 * ONE, alice);
+        vm.prank(bob);
+        vault.deposit(10 * ONE, bob);
+        uint256 aliceShares = vault.balanceOf(alice);
+        uint256 bobShares = vault.balanceOf(bob);
+        vm.prank(alice);
+        vault.redeem(aliceShares / 3, alice, alice);
+        uint256 rest = vault.balanceOf(alice);
+        vm.prank(alice);
+        vault.redeem(rest, alice, alice);
+        vm.prank(bob);
+        vault.redeem(bobShares, bob, bob);
+        assertEq(vault.totalSupply(), 0);
+        assertLe(vault.totalAssets(), 2, "at most rounding dust remains");
+        assertLe(vault.totalAssets(), usdc.balanceOf(address(vault)));
+        vm.prank(attacker);
+        vm.expectRevert(NamUsdcVault.ZeroAmount.selector);
+        vault.redeem(0, attacker, attacker);
+    }
+
     function test_previewsMatchActions() public {
         vm.prank(alice);
         vault.deposit(123 * ONE, alice);

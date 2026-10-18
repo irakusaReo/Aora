@@ -22,7 +22,8 @@ export type ExceptionType =
   | 'unattributed_deposit'
   | 'chain_balance_mismatch'
   | 'chain_operation_mismatch'
-  | 'anchor_mismatch';
+  | 'anchor_mismatch'
+  | 'nam_mismatch';
 
 export interface ExceptionInput {
   readonly runId: string | null;

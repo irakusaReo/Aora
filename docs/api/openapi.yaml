@@ -1864,6 +1864,137 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/nam:
+    get:
+      tags: [NAM]
+      operationId: getNam
+      summary: The NAM Vault for this workspace (sandbox; no return offered)
+      description: >
+        Permission: `nam.read` (admin, finance). Product facts, the current
+        disclosure, and the workspace's funding set aside, shares held and what the
+        vault would return for them now (the contract's `convertToAssets`, never a
+        rate). `chain_unavailable` until the vault is deployed in this environment.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamOverview' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/nam/orders:
+    get:
+      tags: [NAM]
+      operationId: listNamOrders
+      summary: NAM orders, newest first
+      description: Permission `nam.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/NamOrder' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [NAM]
+      operationId: placeNamOrder
+      summary: Fund the NAM Vault from the USDC treasury
+      description: >
+        Permission: `nam.invest` (admin, finance). Requires a PIN step-up. Records
+        business-capacity consent to the named disclosure version (`conflict` if it
+        is not the current one) and sets the amount aside at once
+        (`insufficient_funds` otherwise). The holding appears only from the vault's
+        `Deposit` event in a confirmed receipt.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor, disclosure_version]
+              properties:
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                disclosure_version: { type: string }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamOrder' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamOrder' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/nam/redemptions:
+    get:
+      tags: [NAM]
+      operationId: listNamRedemptions
+      summary: NAM redemptions, newest first
+      description: Permission `nam.read` (admin, finance).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/NamRedemption' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [NAM]
+      operationId: requestNamRedemption
+      summary: Redeem shares back to the USDC treasury
+      description: >
+        Permission: `nam.invest` (admin, finance). Requires a PIN step-up. `shares`
+        or `all: true`. `insufficient_funds` above the shares not already being
+        redeemed. Completes only from the vault's `Withdraw` event in a confirmed
+        receipt; the treasury receives what the vault returned.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { type: object, additionalProperties: false, required: [shares], properties: { shares: { type: string, pattern: '^[1-9][0-9]*$' } } }
+                - { type: object, additionalProperties: false, required: [all], properties: { all: { const: true } } }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamRedemption' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamRedemption' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /v1/treasury:
     get:
       tags: [Treasury]
@@ -3044,6 +3175,57 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    NamOverview:
+      type: object
+      required: [product, disclosure, holding, funding_pending_minor, note]
+      properties:
+        product:
+          type: object
+          properties:
+            name: { type: string }
+            kind: { const: smart_contract_vault }
+            asset: { const: USDC }
+            fee_bps: { type: integer }
+            returns_claimed: { const: false }
+            asset_control: { type: string }
+            customer_owns: { type: string }
+            withdrawal_terms: { type: string }
+            vault_address: { type: string }
+            network: { type: string }
+        disclosure:
+          type: object
+          properties: { key: { const: nam_vault_disclosure }, version: { type: string }, title: { type: string }, body: { type: string } }
+        holding:
+          type: object
+          properties:
+            shares: { type: string }
+            current_value_minor: { type: string, description: "The vault's convertToAssets for these shares. Not a rate." }
+            cost_minor: { type: string }
+        funding_pending_minor: { type: string }
+        note: { type: string }
+        mode: { $ref: '#/components/schemas/Mode' }
+    NamOrder:
+      type: object
+      required: [id, amount_minor, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        amount_minor: { type: string }
+        status: { enum: [funding_reserved, depositing, holding_confirmed, failed, reconciliation_required] }
+        shares: { type: [string, 'null'] }
+        tx_hash: { type: [string, 'null'], description: A hash is not completion. }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    NamRedemption:
+      type: object
+      required: [id, shares, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        shares: { type: string }
+        status: { enum: [requested, redeeming, completed, failed, reconciliation_required] }
+        assets_minor: { type: [string, 'null'] }
+        tx_hash: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
     Treasury:
       type: object
       required: [network, deposit_address, wallet_label, asset, balances, explorer_url, note]

@@ -25,6 +25,8 @@ export interface ChainSettings {
    * only (a registry deployed to the local chain); never read from the environment.
    */
   readonly anchorRegistry?: Hex | null;
+  /** Overrides the NamUsdcVault address, like `anchorRegistry`. Tests only. */
+  readonly namVault?: Hex | null;
 }
 
 const KEY = /^0x[0-9a-fA-F]{64}$/;

@@ -15,7 +15,11 @@ export type AccountType =
   | 'chain_wallet_usdc'
   | 'platform_usdc_funding'
   | 'merchant_usdc_available'
-  | 'merchant_usdc_withdrawals_in_flight';
+  | 'merchant_usdc_withdrawals_in_flight'
+  | 'nam_vault_usdc'
+  | 'nam_vault_rounding'
+  | 'merchant_nam_funding_pending'
+  | 'merchant_nam_holding';
 
 /** The closed list of account types and their fixed properties (ADR 0003). */
 const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean }> = {
@@ -46,6 +50,14 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   merchant_usdc_available: { normalSide: 'credit', allowNegative: false },
   // Reserved for withdrawals requested and not yet resolved: a liability.
   merchant_usdc_withdrawals_in_flight: { normalSide: 'credit', allowNegative: false },
+  // NAM (phase 6). USDC AORA's wallet has deposited in the vault, at accounted value: an asset.
+  nam_vault_usdc: { normalSide: 'debit', allowNegative: false },
+  // Rounding between holders' cost and what the vault returns; may go below zero.
+  nam_vault_rounding: { normalSide: 'credit', allowNegative: true },
+  // Reserved for a NAM order not yet confirmed: a liability.
+  merchant_nam_funding_pending: { normalSide: 'credit', allowNegative: false },
+  // The workspace's principal in the vault, at cost: a liability.
+  merchant_nam_holding: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {
@@ -103,6 +115,8 @@ export class LedgerService {
     for (const type of [
       'merchant_usdc_available',
       'merchant_usdc_withdrawals_in_flight',
+      'merchant_nam_funding_pending',
+      'merchant_nam_holding',
     ] as const) {
       await this.openAccount(tx, { tenantId, type, assetCode: 'USDC' });
     }

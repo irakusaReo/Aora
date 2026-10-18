@@ -109,32 +109,49 @@ export class ConsentService {
     if (input.tenantId && !session.memberships.some((m) => m.tenantId === input.tenantId)) {
       throw new AppError('forbidden', 'You cannot consent on behalf of this workspace.');
     }
-    return this.db.asPlatform(async (tx) => {
-      const now = new Date();
-      const terms = await tx.terms_document.findFirst({
-        where: {
-          key: input.termsKey,
-          version: input.termsVersion,
-          effective_from: { lte: now },
-          OR: [{ effective_to: null }, { effective_to: { gt: now } }],
-        },
-      });
-      // Consent must name the version in effect, so nobody agrees to superseded terms.
-      if (!terms) throw new AppError('invalid_request', 'That terms version is not in effect.');
-      const account = await tx.user_account.findUniqueOrThrow({ where: { id: session.accountId } });
-      const row = await tx.consent_record.create({
-        data: {
-          person_id: account.person_id,
-          account_id: account.id,
-          capacity: input.capacity,
-          tenant_id: input.tenantId,
-          action: input.action,
-          terms_document_id: terms.id,
-          request_id: requestId,
-        },
-      });
-      return { id: row.id, created_at: row.created_at.toISOString() };
+    return this.db.asPlatform((tx) => this.recordIn(tx, session.accountId, requestId, input));
+  }
+
+  /**
+   * Records consent inside the caller's transaction, so an action and the
+   * consent it depends on commit together. The caller has checked capacity.
+   */
+  async recordIn(
+    tx: Tx,
+    accountId: string,
+    requestId: string,
+    input: {
+      termsKey: string;
+      termsVersion: string;
+      action: string;
+      capacity: 'personal' | 'business';
+      tenantId: string | null;
+    },
+  ): Promise<{ id: string; created_at: string }> {
+    const now = new Date();
+    const terms = await tx.terms_document.findFirst({
+      where: {
+        key: input.termsKey,
+        version: input.termsVersion,
+        effective_from: { lte: now },
+        OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+      },
     });
+    // Consent must name the version in effect, so nobody agrees to superseded terms.
+    if (!terms) throw new AppError('invalid_request', 'That terms version is not in effect.');
+    const account = await tx.user_account.findUniqueOrThrow({ where: { id: accountId } });
+    const row = await tx.consent_record.create({
+      data: {
+        person_id: account.person_id,
+        account_id: account.id,
+        capacity: input.capacity,
+        tenant_id: input.tenantId,
+        action: input.action,
+        terms_document_id: terms.id,
+        request_id: requestId,
+      },
+    });
+    return { id: row.id, created_at: row.created_at.toISOString() };
   }
 }
 
