@@ -11,6 +11,23 @@ const pinBody = z.strictObject({ pin: z.string().max(12) });
 const stepUpBody = z.strictObject({ pin: z.string().min(1).max(12) });
 const phoneBody = z.strictObject({ phone: z.string().max(20) });
 
+/**
+ * Assets and their minor-unit exponents, so no screen assumes two decimal
+ * places. Public reference data: KELO's marketplace shows prices before sign-in.
+ */
+@Controller('v1')
+export class AssetsController {
+  constructor(@Inject(Database) private readonly db: Database) {}
+
+  @Get('assets')
+  async assets(): Promise<{ data: { code: string; kind: string; exponent: number }[] }> {
+    const rows = await this.db.asPlatform((tx) => tx.asset.findMany({ orderBy: { code: 'asc' } }));
+    return {
+      data: rows.map((row) => ({ code: row.code, kind: row.kind, exponent: row.exponent })),
+    };
+  }
+}
+
 // Sign-in, sign-out and account recovery are the identity provider's (ADR 0019).
 // These routes are what stays AORA's: who you are here, and the transaction PIN.
 @Controller('v1')
@@ -21,15 +38,6 @@ export class IdentityController {
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(Database) private readonly db: Database,
   ) {}
-
-  /** Assets and their minor-unit exponents, so no screen assumes two decimal places. */
-  @Get('assets')
-  async assets(): Promise<{ data: { code: string; kind: string; exponent: number }[] }> {
-    const rows = await this.db.asPlatform((tx) => tx.asset.findMany({ orderBy: { code: 'asc' } }));
-    return {
-      data: rows.map((row) => ({ code: row.code, kind: row.kind, exponent: row.exponent })),
-    };
-  }
 
   @Get('me')
   async me(@Req() request: Request): Promise<{

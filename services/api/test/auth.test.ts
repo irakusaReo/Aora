@@ -104,10 +104,8 @@ describe('request authentication', () => {
     expect(found.rows[0]).toEqual({ no_session_table: true, tokens_as_refs: '0' });
   });
 
-  it('lists assets with their exponent, to signed-in people only', async () => {
-    expect((await h.http().get('/v1/assets')).status).toBe(401);
-    const token = await h.signIn('cashierA');
-    const response = await h.http().get('/v1/assets').set('Authorization', `Bearer ${token}`);
+  it('lists assets with their exponent, to anyone: it is public reference data', async () => {
+    const response = await h.http().get('/v1/assets');
     expect(response.status).toBe(200);
     expect(response.body.data).toContainEqual({ code: 'KES', kind: 'fiat', exponent: 2 });
   });
