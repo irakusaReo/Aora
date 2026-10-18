@@ -663,7 +663,9 @@ function createRpc(settings: ChainSettings): ChainRpc {
     transport: http(settings.rpcUrl, { timeout: settings.requestTimeoutMs, retryCount: 0 }),
   });
   return {
-    client: read,
+    // Vercel's build type-checks with its own compiler settings, which infer
+    // viem's client type differently; the shape is the same.
+    client: read as unknown as PublicClient,
     sendRawTransaction: (raw) => send.sendRawTransaction({ serializedTransaction: raw }),
   };
 }
