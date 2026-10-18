@@ -2384,6 +2384,275 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/marketplace/listings/{id}/plans:
+    get:
+      tags: [KELO]
+      operationId: listKeloPlans
+      summary: The plans offered for a price, with every payment and the total, before anything is agreed
+      description: Public. Every figure comes from the schedule engine; a screen renders it as given. Layaway charges the buyer no fee.
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variant_id, in: query, schema: { type: string, format: uuid } }
+        - { name: session_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloPlan' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/kelo/purchases:
+    post:
+      tags: [KELO]
+      operationId: createKeloPurchase
+      summary: Buy on layaway
+      description: >
+        No credit is extended. Reserves the item or place in the same transaction, records consent to the named terms version, and creates the schedule. `expected_total_minor` must equal the total shown (`fee_changed` otherwise). `sold_out` when nothing is left.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [listing_id, template_key, expected_total_minor, terms_version]
+              properties:
+                listing_id: { type: string, format: uuid }
+                variant_id: { type: string, format: uuid }
+                session_id: { type: string, format: uuid }
+                template_key: { type: string }
+                expected_total_minor: { $ref: '#/components/schemas/AmountMinor' }
+                terms_version: { type: string }
+      responses:
+        '201':
+          description: Purchase placed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloPurchase' }
+        '200':
+          description: Replay of an earlier request with the same Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloPurchase' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases:
+    get:
+      tags: [KELO]
+      operationId: listMyKeloPurchases
+      summary: The signed-in buyer's purchases
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloPurchase' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}:
+    get:
+      tags: [KELO]
+      operationId: getMyKeloPurchase
+      summary: One of the signed-in buyer's purchases
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloPurchase' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/instalments/{seq}/pay:
+    post:
+      tags: [KELO]
+      operationId: payKeloInstalment
+      summary: Start paying the next instalment
+      description: >
+        Instalments are paid in order. The instalment is claimed for this request before any payment exists, so a second request never pushes a second payment. While a payment's result is unknown the instalment is `pending` and cannot be paid again. On the M-Pesa rail, the sandbox accepts only the Daraja test number.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: seq, in: path, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                sandbox_scenario: { type: string, description: Sandbox only. Scripts the simulator. }
+                payer_phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+      responses:
+        '202':
+          description: Payment started
+          content:
+            application/json:
+              schema: { type: object, required: [seq, status, payment_intent_id], properties: { seq: { type: integer }, status: { const: pending }, payment_intent_id: { type: string, format: uuid }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/cancel:
+    post:
+      tags: [KELO]
+      operationId: cancelKeloPurchase
+      summary: Cancel before delivery; the refund follows the rule shown before agreeing
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloPurchase' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/confirm-delivery:
+    post:
+      tags: [KELO]
+      operationId: confirmKeloDelivery
+      summary: Confirm delivery, for categories fulfilled on the buyer's word
+      description: Settles the merchant net of the discount fee, in the same transaction.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Delivered and settled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloPurchase' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/plan-options:
+    get:
+      tags: [KELO]
+      operationId: listKeloPlanOptions
+      summary: The plans this listing's category allows, with the fee the merchant pays for each
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK. None is offered until the merchant chooses it.
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object, properties: { template_key: { type: string }, name: { type: string }, plan_type: { type: string }, instalment_count: { type: integer }, interval_days: { type: integer }, merchant_fee_bps: { type: integer }, offered: { type: boolean } } } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/plan-offers:
+    post:
+      tags: [KELO]
+      operationId: offerKeloPlan
+      summary: Offer a plan on a listing
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [template_key]
+              properties:
+                template_key: { type: string }
+      responses:
+        '201':
+          description: Offered
+          content:
+            application/json:
+              schema: { type: object, required: [template_key, offered], properties: { template_key: { type: string }, offered: { const: true }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/purchases:
+    get:
+      tags: [KELO]
+      operationId: listKeloMerchantPurchases
+      summary: Purchases of the workspace's listings, with sale, fee and net
+      description: Nothing identifies the buyer.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloMerchantPurchase' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/purchases/{id}/confirm:
+    post:
+      tags: [KELO]
+      operationId: confirmKeloPurchase
+      summary: Confirm a purchase whose first payment arrived
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloMerchantPurchase' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/purchases/{id}/fulfil:
+    post:
+      tags: [KELO]
+      operationId: fulfilKeloPurchase
+      summary: Record fulfilment after the last payment; settles the merchant net of the discount fee
+      description: >
+        Evidence follows the category: a proof of delivery (`proof_reference`), or the session having started. Categories fulfilled on the buyer's word refuse this route.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                proof_reference: { type: string, minLength: 3, maxLength: 80 }
+      responses:
+        '200':
+          description: Fulfilled and settled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloMerchantPurchase' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     apiKey:
@@ -2616,6 +2885,71 @@ components:
         details: { type: string }
         status: { enum: [open, quoted, accepted, withdrawn] }
         quotes: { type: array, items: { $ref: '#/components/schemas/KeloQuote' } }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloPlan:
+      type: object
+      required: [template_key, name, plan_type, instalments, total_minor, fees_minor, currency, receive_after_last_payment, cancellation, terms]
+      properties:
+        template_key: { type: string }
+        name: { type: string }
+        plan_type: { const: layaway }
+        instalments:
+          type: array
+          items: { type: object, required: [seq, due_on, amount_minor], properties: { seq: { type: integer }, due_on: { type: string, format: date }, amount_minor: { $ref: '#/components/schemas/AmountMinor' } } }
+        total_minor: { $ref: '#/components/schemas/AmountMinor' }
+        fees_minor: { type: string, description: 'Charged to the buyer on top of the price. Layaway: always "0".' }
+        currency: { type: string }
+        receive_after_last_payment: { const: true }
+        cancellation:
+          type: object
+          properties:
+            fee_bps: { type: integer }
+            fee_cap_minor: { type: string }
+            after_start_returned_bps: { type: integer }
+        terms: { type: object, properties: { key: { type: string }, version: { type: string } } }
+    KeloPurchase:
+      type: object
+      required: [id, status, plan_status, plan_type, listing_id, listing_title, total_minor, paid_minor, currency, receive_after_last_payment, instalments, refund, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled] }
+        plan_status: { enum: [active, paid_in_full, settled, cancelled, refunded] }
+        plan_type: { const: layaway }
+        listing_id: { type: string, format: uuid }
+        listing_title: { type: string }
+        total_minor: { $ref: '#/components/schemas/AmountMinor' }
+        paid_minor: { type: string }
+        currency: { type: string }
+        receive_after_last_payment: { const: true }
+        instalments:
+          type: array
+          items: { type: object, properties: { seq: { type: integer }, due_on: { type: string, format: date }, amount_minor: { type: string }, status: { enum: [due, pending, paid, cancelled] } } }
+        refund:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                paid_minor: { type: string }
+                fee_minor: { type: string }
+                refund_minor: { type: string }
+                status: { enum: [requested, pending_provider, succeeded, failed, status_unknown, reconciliation_required] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloMerchantPurchase:
+      type: object
+      required: [id, status, plan_status, listing_title, total_minor, paid_minor, merchant_fee_minor, net_minor, currency, next_action, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled] }
+        plan_status: { enum: [active, paid_in_full, settled, cancelled, refunded] }
+        listing_title: { type: string }
+        total_minor: { type: string }
+        paid_minor: { type: string }
+        merchant_fee_minor: { type: string }
+        net_minor: { type: string }
+        currency: { type: string }
+        next_action: { enum: [wait_for_payments, confirm, fulfil, wait_for_buyer, none] }
         created_at: { type: string, format: date-time }
         mode: { $ref: '#/components/schemas/Mode' }
     KeloStore:

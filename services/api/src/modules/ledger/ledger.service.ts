@@ -8,7 +8,10 @@ export type AccountType =
   | 'fee_revenue'
   | 'merchant_available'
   | 'merchant_payouts_in_flight'
-  | 'provider_payout_float';
+  | 'provider_payout_float'
+  | 'kelo_layaway_funds_held'
+  | 'kelo_fee_revenue'
+  | 'kelo_refunds_payable';
 
 /** The closed list of account types and their fixed properties (ADR 0003). */
 const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean }> = {
@@ -25,6 +28,12 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   // A provider's disbursement float, funded outside the ledger in the sandbox (M-4):
   // below zero means float used, not an overdraft.
   provider_payout_float: { normalSide: 'debit', allowNegative: true },
+  // KELO (ADR 0017). Layaway payments held for the buyer until fulfilment: a liability.
+  kelo_layaway_funds_held: { normalSide: 'credit', allowNegative: false },
+  // KELO's merchant discount fees and retained cancellation fees: income.
+  kelo_fee_revenue: { normalSide: 'credit', allowNegative: false },
+  // Owed back to buyers who cancelled, until the refund is paid: a liability.
+  kelo_refunds_payable: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {

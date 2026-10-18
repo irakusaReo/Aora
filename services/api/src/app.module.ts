@@ -74,6 +74,12 @@ import {
   KeloMerchantQuotesController,
 } from './modules/kelo/quotes.controller.js';
 import { QuotesService } from './modules/kelo/quotes.service.js';
+import {
+  KeloMerchantPurchasesController,
+  KeloPlansController,
+  KeloPurchasesController,
+} from './modules/kelo/layaway.controller.js';
+import { LayawayService } from './modules/kelo/layaway.service.js';
 import { IMAGE_STORE, SimulatedImageStore, VercelBlobImageStore } from './modules/kelo/images.js';
 import {
   ApiKeysController,
@@ -127,6 +133,7 @@ const SHARED = [
   SimulatedImageStore,
   CatalogueService,
   QuotesService,
+  LayawayService,
   SessionGuard,
   WorkspaceGuard,
   OperatorGuard,
@@ -171,6 +178,9 @@ export const CONTROLLERS = [
   KeloWorkspaceStoreController,
   KeloBuyerQuotesController,
   KeloMerchantQuotesController,
+  KeloPlansController,
+  KeloPurchasesController,
+  KeloMerchantPurchasesController,
   CronController,
   NotificationsController,
   ProviderWebhooksController,

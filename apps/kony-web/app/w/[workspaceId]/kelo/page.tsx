@@ -60,6 +60,9 @@ export default async function Kelo({
   return (
     <>
       <h1>KELO: {store.store.display_name}</h1>
+      <p>
+        <Link href={`/w/${workspaceId}/kelo/purchases`}>Orders</Link>
+      </p>
       <p className="muted">
         A listing is visible to buyers only after AORA has reviewed it. Being an administrator here
         does not by itself let anyone pay out money.

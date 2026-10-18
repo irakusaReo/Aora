@@ -28,6 +28,9 @@
 | P4-8 | **Search is PostgreSQL full-text search** over published listings only, with a generated `tsvector` and a GIN index | ADR 0017 | — |
 | P4-9 | **A layaway instalment is a payment intent with purpose `kelo_layaway`**, owned by the merchant's workspace for routing and limits, but posting to the platform's "layaway funds held" liability, never to the merchant's collections. On fulfilment one entry moves the order's held funds to the merchant (net of the discount fee) and to KELO fee revenue | ADR 0017: held funds are a liability to the consumer until fulfilment | ADR 0021 addendum |
 | P4-10 | **Cancellation refunds** follow the category's refund rule (percentage returned, cancellation fee with a cap, and the rule for a passed session date). The refund goes out by the existing refund path (simulator; Daraja reversal is X-14) | ADR 0018 | — |
+| P4-12 | **An instalment is claimed before its payment is created** (`submitting`, keyed by the request's Idempotency-Key). Payment creation runs in its own transaction, so without the claim two concurrent requests could each push a payment | One STK push per instalment attempt | ADR 0017 addendum |
+| P4-13 | **A retained cancellation fee is KELO income in the sandbox** | Who keeps it in production is commercial and the owner's | ADR 0021 addendum |
+| P4-14 | **On the M-Pesa rail the layaway checkout offers Safaricom's test number only, and a labelled simulator choice.** The test number cancels every push (1032), so a full layaway can only be completed on staging with the simulator | No real number until O-14 is decided | this plan |
 | P4-11 | **Fulfilment evidence per category:** consumer confirmation, or the merchant's proof of delivery. A scheduled service is fulfilled when its session starts | ADR 0017 | — |
 
 ## 2. Data model

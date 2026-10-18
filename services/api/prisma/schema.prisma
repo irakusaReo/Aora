@@ -109,8 +109,13 @@ model user_account {
   webhook_endpoint                                                                 webhook_endpoint[]
   step_up                                                                          step_up[]
   person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  layaway_instalment                                                               layaway_instalment[]
+  layaway_refund                                                                   layaway_refund[]
+  listing_plan_offer                                                               listing_plan_offer[]
   moderation_decision                                                              moderation_decision[]
   provisioning                                                                     provisioning[]
+  purchase                                                                         purchase[]
+  purchase_event                                                                   purchase_event[]
   quote_quote_consumer_account_idTouser_account                                    quote[]                    @relation("quote_consumer_account_idTouser_account")
   quote_quote_created_byTouser_account                                             quote[]                    @relation("quote_created_byTouser_account")
   quote_request                                                                    quote_request[]
@@ -236,8 +241,12 @@ model asset {
   code             String             @id
   kind             String
   exponent         Int                @db.SmallInt
+  layaway_refund   layaway_refund[]
   listing          listing[]
+  plan_template    plan_template[]
+  purchase         purchase[]
   quote            quote[]
+  refund_rule      refund_rule[]
   account          account[]
   posting          posting[]
   payment_intent   payment_intent[]
@@ -342,6 +351,8 @@ model payment_intent {
   reference                 String?
   net_amount                BigInt?                     @default(dbgenerated("(amount - fee_amount)"))
   settlement_batch_id       String?                     @db.Uuid
+  purpose                   String                      @default("collection")
+  layaway_instalment        layaway_instalment?
   asset                     asset                       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   branch                    branch?                     @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction, map: "payment_intent_branch_same_workspace")
   user_account              user_account                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -477,6 +488,7 @@ model consent_record {
   person            person         @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace         workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   terms_document    terms_document @relation(fields: [terms_document_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase          purchase[]
 
   @@index([account_id, created_at], map: "consent_record_account")
   @@schema("consent")
@@ -1158,9 +1170,11 @@ model listing {
   store               store                    @relation(fields: [store_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace           workspace                @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   listing_image       listing_image[]
+  listing_plan_offer  listing_plan_offer[]
   listing_session     listing_session[]
   listing_variant     listing_variant[]
   moderation_decision moderation_decision[]
+  purchase            purchase[]
   quote_request       quote_request[]
 
   @@unique([id, tenant_id])
@@ -1193,17 +1207,18 @@ model listing_image {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model listing_session {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id   String   @db.Uuid
-  listing_id  String   @db.Uuid
-  starts_at   DateTime @db.Timestamptz(6)
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String     @db.Uuid
+  listing_id  String     @db.Uuid
+  starts_at   DateTime   @db.Timestamptz(6)
   price_minor BigInt
   capacity    Int
-  reserved    Int      @default(0)
-  mode        String   @default("sandbox")
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime @default(now()) @db.Timestamptz(6)
-  listing     listing  @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  reserved    Int        @default(0)
+  mode        String     @default("sandbox")
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime   @default(now()) @db.Timestamptz(6)
+  listing     listing    @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  purchase    purchase[]
 
   @@index([listing_id, starts_at], map: "listing_session_listing")
   @@schema("kelo")
@@ -1212,17 +1227,18 @@ model listing_session {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model listing_variant {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id      String   @db.Uuid
-  listing_id     String   @db.Uuid
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id      String     @db.Uuid
+  listing_id     String     @db.Uuid
   name           String
   price_minor    BigInt
   stock_on_hand  Int
-  stock_reserved Int      @default(0)
-  mode           String   @default("sandbox")
-  created_at     DateTime @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime @default(now()) @db.Timestamptz(6)
-  listing        listing  @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  stock_reserved Int        @default(0)
+  mode           String     @default("sandbox")
+  created_at     DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime   @default(now()) @db.Timestamptz(6)
+  listing        listing    @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  purchase       purchase[]
 
   @@index([listing_id], map: "listing_variant_listing")
   @@schema("kelo")
@@ -1307,5 +1323,196 @@ model quote_request {
   @@unique([id, tenant_id])
   @@index([consumer_account_id, created_at(sort: Desc)], map: "quote_request_consumer")
   @@index([tenant_id, created_at(sort: Desc)], map: "quote_request_tenant")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model category_plan_rule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_slug  String
+  template_key   String
+  effective_from DateTime  @db.Timestamptz(6)
+  effective_to   DateTime? @db.Timestamptz(6)
+  mode           String    @default("sandbox")
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([category_slug, template_key, effective_from])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model layaway_instalment {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String          @db.Uuid
+  consumer_account_id String          @db.Uuid
+  purchase_id         String          @db.Uuid
+  seq                 Int
+  due_on              DateTime        @db.Date
+  amount_minor        BigInt
+  status              String          @default("due")
+  claim_key           String?
+  claimed_at          DateTime?       @db.Timestamptz(6)
+  payment_intent_id   String?         @unique @db.Uuid
+  paid_at             DateTime?       @db.Timestamptz(6)
+  mode                String          @default("sandbox")
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime        @default(now()) @db.Timestamptz(6)
+  user_account        user_account    @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent      payment_intent? @relation(fields: [payment_intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase            purchase        @relation(fields: [purchase_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([purchase_id, seq])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model layaway_refund {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String       @db.Uuid
+  consumer_account_id String       @db.Uuid
+  purchase_id         String       @db.Uuid
+  paid_minor          BigInt
+  fee_minor           BigInt
+  refund_minor        BigInt
+  currency            String
+  status              String       @default("requested")
+  provider            String       @default("sandbox_sim")
+  provider_reference  String?
+  inquiries           Int          @default(0)
+  mode                String       @default("sandbox")
+  created_at          DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
+  user_account        user_account @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  asset               asset        @relation(fields: [currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  purchase            purchase     @relation(fields: [purchase_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([purchase_id, tenant_id])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model listing_plan_offer {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String       @db.Uuid
+  listing_id   String       @db.Uuid
+  template_key String
+  created_by   String       @db.Uuid
+  withdrawn_at DateTime?    @db.Timestamptz(6)
+  mode         String       @default("sandbox")
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  user_account user_account @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  listing      listing      @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([listing_id, template_key], map: "listing_plan_offer_active", where: raw("(withdrawn_at IS NULL)"))
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model plan_template {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key              String
+  version          Int
+  name             String
+  plan_type        String
+  instalment_count Int
+  interval_days    Int
+  merchant_fee_bps Int
+  min_order_minor  BigInt
+  max_order_minor  BigInt
+  currency         String
+  effective_from   DateTime   @db.Timestamptz(6)
+  effective_to     DateTime?  @db.Timestamptz(6)
+  mode             String     @default("sandbox")
+  created_at       DateTime   @default(now()) @db.Timestamptz(6)
+  asset            asset      @relation(fields: [currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  purchase         purchase[]
+
+  @@unique([key, version])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model purchase {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String               @db.Uuid
+  consumer_account_id String               @db.Uuid
+  idempotency_key     String
+  request_hash        String
+  listing_id          String               @db.Uuid
+  variant_id          String?              @db.Uuid
+  session_id          String?              @db.Uuid
+  plan_type           String
+  template_id         String               @db.Uuid
+  refund_rule_id      String               @db.Uuid
+  consent_id          String               @db.Uuid
+  total_minor         BigInt
+  merchant_fee_minor  BigInt
+  currency            String
+  status              String               @default("placed")
+  plan_status         String               @default("active")
+  paid_minor          BigInt               @default(0)
+  fulfilment_evidence String?
+  mode                String               @default("sandbox")
+  created_at          DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime             @default(now()) @db.Timestamptz(6)
+  layaway_instalment  layaway_instalment[]
+  layaway_refund      layaway_refund?
+  consent_record      consent_record       @relation(fields: [consent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account        user_account         @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  asset               asset                @relation(fields: [currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  listing             listing              @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  refund_rule         refund_rule          @relation(fields: [refund_rule_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  listing_session     listing_session?     @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  plan_template       plan_template        @relation(fields: [template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  listing_variant     listing_variant?     @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase_event      purchase_event[]
+
+  @@unique([consumer_account_id, idempotency_key])
+  @@unique([id, tenant_id])
+  @@index([consumer_account_id, created_at(sort: Desc)], map: "purchase_consumer")
+  @@index([tenant_id, created_at(sort: Desc)], map: "purchase_tenant")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model purchase_event {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String        @db.Uuid
+  purchase_id      String        @db.Uuid
+  field            String
+  from_value       String?
+  to_value         String
+  actor_kind       String
+  actor_account_id String?       @db.Uuid
+  mode             String        @default("sandbox")
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  user_account     user_account? @relation(fields: [actor_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase         purchase      @relation(fields: [purchase_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model refund_rule {
+  id                       String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_slug            String
+  version                  Int
+  fee_bps                  Int
+  fee_cap_minor            BigInt
+  after_start_returned_bps Int
+  currency                 String
+  effective_from           DateTime   @db.Timestamptz(6)
+  effective_to             DateTime?  @db.Timestamptz(6)
+  mode                     String     @default("sandbox")
+  created_at               DateTime   @default(now()) @db.Timestamptz(6)
+  purchase                 purchase[]
+  asset                    asset      @relation(fields: [currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([category_slug, version])
   @@schema("kelo")
 }

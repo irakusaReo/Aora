@@ -32,7 +32,8 @@ export class SettlementService {
     const groups = await this.db.asPlatform(
       (tx) => tx.$queryRaw<{ tenant_id: string; asset_code: string }[]>`
         select distinct i.tenant_id, i.asset_code from payments.payment_intent i
-        where i.status = 'succeeded' and i.settlement_batch_id is null`,
+        where i.status = 'succeeded' and i.settlement_batch_id is null
+          and i.purpose = 'collection'`,
     );
     let batches = 0;
     let collections = 0;
@@ -53,6 +54,8 @@ export class SettlementService {
         select i.id, i.amount, i.fee_amount from payments.payment_intent i
         where i.tenant_id = ${tenantId}::uuid and i.asset_code = ${assetCode}
           and i.status = 'succeeded' and i.settlement_batch_id is null
+          -- Layaway instalments are held for the buyer, never settled to the merchant (P4-9).
+          and i.purpose = 'collection'
           and not exists (
             select from payments.reconciliation_exception e
             where e.subject_ref = i.id::text and e.status = 'open')
