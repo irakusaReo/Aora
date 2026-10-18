@@ -21,6 +21,7 @@ import { ChainService } from '../chain/chain.service.js';
 import { AnchoringService } from '../chain/anchoring.service.js';
 import { ChainReconciliationService } from '../chain/chain-reconciliation.service.js';
 import { TreasuryService } from '../chain/treasury.service.js';
+import { NamService } from '../nam/nam.service.js';
 import { ProvisioningService } from '../kelo/provisioning.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { ReconciliationService } from '../payments/reconciliation.service.js';
@@ -107,6 +108,7 @@ export class CronController {
     @Inject(TreasuryService) private readonly treasury: TreasuryService,
     @Inject(ChainReconciliationService) private readonly chainRecon: ChainReconciliationService,
     @Inject(AnchoringService) private readonly anchoring: AnchoringService,
+    @Inject(NamService) private readonly nam: NamService,
   ) {}
 
   /** Settles succeeded collections (ADR 0021). Idempotent; concurrent runs take different rows. */
@@ -135,6 +137,8 @@ export class CronController {
         withdrawals_failed: number;
         anchors_closed: number;
         anchors_submitted: number;
+        nam_orders_confirmed: number;
+        nam_redemptions_completed: number;
         reconciliation_exceptions_opened: number | null;
         caught_up: boolean;
       }
@@ -154,10 +158,13 @@ export class CronController {
     const confirmed = await this.chain.confirmObserved();
     const deposits = await this.treasury.creditConfirmed();
     const withdrawals = await this.treasury.settleWithdrawals();
+    const namOrders = await this.nam.processOrders();
+    const namRedemptions = await this.nam.processRedemptions();
     const closed = await this.anchoring.closePeriods();
     const anchored = await this.anchoring.commitPeriods();
     // Three-way reconciliation only describes one moment once the scan has caught up.
     const reconciled = caughtUp ? await this.chainRecon.run() : null;
+    if (caughtUp) await this.nam.reconcile();
     return {
       job: 'chain',
       operations_changed: monitored.changed,
@@ -170,6 +177,8 @@ export class CronController {
       withdrawals_failed: withdrawals.failed,
       anchors_closed: closed.closed,
       anchors_submitted: anchored.submitted,
+      nam_orders_confirmed: namOrders.confirmed,
+      nam_redemptions_completed: namRedemptions.completed,
       reconciliation_exceptions_opened: reconciled?.exceptions_opened ?? null,
       caught_up: caughtUp,
     };

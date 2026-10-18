@@ -41,7 +41,7 @@ Every conversion rounds in the vault's favour: shares issued on deposit and asse
 ## Invariants (tested with Foundry invariant tests)
 
 1. `accountedAssets ≤ asset.balanceOf(vault)`.
-2. `totalSupply == 0` implies `accountedAssets == 0`; while shares exist, converting all of them returns at most `accountedAssets`.
+2. Converting all shares returns at most `accountedAssets`. Because of the virtual shares, redeeming every share can leave rounding dust (a base unit or two) in `accountedAssets` with no shares outstanding; nobody can take it, and it slightly raises the price for the next depositor. (Corrected 2026-10-18: an earlier draft claimed no shares implied no accounted assets.)
 3. The vault never pays out value nobody deposited: across all accounts, redemptions never exceed deposits, and `accountedAssets` equals deposits minus redemptions exactly. Per account, no sequence of deposits, donations and redemptions lets an account redeem more than it deposited **plus the rounding dust other operations left behind** (under one base unit per operation). Found by the invariant fuzzer on 2026-10-18: rounding down on redemption leaves dust in `accountedAssets`, which accrues to the remaining shareholders, as in any share-based vault. A strict per-account cap would need per-account principal tracking and would break share transfers; ADR 0015's addendum records the corrected statement.
 4. Redemption is always possible while deposits are paused.
 5. Only `deposit` and `redeem` change `accountedAssets`.

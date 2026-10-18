@@ -60,8 +60,18 @@ export class ChainReconciliationService {
     const walletKey = wallet.toLowerCase();
 
     return this.db.asPlatform(async (tx) => {
+      // NAM (phase 6): vault deposits leave the wallet; redemptions come back as
+      // internal inbound transfers and are counted with the rest of inbound.
       const [sums] = await tx.$queryRaw<
-        { inbound: string; outbound: string; credited: string; completed: string }[]
+        {
+          inbound: string;
+          outbound: string;
+          credited: string;
+          completed: string;
+          nam_mined: string;
+          nam_confirmed: string;
+          nam_redeemed: string;
+        }[]
       >`
         select
           (select coalesce(sum(amount), 0)::text from chain.observed_transfer
@@ -73,11 +83,22 @@ export class ChainReconciliationService {
           (select coalesce(sum(amount), 0)::text from chain.observed_transfer
             where status = 'credited') as credited,
           (select coalesce(sum(amount), 0)::text from chain.withdrawal
-            where status = 'completed') as completed`;
+            where status = 'completed') as completed,
+          (select coalesce(sum(o.amount), 0)::text from nam.vault_order o
+            join chain.operation op on op.id = o.operation_id
+            where op.status in ('pending_confirmation', 'confirmed')
+              and op.block_number is not null and op.block_number <= ${block}) as nam_mined,
+          (select coalesce(sum(amount), 0)::text from nam.vault_order
+            where status = 'holding_confirmed') as nam_confirmed,
+          (select coalesce(sum(assets), 0)::text from nam.redemption
+            where status = 'completed') as nam_redeemed`;
       const inbound = BigInt(sums?.inbound ?? '0');
       const outbound = BigInt(sums?.outbound ?? '0');
       const credited = BigInt(sums?.credited ?? '0');
       const completed = BigInt(sums?.completed ?? '0');
+      const namMined = BigInt(sums?.nam_mined ?? '0');
+      const namConfirmed = BigInt(sums?.nam_confirmed ?? '0');
+      const namRedeemed = BigInt(sums?.nam_redeemed ?? '0');
       const walletAccount = await this.ledger.findAccount(tx, {
         tenantId: null,
         type: 'chain_wallet_usdc',
@@ -104,19 +125,21 @@ export class ChainReconciliationService {
 
       // 1. Chain against records: the wallet holds what was observed coming in,
       //    less what AORA's mined transactions sent out.
-      if (chainBalance !== inbound - outbound) {
+      const expectedOnChain = inbound - outbound - namMined;
+      if (chainBalance !== expectedOnChain) {
         await open('chain_balance_mismatch', 'wallet', `wallet:${walletKey}`, {
           block: block.toString(),
           on_chain: chainBalance.toString(),
-          expected_from_records: (inbound - outbound).toString(),
+          expected_from_records: expectedOnChain.toString(),
         });
       }
       // 2. Ledger against records: the wallet account holds what was credited,
       //    less what completed withdrawals sent.
-      if (ledgerWallet !== credited - completed) {
+      const expectedLedger = credited - completed - namConfirmed + namRedeemed;
+      if (ledgerWallet !== expectedLedger) {
         await open('ledger_mismatch', 'ledger_account', 'chain_wallet_usdc', {
           ledger: ledgerWallet.toString(),
-          expected_from_records: (credited - completed).toString(),
+          expected_from_records: expectedLedger.toString(),
         });
       }
       // 3. Each record against its counterpart.

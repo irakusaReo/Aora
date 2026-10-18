@@ -50,7 +50,10 @@ import { ChainService } from './modules/chain/chain.service.js';
 import { AnchoringService } from './modules/chain/anchoring.service.js';
 import { ChainOpsController } from './modules/chain/chain-ops.controller.js';
 import { ChainReconciliationService } from './modules/chain/chain-reconciliation.service.js';
+import { NamVaultGateway } from './modules/chain/nam-vault.gateway.js';
 import { TreasuryController } from './modules/chain/treasury.controller.js';
+import { NamController } from './modules/nam/nam.controller.js';
+import { NamService } from './modules/nam/nam.service.js';
 import { TreasuryService } from './modules/chain/treasury.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
 import {
@@ -131,6 +134,8 @@ const SHARED = [
   TreasuryService,
   ChainReconciliationService,
   AnchoringService,
+  NamService,
+  NamVaultGateway,
   PaymentsService,
   SettlementService,
   PayoutsService,
@@ -153,6 +158,7 @@ const SHARED = [
 export const CONTROLLERS = [
   TreasuryController,
   ChainOpsController,
+  NamController,
   HealthController,
   IdentityController,
   AssetsController,

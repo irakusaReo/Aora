@@ -15,6 +15,7 @@ const MODULES = [
   'identity',
   'jobs',
   'ledger',
+  'nam',
   'notifications',
   'onboarding',
   'ops',
@@ -39,7 +40,8 @@ const MAY_IMPORT = {
   notifications: ['outbox'],
   payments: ['audit', 'developer', 'ledger', 'notifications', 'outbox', 'pricing', 'tenancy'],
   chain: ['audit', 'ledger', 'payments', 'tenancy'],
-  jobs: ['chain', 'outbox', 'payments'],
+  jobs: ['chain', 'nam', 'outbox', 'payments'],
+  nam: ['audit', 'chain', 'consent', 'ledger', 'payments'],
   webhooks: ['identity', 'notifications'],
 };
 const GENERATED_CLIENT = {

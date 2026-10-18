@@ -1,4 +1,4 @@
-// Exports the runtime code of the TEST-ONLY tokens (and the registry's creation code) for the API's local-chain
+// Exports the runtime code of the TEST-ONLY tokens (and the creation code of AORA's contracts) for the API's local-chain
 // tests (phase-5 plan P5-2). Run `forge build` first. The output is a
 // generated, version-controlled artifact (ADR 0006); CI checks it is current.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -13,6 +13,7 @@ const out = {
   TestOtherToken: artifact('TestOtherToken').deployedBytecode.object,
   // Creation code of the real registry, deployed to the local chain by the anchoring tests.
   AnchorRegistryCreation: artifact('AnchorRegistry', 'AnchorRegistry.sol').bytecode.object,
+  NamUsdcVaultCreation: artifact('NamUsdcVault', 'NamUsdcVault.sol').bytecode.object,
 };
 writeFileSync(
   resolve(root, '../services/api/test/support/test-tokens.json'),

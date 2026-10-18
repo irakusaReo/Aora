@@ -28,10 +28,11 @@ const tokens = JSON.parse(readFileSync(new URL('./test-tokens.json', import.meta
   TestUsdc: Hex;
   TestOtherToken: Hex;
   AnchorRegistryCreation: Hex;
+  NamUsdcVaultCreation: Hex;
 };
 
 /** Compiled code from the exported test artifact (see contracts/scripts/export-test-tokens.mjs). */
-export function testContractCode(name: 'AnchorRegistryCreation'): Hex {
+export function testContractCode(name: 'AnchorRegistryCreation' | 'NamUsdcVaultCreation'): Hex {
   return tokens[name];
 }
 

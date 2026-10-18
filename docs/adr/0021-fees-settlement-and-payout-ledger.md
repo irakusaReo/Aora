@@ -82,3 +82,14 @@ USDC has its own accounts and never shares one with KES (CLAUDE.md rule 5):
 | `merchant_usdc_withdrawals_in_flight` | workspace | credit | Reserved for withdrawals not yet resolved |
 
 Entries: a confirmed deposit from a registered address debits `chain_wallet_usdc` and credits the workspace's `merchant_usdc_available` (one entry per observed transfer). A withdrawal request moves the amount to `…_in_flight`; a confirmed withdrawal transaction moves it out of `chain_wallet_usdc`; a rejected, reverted or failed one moves it back. Network fees (testnet ETH) are recorded on the chain operation, not ledgered (P5-7). Withdrawal limits are `tenancy.tier_limit` rows for `USDC` (per transaction and per 24 hours), sandbox data.
+
+## Addendum, 2026-10-18 (Phase 6: NAM Vault, phase-6 plan P6-5)
+
+| Account | Owner | Normal side | Meaning |
+|---|---|---|---|
+| `nam_vault_usdc` | platform | debit | USDC AORA's wallet has in the vault, at the vault's accounted value |
+| `nam_vault_rounding` | platform | credit (may go negative) | Difference between holders' cost and what the vault returns |
+| `merchant_nam_funding_pending` | workspace | credit | Set aside for a NAM order not yet confirmed |
+| `merchant_nam_holding` | workspace | credit | The workspace's principal in the vault, at cost |
+
+An order reserves `merchant_usdc_available` → `merchant_nam_funding_pending`. Its confirmation moves `chain_wallet_usdc` → `nam_vault_usdc` (platform) and pending → holding (workspace), in one entry. A redemption of `s` of `S` shares returning `a` releases cost `c = cost × s ÷ S` (the whole cost when `s = S`). It posts `a` from the vault account back to the wallet account, debits `c` from the holding, credits `a` to `merchant_usdc_available`, and puts `c − a` in `nam_vault_rounding`. The holder receives what the vault returned, as the disclosure says. Shares themselves are not money and live in `nam.holding`.

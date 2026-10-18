@@ -264,7 +264,15 @@ export class TreasuryService {
     );
     let credited = 0;
     let unattributed = 0;
+    // USDC the NAM vault returns on a redemption is AORA's own, accounted by NAM (P6-5).
+    const vault = this.chain.namVault()?.toLowerCase() ?? null;
     for (const row of rows) {
+      if (vault !== null && row.from_address === vault) {
+        await this.db.asPlatform((tx) =>
+          tx.observed_transfer.update({ where: { id: row.id }, data: { status: 'internal' } }),
+        );
+        continue;
+      }
       await this.db.asPlatform(async (tx) => {
         const registration = await tx.registered_address.findFirst({
           where: {

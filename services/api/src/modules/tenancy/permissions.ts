@@ -35,6 +35,9 @@ export const PERMISSIONS = {
   'treasury.manage': ['admin'],
   'treasury.withdraw': ['admin', 'finance'],
   'treasury.approve': ['admin'],
+  // NAM Vault (phase 6). Cashiers neither see nor act (J13).
+  'nam.read': ['admin', 'finance'],
+  'nam.invest': ['admin', 'finance'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
