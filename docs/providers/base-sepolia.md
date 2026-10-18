@@ -37,7 +37,8 @@ The page describes four stages for ordinary Base transactions (it does not separ
 
 ## Contract verification (page: docs.etherscan.io `supported-chains`)
 
-- Etherscan lists Base Sepolia (84532) as **"Paid Tier Only"**. A paid plan is a billable resource, so no `ETHERSCAN_API_KEY` is requested (phase-5 plan P5-8). Verification uses a free verifier; which one Foundry supports for Base Sepolia is read from Foundry's and the verifier's documentation in checkpoint 5B and recorded here.
+- Etherscan lists Base Sepolia (84532) as **"Paid Tier Only"**. A paid plan is a billable resource, so no `ETHERSCAN_API_KEY` is requested (phase-5 plan P5-8).
+- **Sourcify** is used instead. `forge verify-contract --help` (Foundry 1.8.4) lists `--verifier sourcify` and `blockscout`, neither needing a key. Sourcify's chain list (`https://sourcify.dev/server/chains`, read 2026-10-18) has "Base Sepolia Testnet", chain 84532, `supported: true`. `contracts/scripts/deploy.mjs` verifies there after deployment.
 
 ## AORA's sandbox wallet (owner approval 3, 2026-10-18)
 

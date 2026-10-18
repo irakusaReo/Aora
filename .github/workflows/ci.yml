@@ -13,6 +13,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  contracts:
+    name: Contracts (Foundry, Slither)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.8.4
+
+      - name: Format, build and test (unit, fuzz, invariant)
+        working-directory: contracts
+        run: |
+          forge fmt --check src script test
+          forge build --sizes
+          forge test
+
+      - name: Check the ABIs the API uses match the contracts
+        run: |
+          node contracts/scripts/export-abis.mjs
+          npx --yes prettier@3.9.10 --log-level warn --write services/api/src/modules/chain/abi
+          git diff --exit-code -- services/api/src/modules/chain/abi
+
+      # ADR 0015 rule 5: static analysis. Slither 0.11.6 (PyPI, 2026-07-28).
+      - name: Static analysis
+        run: |
+          python3 -m venv "$RUNNER_TEMP/slither"
+          "$RUNNER_TEMP/slither/bin/pip" install --quiet slither-analyzer==0.11.6
+          "$RUNNER_TEMP/slither/bin/slither" contracts --filter-paths "lib|test|script" --fail-low
+
   verify:
     name: Lint, typecheck and test
     runs-on: ubuntu-24.04
@@ -37,6 +70,9 @@ jobs:
       DATABASE_URL_OWNER: postgresql://aora_owner@127.0.0.1:5432/aora_ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # forge-std and OpenZeppelin are pinned submodules under contracts/lib.
+          submodules: recursive
 
       # Version comes from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0

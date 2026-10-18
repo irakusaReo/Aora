@@ -61,3 +61,7 @@ These contracts will have had no independent review. They are fit for a testnet 
 ## Addendum, 2026-10-18: source verification without a paid explorer plan (phase-5 plan P5-8)
 
 Etherscan's supported-chains page lists Base Sepolia as "Paid Tier Only" (read 2026-10-18), so the block-explorer API key named under Consequences would need a paid plan, a billable resource. Engineering rule 6's "source is verified on the Base Sepolia block explorer" is met with a free verifier instead (Blockscout or Sourcify, whichever Foundry's current documentation supports for Base Sepolia, confirmed in checkpoint 5B). No `ETHERSCAN_API_KEY` is requested.
+
+## Addendum, 2026-10-18: vault invariant 3, as tested (checkpoint 5B)
+
+The invariant fuzzer found an account redeeming one base unit more than it had deposited. Cause: redemptions round down in the vault's favour, so the remainder stays in accounted assets and accrues to the remaining shareholders. Donations played no part (they are never accounted). The invariant is therefore tested in two exact parts: (a) across all accounts, redemptions never exceed deposits, and accounted assets equal deposits minus redemptions exactly; (b) per account, redemptions never exceed that account's deposits plus the rounding dust other operations left (under one base unit each). A strict per-account cap was rejected: it would need per-account principal tracking and would break share transfers.

@@ -5,6 +5,11 @@ test = "test"
 script = "script"
 out = "out"
 libs = ["lib"]
+# Pinned submodules: forge-std v1.17.0, OpenZeppelin Contracts v5.7.0.
+remappings = [
+  "forge-std/=lib/forge-std/src/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+]
 # Pinned compiler (newest release at least two weeks old on 2026-10-18).
 solc_version = "0.8.37"
 # Cancun is the newest EVM version Base is known to run; re-checked against Base's docs in 5B.

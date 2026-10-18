@@ -92,6 +92,8 @@ export default tseslint.config(
       '.vercel/**',
       '**/.next/**',
       '**/next-env.d.ts',
+      'contracts/lib/**',
+      'contracts/out/**',
     ],
   },
   js.configs.recommended,
@@ -109,7 +111,13 @@ export default tseslint.config(
     // Operational scripts run directly under Node.
     files: ['**/scripts/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', URL: 'readonly', Buffer: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
+        fetch: 'readonly',
+      },
     },
   },
   ...boundaries,
