@@ -466,6 +466,12 @@ describe('images (bytes never pass through the API)', () => {
 });
 
 describe('taxonomy is data', () => {
+  it('serves asset exponents without sign-in, so prices can be shown before it', async () => {
+    const response = await h.http().get('/v1/assets');
+    expect(response.status).toBe(200);
+    expect(response.body.data).toContainEqual(expect.objectContaining({ code: 'KES' }));
+  });
+
   it('lists the current categories from the database', async () => {
     const response = await h.http().get('/v1/kelo/categories');
     expect(response.status).toBe(200);

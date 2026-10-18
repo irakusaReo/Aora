@@ -16,7 +16,7 @@ import {
   StepUpGuard,
   WorkspaceGuard,
 } from './modules/identity/guards.js';
-import { IdentityController } from './modules/identity/identity.controller.js';
+import { AssetsController, IdentityController } from './modules/identity/identity.controller.js';
 import { IdentityService } from './modules/identity/identity.service.js';
 import { CronController, CronGuard, DrainAfterResponseInterceptor } from './modules/jobs/jobs.js';
 import { EMAIL_CHANNEL, SimulatedEmailChannel } from './modules/notifications/channel.js';
@@ -143,6 +143,7 @@ const SHARED = [
 export const CONTROLLERS = [
   HealthController,
   IdentityController,
+  AssetsController,
   PaymentIntentsController,
   TariffsController,
   WebhooksController,

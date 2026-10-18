@@ -4,9 +4,12 @@
 |---|---|---|---|
 | KONY merchant app | `kony-web` | https://kony-web.vercel.app | `apps/kony-web` |
 | Operations console | `internal-ops` | https://internal-ops-rho.vercel.app | `apps/internal-ops` |
+| KELO marketplace | `kelo-web` | https://kelo-web.vercel.app | `apps/kelo-web` |
 
-- Both projects are on the Hobby team `andres-projects-85e1a425`, connected to GitHub: a push to `main` deploys them; pull requests get previews.
+- All three projects are on the Hobby team `andres-projects-85e1a425`, connected to GitHub: a push to `main` deploys them; pull requests get previews.
 - Variables, **Production target only**: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (public by design), `CLERK_SECRET_KEY` (sensitive), `AORA_API_URL=https://aora-api.vercel.app`. Previews have none of them, so a preview can never reach staging data.
+- Function region: `kelo-web` runs in `fra1` (created 2026-10-18, owner-approved). **`kony-web` is in `iad1`**, contrary to the `fra1` rule in CLAUDE.md; moving it is a Production setting change and waits for the owner.
+- kelo-web browses without sign-in: it reads only public routes (`/v1/kelo/categories`, `/v1/kelo/marketplace/…`, `/v1/assets`, `/v1/terms/…`) until a buyer signs in.
 - The apps call the API from the server side only, with the signed-in person's Clerk session token. The API's `CLERK_AUTHORIZED_PARTIES` must list each app's origin; when a domain changes, update it there and redeploy `aora-api`.
 - Every page shows the sandbox banner from `packages/ui`; a test fails if an app's root layout stops rendering it.
 - Operator access in `internal-ops` comes from AORA's own flag on the account (`pnpm ops:grant-operator`), never from Clerk.

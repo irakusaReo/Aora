@@ -166,8 +166,8 @@ paths:
       tags: [Identity]
       operationId: listAssets
       summary: Assets and the number of minor-unit digits of each
-      description: Any signed-in person. Screens use the exponent to show and read amounts; nothing assumes two decimal places.
-      security: [{ session: [] }]
+      description: Public reference data (the KELO marketplace shows prices before sign-in). Screens use the exponent to show and read amounts; nothing assumes two decimal places.
+      security: []
       responses:
         '200':
           description: Assets
@@ -187,7 +187,6 @@ paths:
                         kind: { enum: [fiat, token] }
                         exponent: { type: integer, minimum: 0, maximum: 18 }
                   mode: { $ref: '#/components/schemas/Mode' }
-        '401': { $ref: '#/components/responses/Error' }
   /v1/me:
     get:
       tags: [Auth]

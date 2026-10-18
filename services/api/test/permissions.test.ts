@@ -178,6 +178,8 @@ describe('route × role matrix', () => {
       .sort();
     // Webhook routes are authenticated by signature inside the handler, not by a guard.
     expect(open).toEqual([
+      // Reference data (asset codes and exponents): prices are shown before sign-in.
+      'GET /v1/assets',
       'GET /v1/health',
       // KELO browsing needs no sign-in: published listings and the taxonomy only.
       'GET /v1/kelo/categories',

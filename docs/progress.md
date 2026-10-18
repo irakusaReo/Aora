@@ -60,7 +60,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 ## Next
 
 1. **4C merged and on staging (PR #17):** migration `…000400_kelo_layaway` applied to staging first; health, plans route, layaway terms and all five cron jobs pass; reconciliation clean. 490 tests pass.
-2. Deploy `kelo-web` once the owner approves the Vercel project and the `CLERK_AUTHORIZED_PARTIES` change (stop condition: Vercel Production settings).
+2. **kelo-web deployed (2026-10-18, owner-approved):** Vercel project `kelo-web` (Hobby, Root Directory `apps/kelo-web`, `fra1`, GitHub `main`), Production variables `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (sensitive), `AORA_API_URL`; origin `https://kelo-web.vercel.app` added to `CLERK_AUTHORIZED_PARTIES` on `aora-api`, which was redeployed. The first deploy's browse page failed (500) because `/v1/assets` needed a session; it is now public reference data. **Flag for the owner:** `kony-web` runs in `iad1`, not `fra1`.
 3. Phase 5 (chain and contracts): write `docs/plans/phase-5.md`; contracts need Foundry installed locally (ADR 0006); build against a local chain until the Base Sepolia batch (requested 2026-10-18) arrives.
 2. Phase 5 (chain and contracts) needs the Base Sepolia batch (RPC URL, funded testnet signer key, explorer API key), requested on 2026-10-18 ahead of time. Until it arrives, chain work runs against a local chain.
 
@@ -70,7 +70,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Waiting on the owner
 
-- Approval to create the Vercel project `kelo-web` (Hobby, Root Directory `apps/kelo-web`, Clerk keys and `AORA_API_URL` on Production) and to add its origin to `CLERK_AUTHORIZED_PARTIES` on `aora-api`.
+- Whether to move `kony-web`'s function region from `iad1` to `fra1` (a Production setting).
 - Vercel Blob store (public) connected to `aora-api` (Phase 4 credential request, 2026-10-18; corrected to Public).
 - Base Sepolia RPC URL, funded signer key and explorer API key (Phase 5, requested early).
 - O-14: whether a real Safaricom number may be used in the Daraja sandbox.
