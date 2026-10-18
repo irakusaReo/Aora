@@ -14,3 +14,9 @@ services/*/prisma/schema.prisma
 .vercel
 .next
 **/next-env.d.ts
+
+# Foundry: vendored libraries (pinned submodules) and build output.
+contracts/lib
+contracts/out
+contracts/cache
+contracts/broadcast

@@ -46,6 +46,7 @@ import { RefundsService } from './modules/payments/refunds.service.js';
 import { SettlementService } from './modules/payments/settlement.service.js';
 import { DARAJA_ADAPTER, PaymentsService } from './modules/payments/payments.service.js';
 import { ReconciliationService } from './modules/payments/reconciliation.service.js';
+import { ChainService } from './modules/chain/chain.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
 import {
   OnboardingController,
@@ -102,7 +103,7 @@ import { APP_CONFIG, type AppConfig } from './platform/config.js';
 import { Database } from './platform/database.js';
 import type { WorkspaceHook } from './seed-data.js';
 import { ErrorFilter } from './platform/errors.js';
-import { HealthController } from './platform/health.controller.js';
+import { CHAIN_HEALTH, HealthController } from './platform/health.controller.js';
 import { RequestContextMiddleware, SandboxLabelInterceptor } from './platform/http.js';
 import { RateLimiter } from './platform/rate-limit.js';
 
@@ -121,6 +122,7 @@ const SHARED = [
   OutboxService,
   SimulatorProvider,
   ReconciliationService,
+  ChainService,
   PaymentsService,
   SettlementService,
   PayoutsService,
@@ -195,6 +197,7 @@ export class AppModule implements NestModule {
       controllers: [...CONTROLLERS],
       providers: [
         { provide: APP_CONFIG, useValue: config },
+        { provide: CHAIN_HEALTH, useExisting: ChainService },
         {
           provide: AUTH_PROVIDER,
           useFactory: () =>

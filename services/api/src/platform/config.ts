@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { type ChainSettings, chainSettings } from './chain-settings.js';
 import { isDeployed, sandboxAuthAllowed } from './deployment.js';
 
 /** The only Daraja environment this codebase may call (CLAUDE.md rule 10). */
@@ -49,6 +50,9 @@ const schema = z.object({
   // Comma-separated source addresses Daraja callbacks must come from. Empty: not enforced
   // (Safaricom's published list is not yet confirmed for the sandbox; docs/providers/daraja.md).
   DARAJA_CALLBACK_ALLOWED_IPS: z.string().optional(),
+  // Base Sepolia (phase 5). Validated by chainSettings; absent RPC URL: the chain is off.
+  BASE_SEPOLIA_RPC_URL: z.string().optional(),
+  SANDBOX_SIGNER_PRIVATE_KEY: z.string().optional(),
 });
 
 const DARAJA_REQUIRED = [
@@ -112,6 +116,8 @@ export interface AppConfig {
   readonly webhooks: { readonly signingPrivateKey: string | null; readonly maxAttempts: number };
   /** Vercel Blob read-write token; null selects the image simulator. */
   readonly blob: { readonly readWriteToken: string | null };
+  /** Base Sepolia settings; null turns every chain feature off. */
+  readonly chain: ChainSettings | null;
   readonly auth: {
     readonly stepUpTtlSeconds: number;
     readonly maxPinAttempts: number;
@@ -173,6 +179,13 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     }
   }
   const daraja = darajaConfig(value, deployed);
+  const chain = chainSettings(
+    {
+      BASE_SEPOLIA_RPC_URL: value.BASE_SEPOLIA_RPC_URL,
+      SANDBOX_SIGNER_PRIVATE_KEY: value.SANDBOX_SIGNER_PRIVATE_KEY,
+    },
+    { deployed },
+  );
   if (deployed) {
     if (!value.CRON_SECRET) missing('CRON_SECRET');
     if (!value.CLERK_AUTHORIZED_PARTIES) missing('CLERK_AUTHORIZED_PARTIES');
@@ -211,6 +224,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     daraja,
     webhooks: { signingPrivateKey: value.WEBHOOK_SIGNING_PRIVATE_KEY ?? null, maxAttempts: 6 },
     blob: { readWriteToken: value.BLOB_READ_WRITE_TOKEN ?? null },
+    chain,
     auth: {
       stepUpTtlSeconds: 300,
       maxPinAttempts: 5,

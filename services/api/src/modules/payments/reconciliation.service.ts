@@ -16,7 +16,9 @@ export type ExceptionType =
   | 'state_mismatch'
   | 'stuck_status_unknown'
   | 'ledger_mismatch'
-  | 'provider_result_conflict';
+  | 'provider_result_conflict'
+  | 'unexpected_asset'
+  | 'chain_operation_unresolved';
 
 export interface ExceptionInput {
   readonly runId: string | null;

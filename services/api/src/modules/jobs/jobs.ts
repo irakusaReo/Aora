@@ -17,6 +17,7 @@ import { APP_CONFIG, type AppConfig } from '../../platform/config.js';
 import { Database } from '../../platform/database.js';
 import { AppError } from '../../platform/errors.js';
 import { RateLimiter } from '../../platform/rate-limit.js';
+import { ChainService } from '../chain/chain.service.js';
 import { ProvisioningService } from '../kelo/provisioning.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { ReconciliationService } from '../payments/reconciliation.service.js';
@@ -99,12 +100,53 @@ export class CronController {
     @Inject(RateLimiter) private readonly rateLimiter: RateLimiter,
     @Inject(SettlementService) private readonly settlement: SettlementService,
     @Inject(ProvisioningService) private readonly provisioning: ProvisioningService,
+    @Inject(ChainService) private readonly chain: ChainService,
   ) {}
 
   /** Settles succeeded collections (ADR 0021). Idempotent; concurrent runs take different rows. */
   @Get('settlement')
   async settle(): Promise<{ job: 'settlement'; batches: number; collections: number }> {
     return { job: 'settlement', ...(await this.settlement.run()) };
+  }
+
+  /**
+   * Base Sepolia (phase 5): moves AORA's sent transactions on by query (never
+   * re-sends), reads inbound transfers to the sandbox wallet over bounded block
+   * ranges, and applies the confirmation policy. Idempotent and time-bounded.
+   */
+  @Get('chain')
+  async chainJob(): Promise<
+    | { job: 'chain'; skipped: true; reason: 'not_configured' }
+    | {
+        job: 'chain';
+        operations_changed: number;
+        transfers_observed: number;
+        transfers_confirmed: number;
+        transfers_dropped: number;
+        caught_up: boolean;
+      }
+  > {
+    if (this.chain.status() === 'not_configured') {
+      return { job: 'chain', skipped: true, reason: 'not_configured' };
+    }
+    const deadline = Date.now() + this.config.jobs.budgetMs;
+    const monitored = await this.chain.monitor();
+    let observed = 0;
+    let caughtUp = false;
+    while (!caughtUp && Date.now() < deadline) {
+      const scan = await this.chain.observe();
+      observed += scan.observed;
+      caughtUp = scan.caught_up;
+    }
+    const confirmed = await this.chain.confirmObserved();
+    return {
+      job: 'chain',
+      operations_changed: monitored.changed,
+      transfers_observed: observed,
+      transfers_confirmed: confirmed.confirmed,
+      transfers_dropped: confirmed.dropped,
+      caught_up: caughtUp,
+    };
   }
 
   /** KELO provisioning backfill (ADR 0008): restarts approved stores that never finished. */

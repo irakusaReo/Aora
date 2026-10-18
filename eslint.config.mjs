@@ -9,6 +9,7 @@ import tseslint from 'typescript-eslint';
 const MODULES = [
   'audit',
   'business',
+  'chain',
   'consent',
   'developer',
   'identity',
@@ -37,13 +38,20 @@ const MAY_IMPORT = {
   developer: ['audit', 'outbox'],
   notifications: ['outbox'],
   payments: ['audit', 'developer', 'ledger', 'notifications', 'outbox', 'pricing', 'tenancy'],
-  jobs: ['outbox', 'payments'],
+  chain: ['payments'],
+  jobs: ['chain', 'outbox', 'payments'],
   webhooks: ['identity', 'notifications'],
 };
 const GENERATED_CLIENT = {
   group: ['**/generated/prisma/**'],
   allowTypeImports: true,
   message: 'Only src/platform/database.ts may use the database client. Import types only.',
+};
+
+// Only the chain module talks to Base (ADR 0004, phase-5 plan P5-1).
+const CHAIN_LIBRARY = {
+  group: ['viem', 'viem/*'],
+  message: 'Only src/modules/chain may import the EVM library (ADR 0004).',
 };
 
 const boundaries = MODULES.map((name) => ({
@@ -54,6 +62,7 @@ const boundaries = MODULES.map((name) => ({
       {
         patterns: [
           GENERATED_CLIENT,
+          ...(name === 'chain' ? [] : [CHAIN_LIBRARY]),
           ...MODULES.filter((other) => other !== name && !MAY_IMPORT[name].includes(other)).map(
             (other) => ({
               group:
@@ -83,6 +92,8 @@ export default tseslint.config(
       '.vercel/**',
       '**/.next/**',
       '**/next-env.d.ts',
+      'contracts/lib/**',
+      'contracts/out/**',
     ],
   },
   js.configs.recommended,
@@ -100,10 +111,21 @@ export default tseslint.config(
     // Operational scripts run directly under Node.
     files: ['**/scripts/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', console: 'readonly', URL: 'readonly', Buffer: 'readonly' },
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
+        fetch: 'readonly',
+      },
     },
   },
   ...boundaries,
+  {
+    // The KELO module has no import-direction list yet; it still may not reach Base.
+    files: ['services/api/src/modules/kelo/**/*.ts'],
+    rules: { '@typescript-eslint/no-restricted-imports': ['error', { patterns: [CHAIN_LIBRARY] }] },
+  },
   {
     // Shared platform code depends on no module.
     files: ['services/api/src/platform/**/*.ts'],
@@ -114,6 +136,7 @@ export default tseslint.config(
         {
           patterns: [
             GENERATED_CLIENT,
+            CHAIN_LIBRARY,
             {
               group: ['**/modules/**'],
               message: 'src/platform may not import from a module (ADR 0002).',

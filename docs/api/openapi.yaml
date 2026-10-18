@@ -48,10 +48,20 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, database, mode]
+                required: [status, database, chain, mode]
                 properties:
                   status: { const: ok }
                   database: { const: ok }
+                  chain:
+                    type: string
+                    description: >
+                      Base Sepolia startup verification (ADR 0004): `verified`,
+                      `unverified` (not yet checked by this instance),
+                      `failed:<reason>` (every chain feature refuses; reasons
+                      `rpc_unreachable`, `wrong_chain`, `no_token_code`,
+                      `wrong_decimals`, `ledger_exponent_mismatch`), or
+                      `not_configured`.
+                    examples: [verified, not_configured, 'failed:wrong_chain']
                   mode: { $ref: '#/components/schemas/Mode' }
   /v1/me/phone:
     put:
@@ -1854,6 +1864,23 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/internal/cron/chain:
+    get:
+      tags: [Internal]
+      operationId: cronChain
+      summary: Base Sepolia monitor and inbound-transfer scan (sandbox)
+      description: >
+        Moves AORA's sent transactions on by query only (a transaction in
+        `status_unknown` is never sent again), reads Transfer events to the
+        sandbox wallet over bounded block ranges from a stored cursor, and
+        applies the confirmation policy. Tokens other than native USDC are
+        recorded as `unexpected_asset` and never credited. Idempotent and
+        time-bounded. `skipped` when Base Sepolia is not configured.
+        Authenticated with the cron secret.
+      security: [{ cron: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Job' }
+        '401': { $ref: '#/components/responses/Error' }
   /v1/internal/cron/kelo-provisioning-backfill:
     get:
       tags: [Internal]
@@ -3254,7 +3281,12 @@ components:
                 - too_many_attempts
                 - pin_not_set
                 - phone_required
+                - workspace_restricted
+                - prohibited_item
+                - sold_out
                 - conflict
+                - invalid_destination
+                - chain_unavailable
                 - internal_error
             message: { type: string }
             request_id: { type: string }
