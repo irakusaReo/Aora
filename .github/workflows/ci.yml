@@ -93,7 +93,7 @@ jobs:
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2ktYnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA==
           NEXT_TELEMETRY_DISABLED: '1'
-        run: pnpm --filter kony-web --filter internal-ops build
+        run: pnpm --filter kony-web --filter internal-ops --filter kelo-web build
 
   # Applies SQL migrations to AORA staging (Neon `main`) through the DIRECT
   # connection, only on `main` and only after the tests above pass. Migrations

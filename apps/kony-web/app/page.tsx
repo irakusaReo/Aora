@@ -36,6 +36,9 @@ export default async function Home(): Promise<React.JSX.Element> {
           <p>
             <Link href="/onboarding">Register your business</Link>, or accept an invitation below.
           </p>
+          <p>
+            Selling on the KELO marketplace? <Link href="/kelo">Enlist a store</Link>.
+          </p>
         </div>
       ) : (
         <div className="card">
@@ -48,7 +51,8 @@ export default async function Home(): Promise<React.JSX.Element> {
             ))}
           </ul>
           <p>
-            <Link href="/onboarding">Register another business</Link>
+            <Link href="/onboarding">Register another business</Link> ·{' '}
+            <Link href="/kelo">Sell on KELO</Link>
           </p>
         </div>
       )}

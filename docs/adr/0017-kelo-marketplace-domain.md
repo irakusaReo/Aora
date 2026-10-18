@@ -94,3 +94,13 @@ A KONY payment link or a developer-API checkout can offer KELO as a payment meth
 - Layaway can be built and demonstrated before any credit feature, because it uses orders, holding accounts and settlement but no credit decision.
 - Consumer isolation needs its own tests, beside tenant isolation.
 - The simulated lender must be labelled sandbox everywhere a lender is named.
+
+## Addendum, 2026-10-18 (Phase 4A, as built)
+
+- **Taxonomy:** `kelo.category`, versioned and immutable; twelve sandbox categories as seed data (open question O-15). Each carries its allowed listing types, vetting requirement keys (sandbox placeholders, not verified legal requirements), a `restricted` flag and its fulfilment evidence. A test fails if application code names a category.
+- **Prohibited items:** `kelo.prohibited_term`, configuration with effective dates, global or per category, matched as whole words in title and description. Checked at submission and on every edit of a published listing (`prohibited_item`). Health-information terms are prohibited in medical-cosmetic and dental listings.
+- **Listings:** state machine `draft → in_review → published | rejected`, `rejected → draft` on edit, `published → suspended | in_review`, `suspended → in_review`. Each change bumps a `revision`; each moderation decision is append-only and names the revision it saw. A restricted category's listing returns to review when its price or description changes.
+- **Stock and capacity:** `stock_reserved ≤ stock_on_hand` and `reserved ≤ capacity` are database checks; stock cannot be lowered below what is reserved (`conflict`). Reservation by orders arrives in 4C.
+- **Images (P4-7):** a public Vercel Blob store. The API issues a client token for one exact pathname under `kelo/<workspace>/<listing>/`, one image type and at most 4 MB; the browser uploads directly; the API checks the stored blob's path, type and size with `head()` before attaching it. With no `BLOB_READ_WRITE_TOKEN` the image store is the labelled simulator.
+- **Marketplace reads** are public and return published listings only, with no stock counts (an `in_stock` or `available` flag only). Search is PostgreSQL full-text search over a generated `tsvector` with a GIN index on published rows.
+- **Writes** go through the platform role with the tenant named in every statement; members read through row-level security, the same split as branches and payouts.

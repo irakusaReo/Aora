@@ -28,9 +28,15 @@ export default async function WorkspaceLayout({
         <strong>{workspace.name}</strong> <span className="pill">{workspace.kind}</span>{' '}
         <span className="pill">{workspace.tier}</span>{' '}
         <span className="pill">you: {membership.role}</span>
+        {workspace.restrictions.map((restriction) => (
+          <span key={restriction} className="pill">
+            {restriction === 'payouts_suspended' ? 'payouts suspended' : 'listing suspended'}
+          </span>
+        ))}
         <nav style={{ display: 'flex', gap: 16, marginTop: 8 }}>
           <Link href={base}>Collections</Link>
           <Link href={`${base}/branches`}>Branches</Link>
+          <Link href={`${base}/kelo`}>KELO</Link>
           {membership.role !== 'cashier' && <Link href={`${base}/money`}>Money</Link>}
           {membership.role !== 'cashier' && <Link href={`${base}/team`}>Team</Link>}
           {membership.role === 'admin' && <Link href={`${base}/developers`}>Developers</Link>}

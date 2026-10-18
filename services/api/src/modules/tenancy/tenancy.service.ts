@@ -7,6 +7,17 @@ import { AuditService } from '../audit/audit.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { maskEmail } from '../notifications/templates.js';
 
+/** A closed list. Each is enforced server-side where it applies. */
+export const RESTRICTION_KINDS = ['payouts_suspended', 'listing_suspended'] as const;
+export type RestrictionKind = (typeof RESTRICTION_KINDS)[number];
+
+const RESTRICTION_MESSAGES: Record<RestrictionKind, string> = {
+  payouts_suspended:
+    'Payouts are suspended for this workspace. Contact support to have this reviewed.',
+  listing_suspended:
+    'Listing is suspended for this workspace. Contact support to have this reviewed.',
+};
+
 export interface MemberView {
   readonly id: string;
   readonly account_id: string;
@@ -26,6 +37,8 @@ export interface WorkspaceView {
   readonly kind: string;
   readonly country: string;
   readonly tier: string;
+  /** Active restrictions (ADR 0008 addendum), lifted only by an operator. */
+  readonly restrictions: readonly RestrictionKind[];
   readonly limits: {
     currency: string;
     per_transaction_max_minor: string;
@@ -109,6 +122,7 @@ export class TenancyService {
         kind: workspace.business.kind,
         country: workspace.business.country,
         tier: workspace.tier,
+        restrictions: await this.restrictionsOf(tx, tenantId),
         limits: limits.map((row) => ({
           currency: row.asset_code,
           per_transaction_max_minor: row.per_transaction_max.toString(),
@@ -116,6 +130,62 @@ export class TenancyService {
           daily_payout_max_minor: row.daily_payout_max.toString(),
         })),
       };
+    });
+  }
+
+  // --- Restrictions ---
+
+  async restrictionsOf(tx: Tx, tenantId: string): Promise<RestrictionKind[]> {
+    const rows = await tx.workspace_restriction.findMany({
+      where: { tenant_id: tenantId, lifted_at: null },
+      orderBy: { kind: 'asc' },
+    });
+    return rows.map((row) => row.kind as RestrictionKind);
+  }
+
+  async assertNotRestricted(tx: Tx, tenantId: string, kind: RestrictionKind): Promise<void> {
+    const active = await tx.workspace_restriction.findFirst({
+      where: { tenant_id: tenantId, kind, lifted_at: null },
+    });
+    if (active) throw new AppError('workspace_restricted', RESTRICTION_MESSAGES[kind]);
+  }
+
+  /** Idempotent: an active restriction of the same kind is left as it is. */
+  async addRestriction(
+    tx: Tx,
+    input: { tenantId: string; kind: RestrictionKind; source: string; sourceId: string },
+  ): Promise<void> {
+    await tx.$executeRaw`
+      insert into tenancy.workspace_restriction (tenant_id, kind, source, source_id)
+      values (${input.tenantId}::uuid, ${input.kind}, ${input.source}, ${input.sourceId}::uuid)
+      on conflict (tenant_id, kind) where lifted_at is null do nothing`;
+  }
+
+  /** Operator only (enforced by the route), with a reason, audited. */
+  async liftRestriction(
+    actor: { accountId: string; requestId: string },
+    tenantId: string,
+    kind: RestrictionKind,
+    reason: string,
+  ): Promise<{ restrictions: RestrictionKind[] }> {
+    return this.db.asPlatform(async (tx) => {
+      const updated = await tx.workspace_restriction.updateMany({
+        where: { tenant_id: tenantId, kind, lifted_at: null },
+        data: { lifted_at: new Date(), lifted_by: actor.accountId, lift_reason: reason },
+      });
+      if (updated.count !== 1) throw new AppError('not_found', 'No such active restriction.');
+      await this.audit.record(tx, {
+        tenantId,
+        actorKind: 'user',
+        actorAccountId: actor.accountId,
+        action: 'tenancy.restriction.lifted',
+        subjectType: 'workspace_restriction',
+        subjectId: tenantId,
+        outcome: 'success',
+        requestId: actor.requestId,
+        detail: { kind, reason },
+      });
+      return { restrictions: await this.restrictionsOf(tx, tenantId) };
     });
   }
 

@@ -3,8 +3,15 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 3 ([plan](plans/phase-3.md)) is built, merged and deployed to staging; the end-of-phase report was delivered on 2026-10-14 and **awaits the owner's approval**. Do not start Phase 4 before it.
-- **Last updated:** 2026-10-13
+- **Current phase:** Phase 4 — KELO commerce ([plan](plans/phase-4.md)), under the owner's run mode of 2026-10-18 (see CLAUDE.md): phases continue without approval stops; the MVP gate is Phase 10.
+- **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
+- **Last updated:** 2026-10-18
+
+## Owner decisions of 2026-10-18
+
+- Phase 3 **approved**. The owner's signed-in walk-through of staging is pending and blocks nothing; anything found is fixed by rolling forward.
+- All other decisions are recorded in [open-questions.md](architecture/open-questions.md#owner-rulings-2026-10-18), the [ADR 0014](adr/0014-multi-rail-multi-country.md) addendum and [country-provider-model.md](architecture/country-provider-model.md).
+- **O-14 (new, open):** Safaricom's FAQ implies that a sandbox STK push approved on a real handset debits real M-Pesa funds until a next-day reversal, so the walk-through has no real-number step and the code stays test-number only until the owner decides.
 
 ## Done
 
@@ -43,24 +50,26 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **Not yet exercised on staging with a real sign-in:** a Daraja STK push from kony-web, a B2C payout, a refund, an API key call and a webhook delivery. Their automated tests pass; the owner's walk-through is the staging check.
 - **Next:** owner approval of Phase 3, then Phase 4 (more rails) after its credential request is answered.
 
-## Next (carried from Phase 2)
+## Phase 4 checkpoints
 
-1. **Owner confirms** the sign-in code arrives (check Spam, `from:onboarding@resend.dev`). If not found, switch delivery back: `POST https://api.clerk.com/v1/templates/email/verification_code/toggle_delivery` with `{"delivered_by_clerk": true}`.
-2. **End-of-phase report for Phase 2**, then stop for approval. It must include the Phase 3 credential request (Daraja sandbox) and any build-order change from Clerk and Resend.
-3. Owner adds GitHub Actions secrets `STAGING_DATABASE_URL_OWNER` and `STAGING_CRON_SECRET` (values are in `.env.local` under those names).
-4. Owner adds a Vercel Deployment Check on the CI job (dashboard).
+- **4A done (2026-10-18):** KELO store enlistment (new business or existing KONY workspace), operator vetting against category requirements, ADR 0008 provisioning (one step per transaction, backfill, audited retry, restrictions copied and enforced), twelve sandbox categories (O-15), catalogue with three listing types, stock and capacity bounds, prohibited items, moderation with revisions, public marketplace search, images through Vercel Blob client tokens (simulator until the store is connected). kony-web `/kelo` and `/w/<id>/kelo`; internal-ops `/kelo`. Migrations `20261018000100_kelo_stores`, `20261018000200_kelo_catalogue` (expand-only). ADR 0008 and 0017 addenda.
+
+## Next
+
+1. Phase 4 per [plans/phase-4.md](plans/phase-4.md): 4B `kelo-web` marketplace (new Vercel project `kelo-web`); 4C layaway.
+2. Phase 5 (chain and contracts) needs the Base Sepolia batch (RPC URL, funded testnet signer key, explorer API key), requested on 2026-10-18 ahead of time. Until it arrives, chain work runs against a local chain.
 
 ## Blocked
 
-- Nothing blocks the Phase 2 report. Scheduled jobs and automatic staging migration wait for the two GitHub secrets.
+- Nothing blocks Phase 4. Images use a local storage adapter until the Vercel Blob store exists.
 
 ## Waiting on the owner
 
-- Confirmation of the sign-in email; the two GitHub secrets; the Deployment Check.
-- O-13: a sending domain (until then only the owner's own address receives mail, often in Spam).
-- O-10: Vercel Hobby is for non-commercial use; Pro is $20 per month.
-- O-11: phone verification (recommended: confirm before money is sent).
-- O-5 (MTN market), O-6 (bank), O-7 (image storage): needed for Phases 4 and 5.
+- Vercel Blob store connected to `aora-api` (Phase 4 credential request, 2026-10-18).
+- Base Sepolia RPC URL, funded signer key and explorer API key (Phase 5, requested early).
+- O-14: whether a real Safaricom number may be used in the Daraja sandbox.
+- The signed-in staging walk-through (non-blocking).
+- Pre-pilot list: [open-questions.md](architecture/open-questions.md#pre-pilot-list-carried-2026-10-18).
 
 ## Known gaps carried forward
 

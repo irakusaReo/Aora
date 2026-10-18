@@ -12,6 +12,31 @@ const EXPECTED: Record<
   { admin: boolean; finance: boolean; cashier: boolean; stepUp?: true }
 > = {
   'POST /v1/payment-intents': { admin: true, finance: true, cashier: true },
+  'GET /v1/workspace/kelo/quote-requests': { admin: true, finance: true, cashier: true },
+  'POST /v1/workspace/kelo/quote-requests/:id/quotes': {
+    admin: true,
+    finance: false,
+    cashier: false,
+  },
+  'GET /v1/workspace/kelo/store': { admin: true, finance: true, cashier: true },
+  'POST /v1/workspace/kelo/listings': { admin: true, finance: false, cashier: false },
+  'GET /v1/workspace/kelo/listings': { admin: true, finance: true, cashier: true },
+  'GET /v1/workspace/kelo/listings/:id': { admin: true, finance: true, cashier: true },
+  'PATCH /v1/workspace/kelo/listings/:id': { admin: true, finance: false, cashier: false },
+  'POST /v1/workspace/kelo/listings/:id/variants': { admin: true, finance: false, cashier: false },
+  'PATCH /v1/workspace/kelo/listings/:id/variants/:variantId': {
+    admin: true,
+    finance: false,
+    cashier: false,
+  },
+  'POST /v1/workspace/kelo/listings/:id/sessions': { admin: true, finance: false, cashier: false },
+  'POST /v1/workspace/kelo/listings/:id/submit': { admin: true, finance: false, cashier: false },
+  'POST /v1/workspace/kelo/listings/:id/images/upload-token': {
+    admin: true,
+    finance: false,
+    cashier: false,
+  },
+  'POST /v1/workspace/kelo/listings/:id/images': { admin: true, finance: false, cashier: false },
   'GET /v1/payment-intents': { admin: true, finance: true, cashier: true },
   'GET /v1/payment-intents/:id': { admin: true, finance: true, cashier: true },
   'GET /v1/tariffs/quote': { admin: true, finance: true, cashier: true },
@@ -145,6 +170,10 @@ describe('route × role matrix', () => {
     // Webhook routes are authenticated by signature inside the handler, not by a guard.
     expect(open).toEqual([
       'GET /v1/health',
+      // KELO browsing needs no sign-in: published listings and the taxonomy only.
+      'GET /v1/kelo/categories',
+      'GET /v1/kelo/marketplace/listings',
+      'GET /v1/kelo/marketplace/listings/:id',
       'GET /v1/terms/:key',
       'GET /v1/webhook-signing-key',
       'POST /v1/webhooks/clerk',

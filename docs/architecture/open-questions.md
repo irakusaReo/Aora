@@ -25,11 +25,11 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [R-2](#r-2) | No phase builds KELO | Owner | 4 [3], 11 | Resolved: approved; "qualifying" still open |
 | [R-3](#r-3) | No phase builds CHIWO | Owner | 9 [7] | Resolved: approved |
 | [R-4](#r-4) | Outbox and workers are needed before Phase 3 | Eng | 1 | Resolved: approved |
-| [R-5](#r-5) | Pricing data and developer API conventions arrive in Phase 9 | Eng | 3 [2] | Open |
-| [R-6](#r-6) | On-chain reconciliation precedes the ledger | Eng | 5 [4] | Open |
-| [R-7](#r-7) | No phase says when user interfaces are built | Owner | 3 [2] | Open |
-| [R-8](#r-8) | No phase owns internal ops tooling | Eng | 3 [2] | Open |
-| R-9 | Collection points with parent and child (lessons §3) are not in mvp-scope 3A; Phase 3 builds branches and an attribution reference only | Owner | 4 | Open: confirm they belong with the multi-rail phase |
+| [R-5](#r-5) | Pricing data and developer API conventions arrive in Phase 9 | Eng | 3 [2] | Owner accepted default, 2026-10-18 (built in Phases 1 and 3) |
+| [R-6](#r-6) | On-chain reconciliation precedes the ledger | Eng | 5 [4] | Owner accepted default, 2026-10-18 |
+| [R-7](#r-7) | No phase says when user interfaces are built | Owner | 3 [2] | Owner accepted default, 2026-10-18 (web apps from Phase 3, mobile in Phase 9) |
+| [R-8](#r-8) | No phase owns internal ops tooling | Eng | 3 [2] | Owner accepted default, 2026-10-18 (operator API per phase; `internal-ops` exists) |
+| R-9 | Collection points with parent and child (lessons §3) are not in mvp-scope 3A; Phase 3 builds branches and an attribution reference only | Owner | Rails expansion | Owner accepted default, 2026-10-18: they move with the multi-rail work, now the Rails expansion phase after the gate |
 | X-14 | Refunds of Daraja (M-Pesa) collections through the Reversal API are not built: the sandbox test number never produces a successful collection to reverse | Eng | Pilot | Open: build and test once a sandbox or pilot collection can succeed |
 | X-13 | The Daraja sandbox consumer key and secret were exposed in a chat transcript and could not be regenerated (2026-10-14) | Owner | Production | Accepted for the sandbox by the owner; a new Daraja app with new credentials is required before any production use |
 | [D-1](#d-1) | Custody model | Owner | 5 [4], 7 [6] | Open; testnet interim ruling |
@@ -39,17 +39,58 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 | [D-5](#d-5) | Credit licence or lending partner | Owner | 11 | Open |
 | [D-6](#d-6) | Authentication and step-up mechanism | Owner | 1 | Resolved: Clerk (ADR 0011, 0019); PIN step-up kept |
 | [D-7](#d-7) | Canonical business identifier and duplicate rule | Owner | 1 | Resolved: ADR 0012 |
-| [D-8](#d-8) | KYC/KYB provider and tier limits | Owner | 3 [2] | Open |
+| [D-8](#d-8) | KYC/KYB provider and tier limits | Owner | 3 [2] | MVP: simulator adapters only (owner, 2026-10-18); production provider open |
 | [D-9](#d-9) | Hosting region and data residency | Owner | 1 (deploy), 13 [10] | Hosting decided: Vercel + Neon, Frankfurt (ADR 0013). Residency question open |
-| [D-10](#d-10) | NAM product types and investment provider | Owner | 7 [6] | Open |
-| [D-11](#d-11) | Base RPC provider | Owner | 5 [4] | Open |
+| [D-10](#d-10) | NAM product types and investment provider | Owner | 6 | MVP: Owner accepted default, 2026-10-18 (one plain USDC holding in the AORA vault contract, no yield); production open |
+| [D-11](#d-11) | Base RPC provider | Owner | 5 | MVP: the owner provides one Base Sepolia RPC URL (2026-10-18); a second independent provider before anything credits real value |
 | [E-1](#e-1) | Tenant isolation mechanism | Eng | 1 | Resolved: approved |
 | [E-2](#e-2) | How sandbox records are labelled | Eng | 1 | Resolved: approved |
 | [E-3](#e-3) | Node, TypeScript and test-runner versions | Eng | 1 | Resolved at checkpoint 1A |
 | [E-4](#e-4) | Read-only mainnet fork under the sandbox-only rule | Owner | 5 [4] | Open |
 | [M-1..M-7](#m-flags-raised-by-the-mvp-definition) | Flags raised by the MVP definition | mixed | various | Resolved 2026-10-13 (second ruling) |
-| [O-1..O-13](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO, hosting, Clerk and Resend rulings | Owner | various | O-1 to O-4 decided; O-10 decided with a terms caveat; others open |
+| [O-1..O-13](#o-owner-defaults-and-questions-from-the-kelo-and-hosting-rulings) | Owner defaults, and new questions from the KELO, hosting, Clerk and Resend rulings | Owner | various | See the 2026-10-18 rulings: O-5, O-7 to O-11 decided; O-6 deferred; O-12, O-13 unchanged; O-14 open; O-15 Eng default |
 | [X-1..X-12](#x-requirements-that-cannot-be-tested-without-external-access) | Requirements that cannot be tested without external access | mixed | various | Open |
+
+## Owner rulings (2026-10-18)
+
+- **Phase 3 approved.** The owner's signed-in staging walk-through is pending and blocks nothing; anything it finds is fixed by rolling forward.
+- **Rails and markets:** M-Pesa through Daraja is the only real rail in the MVP; every other rail stays on the simulator. Markets: Kenya (home), Tanzania (first export), Ghana and Uganda; Nigeria is a partnership / API tier only, with no direct merchant acquiring. Rails expansion moves after the MVP gate ([ADR 0014](../adr/0014-multi-rail-multi-country.md) addendum, [country-provider-model.md](country-provider-model.md), [mvp-scope.md](../product/mvp-scope.md) §3).
+- **O-5 resolved:** MTN MoMo covers Ghana and Uganda; Airtel Money covers Kenya, Uganda and Tanzania. Per-country API differences verified when each is integrated.
+- **Vodacom M-Pesa (Tanzania):** a separate future adapter with its own API, **to verify**.
+- **O-6 deferred:** the owner names the bank with its credentials. Airtel, MTN and bank credentials are not requested, and their adapters not built beyond the simulator, until the owner says so.
+- **R-5, R-6, R-7, R-8, R-9, D-10 (MVP), O-8, O-9:** Owner accepted default, 2026-10-18. Each default commits no money, no legal position, nothing in production and nothing irreversible.
+  - O-8: CBK conduct rules are read and cited at the start of KELO credit (Phase 8); until then the stricter owner rules apply.
+  - O-9: layaway is treated as not credit in the sandbox; funds sit in a labelled sandbox liability account; counsel's view before any live use.
+- **O-7 decided:** Vercel Blob, verified free on Hobby within its included usage (1 GB storage, 10,000 simple operations, 10 GB transfer per month; a Hobby account "cannot purchase additional usage"; vercel.com/docs/vercel-blob/usage-and-pricing and vercel.com/pricing, read 2026-10-18).
+- **O-10:** stay on Hobby for the sandbox MVP. **Upgrading the plan is required before any pilot or commercial use.**
+- **O-12:** unchanged; legal review before any pilot; does not block the MVP.
+- **O-13:** still no sending domain. Clerk delivers sign-in codes; Resend sends alerts to the owner's address only.
+- **D-8 (MVP), ID verification and credit bureau:** simulator adapters only; no provider credentials requested.
+- **Base Sepolia and USDC:** ADRs 0009 and 0010 stay pending for production. Testnet MVP keeps the D-1/D-2 interim ruling: a signer interface backed by a sandbox-only development signer that refuses to start outside sandbox mode or on any chain other than Base Sepolia (84532). One AORA-controlled testnet wallet, labelled as such (M-3, M-4). Fiat-to-USDC conversion on the simulator only, labelled (M-6). Key in `.env.local` and a sensitive Vercel variable on staging (M-1).
+- **Expo:** Expo Go or a development build; an Expo/EAS account is requested only when a binary is truly needed.
+- **KELO:** layaway before credit; credit stays behind `kelo_credit`.
+- **E-4** (read-only mainnet fork) stays open: it touches a hard rule, so it has no safe default. Chain tests use a local chain or a fork of Base Sepolia only.
+
+### O-14 (new, owner): a real Safaricom number in the Daraja sandbox
+
+- **Question:** may the walk-through send a sandbox STK push to the owner's own Safaricom number?
+- **What the documentation says** (developer.safaricom.co.ke, read 2026-10-18): the M-Pesa Express page describes `PartyA` as "a valid Safaricom M-PESA number" and `PhoneNumber` as the number that receives the prompt; it does not limit the sandbox to the test number. The FAQ says test funds from an STK push are reversed automatically "at 6am next day", or on request to Safaricom's API support address.
+- **Why it matters:** that FAQ answer implies a sandbox push approved on a real handset **debits the owner's real M-Pesa balance** until the reversal. That would move real money, which CLAUDE.md rule 10 forbids. Whether the debit is real is **to verify**; the safe reading is that it is.
+- **Current code:** ADR 0022 sends STK pushes to the Daraja test number only, so nothing changes until this is decided.
+- **Options:** (a) keep test-number only (current); (b) allow the owner's number with an instruction to **cancel** the prompt, never approve it (proves the prompt reaches a real handset; a mistaken approval still debits real money); (c) allow it and approve KES 1, accepting a next-day reversal (moves real money: needs an explicit rule-10 exception).
+- **Recommended default:** (a). No step for a real number is in the walk-through until the owner chooses.
+- **Blocks:** nothing.
+
+### O-15 (new, Eng default): the twelve KELO launch categories
+
+- **Question:** which twelve categories does KELO launch with? The MVP scope and ADRs 0017 and 0018 refer to "the twelve launch categories" but the repository never lists them.
+- **Default in use** (sandbox seed data, [phase-4.md](../plans/phase-4.md) P4-1): electronics and phones; home appliances; furniture; solar home systems; motorbikes; holidays and travel; courses and exams; optical; dental; medical-cosmetic; moving; home repairs and installation. Each is drawn from a category the brief or an ADR names, or an obvious neighbour of one.
+- **Changing it** is a data change (a new taxonomy version), not a code change.
+- **Blocks:** nothing.
+
+## Pre-pilot list (carried, 2026-10-18)
+
+Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); ADRs 0009, 0010, 0011 decided.
 
 ## Owner rulings (2026-10-13)
 

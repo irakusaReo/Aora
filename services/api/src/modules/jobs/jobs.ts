@@ -17,6 +17,7 @@ import { APP_CONFIG, type AppConfig } from '../../platform/config.js';
 import { Database } from '../../platform/database.js';
 import { AppError } from '../../platform/errors.js';
 import { RateLimiter } from '../../platform/rate-limit.js';
+import { ProvisioningService } from '../kelo/provisioning.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { ReconciliationService } from '../payments/reconciliation.service.js';
 import { SettlementService } from '../payments/settlement.service.js';
@@ -97,12 +98,22 @@ export class CronController {
     @Inject(ReconciliationService) private readonly reconciliation: ReconciliationService,
     @Inject(RateLimiter) private readonly rateLimiter: RateLimiter,
     @Inject(SettlementService) private readonly settlement: SettlementService,
+    @Inject(ProvisioningService) private readonly provisioning: ProvisioningService,
   ) {}
 
   /** Settles succeeded collections (ADR 0021). Idempotent; concurrent runs take different rows. */
   @Get('settlement')
   async settle(): Promise<{ job: 'settlement'; batches: number; collections: number }> {
     return { job: 'settlement', ...(await this.settlement.run()) };
+  }
+
+  /** KELO provisioning backfill (ADR 0008): restarts approved stores that never finished. */
+  @Get('kelo-provisioning-backfill')
+  async keloProvisioningBackfill(): Promise<{
+    job: 'kelo-provisioning-backfill';
+    enqueued: number;
+  }> {
+    return { job: 'kelo-provisioning-backfill', ...(await this.provisioning.backfill()) };
   }
 
   @Get('outbox')

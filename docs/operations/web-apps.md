@@ -16,3 +16,10 @@
 1. `pnpm build && pnpm start:api` (API on port 3000, reading `.env.local`).
 2. In `apps/kony-web/.env.local` and `apps/internal-ops/.env.local`: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `AORA_API_URL=http://127.0.0.1:3000`.
 3. `pnpm --filter kony-web dev` (port 3001) and `pnpm --filter internal-ops dev` (port 3002). Add `http://localhost:3001` and `http://localhost:3002` to the API's local `CLERK_AUTHORIZED_PARTIES` if you run the API with `AUTH_PROVIDER=clerk`.
+
+## KELO screens (Phase 4A)
+
+- **kony-web `/kelo`:** enlist a store, as a new business or from a KONY workspace you administer; see each store's vetting and provisioning status.
+- **kony-web `/w/<workspace>/kelo`:** the KELO section of a workspace: listings, new drafts, and per listing its variants and stock, dated sessions, photos and "Send for review".
+- **internal-ops `/kelo`:** store vetting (attest each category requirement; optional restrictions), provisioning records that need an operator (audited retry), and the listing review queue.
+- **Photos** upload from the browser straight to Vercel Blob with a one-pathname token from the API. Until the Blob store is connected to `aora-api` (`BLOB_READ_WRITE_TOKEN`), the API uses its image simulator and kony-web says that photos cannot be uploaded yet.

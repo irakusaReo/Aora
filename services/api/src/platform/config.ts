@@ -38,6 +38,8 @@ const schema = z.object({
   DARAJA_CALLBACK_SECRET: z.string().min(32).optional(),
   // Ed25519 private key, PKCS #8 DER, base64 (pnpm secrets:generate). Signs outbound webhooks.
   WEBHOOK_SIGNING_PRIVATE_KEY: z.string().min(40).optional(),
+  // Vercel Blob for KELO listing images (O-7). Absent: the image simulator.
+  BLOB_READ_WRITE_TOKEN: z.string().min(20).optional(),
   DARAJA_B2C_SHORTCODE: z
     .string()
     .regex(/^[0-9]{5,7}$/)
@@ -108,6 +110,8 @@ export interface AppConfig {
   readonly publicApiUrl: string;
   readonly daraja: DarajaConfig | null;
   readonly webhooks: { readonly signingPrivateKey: string | null; readonly maxAttempts: number };
+  /** Vercel Blob read-write token; null selects the image simulator. */
+  readonly blob: { readonly readWriteToken: string | null };
   readonly auth: {
     readonly stepUpTtlSeconds: number;
     readonly maxPinAttempts: number;
@@ -206,6 +210,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     publicApiUrl: value.PUBLIC_API_URL,
     daraja,
     webhooks: { signingPrivateKey: value.WEBHOOK_SIGNING_PRIVATE_KEY ?? null, maxAttempts: 6 },
+    blob: { readWriteToken: value.BLOB_READ_WRITE_TOKEN ?? null },
     auth: {
       stepUpTtlSeconds: 300,
       maxPinAttempts: 5,
