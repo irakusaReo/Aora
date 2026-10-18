@@ -58,6 +58,7 @@ describe('inbound transfers to the sandbox wallet (local chain)', () => {
           rpcUrl: anvil.rpcUrl,
           signerPrivateKey: TEST_KEYS[0],
           scanBlockRange: 25,
+          scanStartBlock: null,
           requestTimeoutMs: 5_000,
           unknownAfterSeconds: 3_600,
         },
@@ -149,6 +150,17 @@ describe('inbound transfers to the sandbox wallet (local chain)', () => {
     await anvil.mine(70);
     await chain.confirmObserved();
     expect((await observed(hash))[0]?.status).toBe('dropped');
+  });
+
+  it('starts a new cursor at the configured block, so earlier deposits are not missed', async () => {
+    await h.owner((c) => c.query(`delete from chain.scan_cursor where name = 'wallet_inbound'`));
+    const settings = h.config.chain;
+    if (!settings) throw new Error('chain settings missing');
+    Object.assign(settings, { scanStartBlock: 3n });
+    const first = await chain.observe();
+    expect(first.from_block).toBe(3n);
+    Object.assign(settings, { scanStartBlock: null });
+    await catchUp();
   });
 
   it('scans in bounded block ranges from a stored cursor', async () => {

@@ -556,7 +556,8 @@ export class ChainService {
     const range = BigInt(settings.scanBlockRange);
 
     const start = await this.db.asPlatform(async (tx) => {
-      const initial = head >= range ? head - range : -1n;
+      const configured = settings.scanStartBlock;
+      const initial = configured !== null ? configured - 1n : head >= range ? head - range : -1n;
       await tx.$executeRaw`
         insert into chain.scan_cursor (name, last_block)
         values (${WALLET_INBOUND}, ${initial < 0n ? 0n : initial})

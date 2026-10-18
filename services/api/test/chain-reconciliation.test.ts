@@ -105,6 +105,7 @@ beforeAll(async () => {
         rpcUrl: anvil.rpcUrl,
         signerPrivateKey: TEST_KEYS[0],
         scanBlockRange: 500,
+        scanStartBlock: null,
         requestTimeoutMs: 5_000,
         unknownAfterSeconds: 3_600,
         anchorRegistry: registry,
