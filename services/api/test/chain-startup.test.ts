@@ -63,6 +63,17 @@ describe('chain configuration', () => {
     expect(message).not.toContain(bad);
   });
 
+  it('reads an optional block to start the inbound scan from', () => {
+    const env = { ...BASE_ENV, BASE_SEPOLIA_RPC_URL: 'https://sepolia.base.org' };
+    expect(loadConfig(env).chain?.scanStartBlock).toBeNull();
+    expect(
+      loadConfig({ ...env, BASE_SEPOLIA_SCAN_START_BLOCK: '48284000' }).chain?.scanStartBlock,
+    ).toBe(48_284_000n);
+    expect(() => loadConfig({ ...env, BASE_SEPOLIA_SCAN_START_BLOCK: '-5' })).toThrow(
+      /BASE_SEPOLIA_SCAN_START_BLOCK/,
+    );
+  });
+
   it('refuses a signer key without an RPC URL', () => {
     expect(() => loadConfig({ ...BASE_ENV, SANDBOX_SIGNER_PRIVATE_KEY: TEST_KEYS[0] })).toThrow(
       /BASE_SEPOLIA_RPC_URL/,

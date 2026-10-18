@@ -29,6 +29,12 @@ export const PERMISSIONS = {
   'member.manage': ['admin'],
   'kelo_listing.read': ['admin', 'finance', 'cashier'],
   'kelo_listing.manage': ['admin'],
+  // USDC treasury on Base Sepolia (phase 5C). Approving a withdrawal is admin
+  // only and never by the person who requested it (enforced in the service).
+  'treasury.read': ['admin', 'finance'],
+  'treasury.manage': ['admin'],
+  'treasury.withdraw': ['admin', 'finance'],
+  'treasury.approve': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

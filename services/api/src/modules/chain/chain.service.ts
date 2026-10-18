@@ -11,6 +11,7 @@ import {
   keccak256,
   type PublicClient,
   TransactionNotFoundError,
+  verifyMessage,
   TransactionReceiptNotFoundError,
   zeroAddress,
 } from 'viem';
@@ -135,7 +136,7 @@ export class ChainService {
         'The amount must be a positive whole number of base units.',
       );
     }
-    const recipient = await this.checkDestination(input.recipient, signer.address);
+    const recipient = await this.assertDestination(input.recipient);
     const usdc = BASE_SEPOLIA.usdc.address.toLowerCase();
     const callData = encodeFunctionData({
       abi: erc20Abi,
@@ -197,8 +198,84 @@ export class ChainService {
     });
   }
 
-  /** P5-9: refuses addresses that could only lose the funds. */
-  private async checkDestination(raw: string, wallet: Address): Promise<Address> {
+  /**
+   * Records an intended call to one of AORA's own contracts (anchoring now; the
+   * vault in Phase 6). No value is sent. Idempotent per key.
+   */
+  async prepareContractCall(input: {
+    readonly idempotencyKey: string;
+    readonly kind: 'anchor_commit' | 'vault_deposit' | 'vault_redeem';
+    readonly to: Address;
+    readonly data: Hex;
+  }): Promise<ChainOperationView> {
+    const { signer } = await this.signerOrFail();
+    const contents = {
+      from_address: signer.address.toLowerCase(),
+      to_address: getAddress(input.to).toLowerCase(),
+      call_data: input.data.toLowerCase(),
+    };
+    return this.db.asPlatform(async (tx) => {
+      const inserted = await tx.$queryRaw<{ id: string }[]>`
+        insert into chain.operation (idempotency_key, kind, from_address, to_address, call_data)
+        values (${input.idempotencyKey}, ${input.kind}, ${contents.from_address},
+                ${contents.to_address}, ${contents.call_data})
+        on conflict (idempotency_key) do nothing
+        returning id`;
+      const row = await tx.operation.findUniqueOrThrow({
+        where: { idempotency_key: input.idempotencyKey },
+      });
+      if (
+        row.kind !== input.kind ||
+        row.to_address !== contents.to_address ||
+        row.call_data !== contents.call_data
+      ) {
+        throw new AppError(
+          'idempotency_key_reused',
+          'This Idempotency-Key was used for a different chain operation.',
+        );
+      }
+      if (inserted.length === 1) {
+        await tx.transition.create({
+          data: { operation_id: row.id, from_status: null, to_status: 'prepared', source: 'api' },
+        });
+      }
+      return view(row);
+    });
+  }
+
+  /** The AnchorRegistry this environment anchors to, or null if none is deployed. */
+  anchorRegistry(): Address | null {
+    const override = this.config.chain?.anchorRegistry;
+    return override ? getAddress(override) : BASE_SEPOLIA.contracts.anchorRegistry;
+  }
+
+  /** AORA's sandbox testnet wallet: where deposits go and withdrawals come from. */
+  async walletAddress(): Promise<Address> {
+    return (await this.signerOrFail()).signer.address;
+  }
+
+  /**
+   * True if `signature` is `address`'s EIP-191 personal signature of `message`
+   * (P5-5). Checked off chain; nothing is sent.
+   */
+  async verifySignature(address: string, message: string, signature: string): Promise<boolean> {
+    if (!isAddress(address, { strict: false }) || !/^0x[0-9a-fA-F]+$/.test(signature)) {
+      return false;
+    }
+    try {
+      return await verifyMessage({
+        address: getAddress(address),
+        message,
+        signature: signature as Hex,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /** P5-9: refuses addresses that could only lose the funds. Returns the checksummed address. */
+  async assertDestination(raw: string): Promise<Address> {
+    const wallet = await this.walletAddress();
     if (!isAddress(raw, { strict: false })) {
       throw new AppError('invalid_destination', 'That is not a valid address.');
     }
@@ -479,7 +556,8 @@ export class ChainService {
     const range = BigInt(settings.scanBlockRange);
 
     const start = await this.db.asPlatform(async (tx) => {
-      const initial = head >= range ? head - range : -1n;
+      const configured = settings.scanStartBlock;
+      const initial = configured !== null ? configured - 1n : head >= range ? head - range : -1n;
       await tx.$executeRaw`
         insert into chain.scan_cursor (name, last_block)
         values (${WALLET_INBOUND}, ${initial < 0n ? 0n : initial})

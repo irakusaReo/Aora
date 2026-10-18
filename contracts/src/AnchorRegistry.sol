@@ -40,6 +40,8 @@ contract AnchorRegistry is Ownable2Step {
         if (root == bytes32(0)) revert ZeroRoot();
         // slither-disable-next-line timestamp (compares the stored root, not a time)
         if (anchors[periodId].root != bytes32(0)) revert AlreadyAnchored(periodId);
+        // casting to uint64 is safe: block timestamps fit in 64 bits for billions of years.
+        // forge-lint: disable-next-line(unsafe-typecast)
         anchors[periodId] = Anchor({root: root, entryCount: entryCount, anchoredAt: uint64(block.timestamp)});
         emit Anchored(periodId, root, entryCount);
     }
@@ -51,6 +53,8 @@ contract AnchorRegistry is Ownable2Step {
     function setAnchorer(address next) external onlyOwner {
         if (next == address(0)) revert ZeroAddress();
         emit AnchorerChanged(anchorer, next);
+        // The event above records the change (the linter does not see it before the write).
+        // forge-lint: disable-next-line(missing-events-access-control)
         anchorer = next;
     }
 

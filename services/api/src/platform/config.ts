@@ -53,6 +53,7 @@ const schema = z.object({
   // Base Sepolia (phase 5). Validated by chainSettings; absent RPC URL: the chain is off.
   BASE_SEPOLIA_RPC_URL: z.string().optional(),
   SANDBOX_SIGNER_PRIVATE_KEY: z.string().optional(),
+  BASE_SEPOLIA_SCAN_START_BLOCK: z.string().optional(),
 });
 
 const DARAJA_REQUIRED = [
@@ -183,6 +184,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     {
       BASE_SEPOLIA_RPC_URL: value.BASE_SEPOLIA_RPC_URL,
       SANDBOX_SIGNER_PRIVATE_KEY: value.SANDBOX_SIGNER_PRIVATE_KEY,
+      BASE_SEPOLIA_SCAN_START_BLOCK: value.BASE_SEPOLIA_SCAN_START_BLOCK,
     },
     { deployed },
   );

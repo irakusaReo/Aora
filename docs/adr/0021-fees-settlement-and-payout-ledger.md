@@ -69,3 +69,16 @@ A successful collection posts one entry: debit `provider_clearing` gross; credit
 - **Cancellation:** debit `kelo_layaway_funds_held` (what was paid); credit `kelo_refunds_payable` (the refund) and `kelo_fee_revenue` (the cancellation fee). The refund is disbursed through the simulator (sandbox; Daraja reversal is X-14): debit `kelo_refunds_payable`, credit `provider_payout_float` (`sandbox_sim`). Unknown outcomes are inquired, never resubmitted; a stuck refund opens `stuck_status_unknown`.
 - **Reconciliation:** a succeeded layaway intent is checked against `kelo_layaway_funds_held` (all of it, there), not the merchant's accounts.
 - **Sandbox assumption (owner may change):** a retained cancellation fee is KELO income, not the merchant's. Who keeps it in production is a commercial decision.
+
+## Addendum, 2026-10-18 (Phase 5C: USDC treasury, phase-5 plan P5-4, P5-9)
+
+USDC has its own accounts and never shares one with KES (CLAUDE.md rule 5):
+
+| Account | Owner | Normal side | Meaning |
+|---|---|---|---|
+| `chain_wallet_usdc` | platform | debit | USDC held in AORA's sandbox testnet wallet |
+| `platform_usdc_funding` | platform | credit | AORA's own sandbox funding of that wallet (faucet USDC an operator attributes) |
+| `merchant_usdc_available` | workspace | credit | USDC the workspace may withdraw |
+| `merchant_usdc_withdrawals_in_flight` | workspace | credit | Reserved for withdrawals not yet resolved |
+
+Entries: a confirmed deposit from a registered address debits `chain_wallet_usdc` and credits the workspace's `merchant_usdc_available` (one entry per observed transfer). A withdrawal request moves the amount to `…_in_flight`; a confirmed withdrawal transaction moves it out of `chain_wallet_usdc`; a rejected, reverted or failed one moves it back. Network fees (testnet ETH) are recorded on the chain operation, not ledgered (P5-7). Withdrawal limits are `tenancy.tier_limit` rows for `USDC` (per transaction and per 24 hours), sandbox data.

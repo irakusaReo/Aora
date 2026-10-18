@@ -23,6 +23,14 @@ export const BASE_SEPOLIA = {
       verifiedBy: 'AORA engineering (ADR 0005); decimals and symbol re-read on chain 2026-10-18',
     },
   },
+  /**
+   * AORA's own contracts (ADR 0015), copied from contracts/deployments/base-sepolia.json
+   * once deployed. Null: not deployed yet, and the features that need them stay off.
+   */
+  contracts: {
+    anchorRegistry: null as Address | null,
+    namUsdcVault: null as Address | null,
+  },
 } as const;
 
 export type { ChainSettings } from '../../platform/chain-settings.js';

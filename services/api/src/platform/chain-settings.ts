@@ -11,9 +11,20 @@ export interface ChainSettings {
   readonly signerPrivateKey: Hex | null;
   /** The most blocks one scan reads (P5-11). */
   readonly scanBlockRange: number;
+  /**
+   * Where a new inbound-scan cursor starts (BASE_SEPOLIA_SCAN_START_BLOCK): a
+   * block before the wallet's first deposit, so funding sent before the chain
+   * was switched on is still observed. Null: the cursor starts near the head.
+   */
+  readonly scanStartBlock: bigint | null;
   readonly requestTimeoutMs: number;
   /** How long a status_unknown operation may stay unresolved before a person must look. */
   readonly unknownAfterSeconds: number;
+  /**
+   * Overrides the AnchorRegistry address recorded in the chain config. Tests
+   * only (a registry deployed to the local chain); never read from the environment.
+   */
+  readonly anchorRegistry?: Hex | null;
 }
 
 const KEY = /^0x[0-9a-fA-F]{64}$/;
@@ -34,6 +45,7 @@ export function chainSettings(
 ): ChainSettings | null {
   const rpc = env['BASE_SEPOLIA_RPC_URL']?.trim() ?? '';
   const key = env['SANDBOX_SIGNER_PRIVATE_KEY']?.trim() ?? '';
+  const start = env['BASE_SEPOLIA_SCAN_START_BLOCK']?.trim() ?? '';
   if (!rpc) {
     if (key) invalid('BASE_SEPOLIA_RPC_URL', 'a signer key needs an RPC URL');
     return null;
@@ -51,6 +63,9 @@ export function chainSettings(
   if (url.protocol !== 'https:' && !loopback) {
     invalid('BASE_SEPOLIA_RPC_URL', 'must be https');
   }
+  if (start && !/^(0|[1-9][0-9]{0,15})$/.test(start)) {
+    invalid('BASE_SEPOLIA_SCAN_START_BLOCK', 'expected a block number');
+  }
   if (key && !KEY.test(key)) {
     invalid('SANDBOX_SIGNER_PRIVATE_KEY', 'expected 0x followed by 64 hexadecimal digits');
   }
@@ -58,6 +73,7 @@ export function chainSettings(
     rpcUrl: rpc,
     signerPrivateKey: key ? (key as Hex) : null,
     scanBlockRange: 500,
+    scanStartBlock: start ? BigInt(start) : null,
     requestTimeoutMs: 10_000,
     unknownAfterSeconds: 15 * 60,
   };

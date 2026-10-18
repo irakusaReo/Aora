@@ -38,7 +38,7 @@ const MAY_IMPORT = {
   developer: ['audit', 'outbox'],
   notifications: ['outbox'],
   payments: ['audit', 'developer', 'ledger', 'notifications', 'outbox', 'pricing', 'tenancy'],
-  chain: ['payments'],
+  chain: ['audit', 'ledger', 'payments', 'tenancy'],
   jobs: ['chain', 'outbox', 'payments'],
   webhooks: ['identity', 'notifications'],
 };

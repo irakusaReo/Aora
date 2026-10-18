@@ -11,7 +11,11 @@ export type AccountType =
   | 'provider_payout_float'
   | 'kelo_layaway_funds_held'
   | 'kelo_fee_revenue'
-  | 'kelo_refunds_payable';
+  | 'kelo_refunds_payable'
+  | 'chain_wallet_usdc'
+  | 'platform_usdc_funding'
+  | 'merchant_usdc_available'
+  | 'merchant_usdc_withdrawals_in_flight';
 
 /** The closed list of account types and their fixed properties (ADR 0003). */
 const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean }> = {
@@ -34,6 +38,14 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   kelo_fee_revenue: { normalSide: 'credit', allowNegative: false },
   // Owed back to buyers who cancelled, until the refund is paid: a liability.
   kelo_refunds_payable: { normalSide: 'credit', allowNegative: false },
+  // USDC on Base Sepolia (phase 5C). Held in AORA's sandbox wallet: an asset.
+  chain_wallet_usdc: { normalSide: 'debit', allowNegative: false },
+  // AORA's own sandbox funding of that wallet (faucet USDC an operator attributes).
+  platform_usdc_funding: { normalSide: 'credit', allowNegative: false },
+  // A workspace's USDC claim, free to withdraw: a liability.
+  merchant_usdc_available: { normalSide: 'credit', allowNegative: false },
+  // Reserved for withdrawals requested and not yet resolved: a liability.
+  merchant_usdc_withdrawals_in_flight: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {
@@ -87,6 +99,12 @@ export class LedgerService {
       'merchant_payouts_in_flight',
     ] as const) {
       await this.openAccount(tx, { tenantId, type, assetCode: 'KES' });
+    }
+    for (const type of [
+      'merchant_usdc_available',
+      'merchant_usdc_withdrawals_in_flight',
+    ] as const) {
+      await this.openAccount(tx, { tenantId, type, assetCode: 'USDC' });
     }
   }
 

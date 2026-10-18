@@ -47,6 +47,11 @@ import { SettlementService } from './modules/payments/settlement.service.js';
 import { DARAJA_ADAPTER, PaymentsService } from './modules/payments/payments.service.js';
 import { ReconciliationService } from './modules/payments/reconciliation.service.js';
 import { ChainService } from './modules/chain/chain.service.js';
+import { AnchoringService } from './modules/chain/anchoring.service.js';
+import { ChainOpsController } from './modules/chain/chain-ops.controller.js';
+import { ChainReconciliationService } from './modules/chain/chain-reconciliation.service.js';
+import { TreasuryController } from './modules/chain/treasury.controller.js';
+import { TreasuryService } from './modules/chain/treasury.service.js';
 import { SimulatorProvider } from './modules/payments/simulator.js';
 import {
   OnboardingController,
@@ -123,6 +128,9 @@ const SHARED = [
   SimulatorProvider,
   ReconciliationService,
   ChainService,
+  TreasuryService,
+  ChainReconciliationService,
+  AnchoringService,
   PaymentsService,
   SettlementService,
   PayoutsService,
@@ -143,6 +151,8 @@ const SHARED = [
 ];
 
 export const CONTROLLERS = [
+  TreasuryController,
+  ChainOpsController,
   HealthController,
   IdentityController,
   AssetsController,
