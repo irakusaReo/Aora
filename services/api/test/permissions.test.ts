@@ -12,6 +12,15 @@ const EXPECTED: Record<
   { admin: boolean; finance: boolean; cashier: boolean; stepUp?: true }
 > = {
   'POST /v1/payment-intents': { admin: true, finance: true, cashier: true },
+  'GET /v1/workspace/kelo/listings/:id/plan-options': { admin: true, finance: true, cashier: true },
+  'POST /v1/workspace/kelo/listings/:id/plan-offers': {
+    admin: true,
+    finance: false,
+    cashier: false,
+  },
+  'GET /v1/workspace/kelo/purchases': { admin: true, finance: true, cashier: true },
+  'POST /v1/workspace/kelo/purchases/:id/confirm': { admin: true, finance: false, cashier: false },
+  'POST /v1/workspace/kelo/purchases/:id/fulfil': { admin: true, finance: false, cashier: false },
   'GET /v1/workspace/kelo/quote-requests': { admin: true, finance: true, cashier: true },
   'POST /v1/workspace/kelo/quote-requests/:id/quotes': {
     admin: true,
@@ -174,6 +183,7 @@ describe('route × role matrix', () => {
       'GET /v1/kelo/categories',
       'GET /v1/kelo/marketplace/listings',
       'GET /v1/kelo/marketplace/listings/:id',
+      'GET /v1/kelo/marketplace/listings/:id/plans',
       'GET /v1/terms/:key',
       'GET /v1/webhook-signing-key',
       'POST /v1/webhooks/clerk',

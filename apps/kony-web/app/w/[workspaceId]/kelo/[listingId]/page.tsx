@@ -1,8 +1,21 @@
-import { formatMinor, type KeloListing, type List, type Me } from '@aora/api-client';
+import {
+  formatMinor,
+  type KeloListing,
+  type KeloPlanOption,
+  type List,
+  type Me,
+} from '@aora/api-client';
 import Link from 'next/link';
 import { api, exponentOf } from '../../../../../lib/api';
 import { LISTING_STATUS, LISTING_TYPE } from '../copy';
-import { addSession, addVariant, submitListing, updateListing, updateVariant } from './actions';
+import {
+  addSession,
+  addVariant,
+  offerPlan,
+  submitListing,
+  updateListing,
+  updateVariant,
+} from './actions';
 import { ImageUpload } from './image-upload';
 
 export default async function ListingPage({
@@ -15,10 +28,11 @@ export default async function ListingPage({
   const { workspaceId, listingId } = await params;
   const query = await searchParams;
   const client = await api(workspaceId);
-  const [me, listing, assets] = await Promise.all([
+  const [me, listing, assets, planOptions] = await Promise.all([
     client.get<Me>('/v1/me'),
     client.get<KeloListing>(`/v1/workspace/kelo/listings/${listingId}`),
     client.get<List<{ code: string; exponent: number }>>('/v1/assets'),
+    client.get<List<KeloPlanOption>>(`/v1/workspace/kelo/listings/${listingId}/plan-options`),
   ]);
   const exponent = exponentOf(assets.data, listing.currency);
   const money = (minor: string): string => `${listing.currency} ${formatMinor(minor, exponent)}`;
@@ -207,6 +221,48 @@ export default async function ListingPage({
             Buyers ask for a quote; you reply with a price and an expiry. Quotes arrive with the
             marketplace.
           </p>
+        </div>
+      )}
+
+      {listing.type !== 'quote_service' && planOptions.data.length > 0 && (
+        <div className="card">
+          <h2>Ways to pay you offer</h2>
+          <p className="muted">
+            None is offered until you choose it. Buyers pay KELO in instalments before they receive
+            the item; you are paid once it is delivered, less the fee shown.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Your fee</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {planOptions.data.map((option) => (
+                <tr key={option.template_key}>
+                  <td>{option.name}</td>
+                  <td>{formatMinor(String(option.merchant_fee_bps), 2)}% of the sale</td>
+                  <td>
+                    {option.offered ? (
+                      <span className="pill">Offered</span>
+                    ) : (
+                      isAdmin && (
+                        <form action={offerPlan}>
+                          {hidden}
+                          <input type="hidden" name="template_key" value={option.template_key} />
+                          <button type="submit" className="secondary">
+                            Offer
+                          </button>
+                        </form>
+                      )
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

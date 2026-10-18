@@ -94,8 +94,9 @@ export class RefundsService implements OnModuleInit {
           return { refund: view(earlier), replayed: true };
         }
         // Scoped to the caller's workspace: another tenant's collection is simply not found.
+        // A layaway instalment is not the merchant's to refund (P4-9): it does not exist here.
         const intent = await tx.payment_intent.findFirst({
-          where: { id: input.intentId, tenant_id: actor.tenantId },
+          where: { id: input.intentId, tenant_id: actor.tenantId, purpose: 'collection' },
         });
         if (!intent) throw new AppError('not_found', 'Payment intent not found.');
         if (intent.status !== 'succeeded') {

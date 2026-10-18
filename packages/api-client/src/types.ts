@@ -294,3 +294,62 @@ export interface KeloPublicListing {
   sessions: { id: string; starts_at: string; price_minor: string; available: boolean }[];
   images: { url: string }[];
 }
+
+export interface KeloPlan {
+  template_key: string;
+  name: string;
+  plan_type: 'layaway';
+  instalments: { seq: number; due_on: string; amount_minor: string }[];
+  total_minor: string;
+  fees_minor: string;
+  currency: string;
+  receive_after_last_payment: true;
+  cancellation: { fee_bps: number; fee_cap_minor: string; after_start_returned_bps: number };
+  terms: { key: string; version: string };
+}
+
+export interface KeloPurchase {
+  id: string;
+  status:
+    'placed' | 'payment_ready' | 'merchant_confirmed' | 'fulfilled' | 'completed' | 'cancelled';
+  plan_status: 'active' | 'paid_in_full' | 'settled' | 'cancelled' | 'refunded';
+  plan_type: 'layaway';
+  listing_id: string;
+  listing_title: string;
+  total_minor: string;
+  paid_minor: string;
+  currency: string;
+  receive_after_last_payment: true;
+  instalments: {
+    seq: number;
+    due_on: string;
+    amount_minor: string;
+    status: 'due' | 'pending' | 'paid' | 'cancelled';
+  }[];
+  refund: { paid_minor: string; fee_minor: string; refund_minor: string; status: string } | null;
+  created_at: string;
+}
+
+export interface KeloMerchantPurchase {
+  id: string;
+  status: KeloPurchase['status'];
+  plan_status: KeloPurchase['plan_status'];
+  listing_title: string;
+  total_minor: string;
+  paid_minor: string;
+  merchant_fee_minor: string;
+  net_minor: string;
+  currency: string;
+  next_action: 'wait_for_payments' | 'confirm' | 'fulfil' | 'wait_for_buyer' | 'none';
+  created_at: string;
+}
+
+export interface KeloPlanOption {
+  template_key: string;
+  name: string;
+  plan_type: string;
+  instalment_count: number;
+  interval_days: number;
+  merchant_fee_bps: number;
+  offered: boolean;
+}

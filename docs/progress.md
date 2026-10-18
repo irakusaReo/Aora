@@ -54,9 +54,14 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **4A done (2026-10-18):** KELO store enlistment (new business or existing KONY workspace), operator vetting against category requirements, ADR 0008 provisioning (one step per transaction, backfill, audited retry, restrictions copied and enforced), twelve sandbox categories (O-15), catalogue with three listing types, stock and capacity bounds, prohibited items, moderation with revisions, public marketplace search, images through Vercel Blob client tokens (simulator until the store is connected). kony-web `/kelo` and `/w/<id>/kelo`; internal-ops `/kelo`. Migrations `20261018000100_kelo_stores`, `20261018000200_kelo_catalogue` (expand-only). ADR 0008 and 0017 addenda.
 
+- **4A and 4B merged and on staging (2026-10-18, PR #16):** migrations `…000100` to `…000300` applied to staging first; health, KELO public routes and all four cron jobs (including the new `kelo-provisioning-backfill`) pass on staging. 4B: quotes for quote-based services; consumer row-level barrier (`withConsumer`); `apps/kelo-web` built (browse, listing, quotes, terms, purchases) but **not deployed**: its Vercel project and its origin in `CLERK_AUTHORIZED_PARTIES` need the owner's approval.
+- **4C built (2026-10-18):** layaway (journey K4): plan templates, category rules, refund rules and terms as data; merchant plan offers; schedule engine (property-tested); purchases with reservation, consent, ordered instalment payments claimed before creation, held funds (`kelo_layaway_funds_held`), fulfilment by category evidence with settlement net of the discount fee, cancellation refunds by rule through the simulator. Payment intents gain `purpose`; layaway intents are excluded from merchant collections, refunds, webhooks and settlement, and reconciled against held funds. Migration `20261018000400_kelo_layaway` (expand-only). ADR 0017 and 0021 addenda.
+
 ## Next
 
-1. Phase 4 per [plans/phase-4.md](plans/phase-4.md): 4B `kelo-web` marketplace (new Vercel project `kelo-web`); 4C layaway.
+1. Merge 4C (migration to staging first), then the Phase 4 report.
+2. Deploy `kelo-web` once the owner approves the Vercel project and the `CLERK_AUTHORIZED_PARTIES` change.
+3. Phase 5 (chain and contracts) under the run mode.
 2. Phase 5 (chain and contracts) needs the Base Sepolia batch (RPC URL, funded testnet signer key, explorer API key), requested on 2026-10-18 ahead of time. Until it arrives, chain work runs against a local chain.
 
 ## Blocked

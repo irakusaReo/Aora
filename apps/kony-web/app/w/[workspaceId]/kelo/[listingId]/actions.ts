@@ -119,3 +119,10 @@ export async function attachImage(
     return { error: messageOf(error) };
   }
 }
+
+export async function offerPlan(form: FormData): Promise<void> {
+  const client = await api(field(form, 'workspace_id'));
+  await call(form, (path) =>
+    client.post(`${path}/plan-offers`, { template_key: field(form, 'template_key') }),
+  );
+}

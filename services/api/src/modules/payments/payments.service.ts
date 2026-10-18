@@ -60,6 +60,10 @@ export const EVENT_SUBMIT = 'payments.intent.submit';
 export const EVENT_INQUIRY = 'payments.intent.status_inquiry';
 export const EVENT_WEBHOOK = 'payments.webhook.process';
 export const EVENT_DARAJA_CALLBACK = 'payments.daraja.callback';
+/** Handled by KELO: an instalment's payment reached a final state. */
+export const EVENT_LAYAWAY_PAYMENT_RESULT = 'kelo.layaway.payment_result';
+
+export type IntentPurpose = 'collection' | 'kelo_layaway';
 
 type Intent = Prisma.payment_intentGetPayload<object>;
 
@@ -154,7 +158,10 @@ export class PaymentsService implements OnModuleInit {
     scenario: Scenario | null;
     payerPhone: string | null;
     apiKeyId?: string | null;
+    /** `kelo_layaway`: an instalment held for the buyer, not a collection for the merchant (P4-9). */
+    purpose?: IntentPurpose;
   }): Promise<{ intent: IntentView; replayed: boolean }> {
+    const purpose = input.purpose ?? 'collection';
     // A scripted sandbox scenario always goes to the simulator; otherwise the
     // mpesa rail goes to Daraja when it is configured (ADR 0022).
     const daraja = !input.scenario && input.rail === 'mpesa' ? this.daraja : null;
@@ -185,6 +192,7 @@ export class PaymentsService implements OnModuleInit {
           input.branchId,
           input.reference,
           input.payerPhone,
+          purpose,
         ]),
       )
       .digest('hex');
@@ -216,14 +224,18 @@ export class PaymentsService implements OnModuleInit {
           throw new AppError('invalid_request', 'M-Pesa amounts are whole shillings.');
         }
       }
-      // The fee is fixed now, from the tariff version in effect (ADR 0021).
-      const quote = await this.pricing.quote(tx, {
-        operation: 'collection',
-        rail: input.rail,
-        country: adapter.declaration.country,
-        assetCode: input.assetCode,
-        amount: input.amount,
-      });
+      // The fee is fixed now, from the tariff version in effect (ADR 0021). A
+      // layaway instalment carries none: KELO charges the merchant on settlement.
+      const quote =
+        purpose === 'collection'
+          ? await this.pricing.quote(tx, {
+              operation: 'collection',
+              rail: input.rail,
+              country: adapter.declaration.country,
+              assetCode: input.assetCode,
+              amount: input.amount,
+            })
+          : { fee: 0n, tariffVersionId: null };
       await this.assertWithinLimits(tx, input.tenantId, input.assetCode, input.amount);
 
       // ON CONFLICT DO NOTHING waits out a concurrent request with the same key,
@@ -231,12 +243,13 @@ export class PaymentsService implements OnModuleInit {
       const inserted = await tx.$queryRaw<{ id: string }[]>`
         insert into payments.payment_intent
           (tenant_id, idempotency_key, request_hash, amount, asset_code, provider,
-           sandbox_scenario, created_by, rail, fee_amount, tariff_version_id, branch_id, reference)
+           sandbox_scenario, created_by, rail, fee_amount, tariff_version_id, branch_id, reference,
+           purpose)
         values (${input.tenantId}::uuid, ${input.idempotencyKey}, ${requestHash}, ${input.amount},
                 ${input.assetCode}, ${adapter.declaration.provider}, ${input.scenario},
                 ${input.accountId}::uuid,
                 ${input.rail}, ${quote.fee}, ${quote.tariffVersionId}::uuid,
-                ${input.branchId}::uuid, ${input.reference})
+                ${input.branchId}::uuid, ${input.reference}, ${purpose})
         on conflict (tenant_id, idempotency_key) do nothing
         returning id`;
       const created = inserted[0];
@@ -308,7 +321,12 @@ export class PaymentsService implements OnModuleInit {
       tx.payment_intent.findUnique({ where: { id: intentId } }),
     );
     // Row-level security hides other tenants' intents, so they look like any missing id.
-    if (!intent || (branchScope !== undefined && intent.branch_id !== branchScope)) {
+    // A layaway instalment is the buyer's money, not one of the merchant's collections.
+    if (
+      !intent ||
+      intent.purpose !== 'collection' ||
+      (branchScope !== undefined && intent.branch_id !== branchScope)
+    ) {
       throw new AppError('not_found', 'Payment intent not found.');
     }
     return view(intent);
@@ -329,7 +347,8 @@ export class PaymentsService implements OnModuleInit {
       const page = await tx.$queryRaw<{ id: string; created: string }[]>`
         select id, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as created
         from payments.payment_intent
-        where (${!filterBranch} or branch_id is not distinct from ${branch ?? null}::uuid)
+        where purpose = 'collection'
+          and (${!filterBranch} or branch_id is not distinct from ${branch ?? null}::uuid)
           and (${after === null}
                or (created_at, id) < (${after?.created ?? null}::timestamptz, ${after?.id ?? null}::uuid))
         order by created_at desc, id desc
@@ -653,6 +672,38 @@ export class PaymentsService implements OnModuleInit {
     await this.transition(tx, intent, 'succeeded', result.source, null, {
       provider_reference: reference,
     });
+    if (intent.purpose === 'kelo_layaway') {
+      // Held for the buyer until fulfilment: never the merchant's, never income (ADR 0017).
+      await this.ledger.post(tx, {
+        idempotencyKey: collectionEntryKey(intent.id),
+        tenantId: null,
+        entryType: 'kelo_layaway_instalment',
+        operationType: 'payment_intent',
+        operationId: intent.id,
+        postings: [
+          {
+            accountId: await this.ledger.findAccount(tx, {
+              tenantId: null,
+              type: 'provider_clearing',
+              assetCode: intent.asset_code,
+              qualifier: intent.provider,
+            }),
+            direction: 'debit',
+            amount: intent.amount,
+          },
+          {
+            accountId: await this.ledger.findAccount(tx, {
+              tenantId: null,
+              type: 'kelo_layaway_funds_held',
+              assetCode: intent.asset_code,
+            }),
+            direction: 'credit',
+            amount: intent.amount,
+          },
+        ],
+      });
+      return 'succeeded';
+    }
     await this.ledger.post(tx, {
       idempotencyKey: collectionEntryKey(intent.id),
       tenantId: intent.tenant_id,
@@ -1078,7 +1129,14 @@ export class PaymentsService implements OnModuleInit {
         reason,
       },
     });
-    if (to === 'succeeded' || to === 'failed') {
+    if ((to === 'succeeded' || to === 'failed') && intent.purpose === 'kelo_layaway') {
+      // KELO hears about its instalment through the outbox, in this same transaction.
+      await this.outbox.enqueue(tx, {
+        tenantId: intent.tenant_id,
+        type: EVENT_LAYAWAY_PAYMENT_RESULT,
+        payload: { intent_id: intent.id, outcome: to },
+      });
+    } else if (to === 'succeeded' || to === 'failed') {
       // A merchant's own systems hear about it through their webhook, in this same transaction.
       await this.developer.emit(tx, {
         tenantId: intent.tenant_id,

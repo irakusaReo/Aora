@@ -154,11 +154,15 @@ export class ReconciliationService {
           });
         }
         // Net credit to the merchant's own accounts for this intent, reversals included.
-        // The merchant is owed gross minus AORA's fee.
+        // The merchant is owed gross minus AORA's fee. A layaway instalment is owed to
+        // the buyer instead: all of it in "layaway funds held", none to the merchant.
+        const layaway = intent.purpose === 'kelo_layaway';
         const postings = await tx.posting.findMany({
           where: {
             journal_entry: { operation_type: 'payment_intent', operation_id: intent.id },
-            account: { tenant_id: intent.tenant_id },
+            account: layaway
+              ? { tenant_id: null, type: 'kelo_layaway_funds_held' }
+              : { tenant_id: intent.tenant_id },
           },
         });
         const credited = postings.reduce(
