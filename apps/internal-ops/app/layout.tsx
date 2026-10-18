@@ -32,6 +32,7 @@ export default async function RootLayout({
             <nav>
               <Link href="/">Exceptions</Link>
               <Link href="/reviews">Onboarding reviews</Link>
+              <Link href="/kelo">KELO</Link>
               <Link href="/lookup">Lookup</Link>
               <Link href="/audit">Audit trail</Link>
               <UserButton />

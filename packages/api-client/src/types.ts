@@ -14,6 +14,7 @@ export interface Workspace {
   kind: 'registered' | 'unregistered';
   country: string;
   tier: string;
+  restrictions: ('payouts_suspended' | 'listing_suspended')[];
   limits: {
     currency: string;
     per_transaction_max_minor: string;
@@ -176,4 +177,120 @@ export interface PayoutQuote {
   total_minor: string;
   tariff_version_id: string;
   tariff_version: number;
+}
+
+// --- KELO (ADR 0017) ---
+
+export interface KeloCategory {
+  slug: string;
+  name: string;
+  version: number;
+  listing_types: KeloListingType[];
+  restricted: boolean;
+}
+
+export type KeloListingType = 'stock_item' | 'scheduled_service' | 'quote_service';
+export type KeloListingStatus = 'draft' | 'in_review' | 'published' | 'rejected' | 'suspended';
+
+export interface KeloStore {
+  id: string;
+  status: 'submitted' | 'approved' | 'rejected';
+  display_name: string;
+  categories: string[];
+  workspace_id: string | null;
+  provisioning_status: string | null;
+  decision_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KeloStoreForVetting extends Omit<KeloStore, 'categories'> {
+  applicant_account_id: string;
+  business: { kind: string | null; name: string | null; country: string | null };
+  existing_workspace_id: string | null;
+  verification: string | null;
+  restrictions: string[];
+  categories: { slug: string; name: string; version: number; requirements: string[] }[];
+}
+
+export interface KeloWorkspaceStore {
+  store: {
+    id: string;
+    display_name: string;
+    categories: { slug: string; name: string; listing_types: KeloListingType[] }[];
+  } | null;
+}
+
+export interface KeloProvisioning {
+  id: string;
+  store_id: string;
+  status: string;
+  last_step: string;
+  reason: string | null;
+  business_id: string | null;
+  workspace_id: string | null;
+  attempts: number;
+  updated_at: string;
+}
+
+export interface KeloListing {
+  id: string;
+  status: KeloListingStatus;
+  category: string;
+  type: KeloListingType;
+  title: string;
+  description: string;
+  currency: string;
+  revision: number;
+  variants: {
+    id: string;
+    name: string;
+    price_minor: string;
+    stock_on_hand: number;
+    stock_reserved: number;
+  }[];
+  sessions: {
+    id: string;
+    starts_at: string;
+    price_minor: string;
+    capacity: number;
+    reserved: number;
+  }[];
+  images: { id: string; url: string; content_type: string; size_bytes: number }[];
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KeloUploadGrant {
+  provider: 'vercel_blob' | 'simulator';
+  access: 'public';
+  pathname: string;
+  token: string;
+  valid_until: string;
+}
+
+export interface KeloListingSummary {
+  id: string;
+  title: string;
+  category: string;
+  type: KeloListingType;
+  currency: string;
+  store_name: string;
+  from_price_minor: string | null;
+  image_url: string | null;
+}
+
+export interface KeloPublicListing {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  type: KeloListingType;
+  currency: string;
+  store: { display_name: string };
+  from_price_minor: string | null;
+  variants: { id: string; name: string; price_minor: string; in_stock: boolean }[];
+  sessions: { id: string; starts_at: string; price_minor: string; available: boolean }[];
+  images: { url: string }[];
 }

@@ -1865,6 +1865,525 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Job' }
         '401': { $ref: '#/components/responses/Error' }
+  /v1/kelo/categories:
+    get:
+      tags: [KELO]
+      operationId: listKeloCategories
+      summary: The current KELO taxonomy (data, never code)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { type: object, required: [slug, name, version, listing_types, restricted], properties: { slug: { type: string }, name: { type: string }, version: { type: integer }, listing_types: { type: array, items: { type: string } }, restricted: { type: boolean } } } }, mode: { $ref: '#/components/schemas/Mode' } } }
+  /v1/kelo/marketplace/listings:
+    get:
+      tags: [KELO]
+      operationId: searchKeloMarketplace
+      summary: Published listings, newest first, with optional full-text search
+      description: >
+        Public. Only published listings are ever returned; anything else looks like it does not exist.
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data, next_cursor], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloListingSummary' } }, next_cursor: { type: [string, 'null'] }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /v1/kelo/marketplace/listings/{id}:
+    get:
+      tags: [KELO]
+      operationId: getKeloMarketplaceListing
+      summary: A published listing
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloPublicListing' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/store:
+    get:
+      tags: [KELO]
+      operationId: getWorkspaceKeloStore
+      summary: The KELO store of the workspace, and the categories it may list in
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK. `store` is null when the workspace has no approved KELO store.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [store]
+                properties:
+                  store:
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        required: [id, display_name, categories]
+                        properties:
+                          id: { type: string, format: uuid }
+                          display_name: { type: string }
+                          categories:
+                            type: array
+                            items: { type: object, properties: { slug: { type: string }, name: { type: string }, listing_types: { type: array, items: { type: string } } } }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings:
+    get:
+      tags: [KELO]
+      operationId: listKeloListings
+      summary: Listings of the workspace
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloListing' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [KELO]
+      operationId: createKeloListing
+      summary: Create a draft listing
+      description: >
+        Admin only. The category must be one the store was vetted for, and must allow the listing type.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [category, type, title, description, currency]
+              properties:
+                category: { type: string }
+                type: { enum: [stock_item, scheduled_service, quote_service] }
+                title: { type: string, minLength: 3, maxLength: 120 }
+                description: { type: string, minLength: 3, maxLength: 4000 }
+                currency: { type: string, examples: [KES] }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloListing' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}:
+    get:
+      tags: [KELO]
+      operationId: getKeloListing
+      summary: One listing of the workspace
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloListing' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [KELO]
+      operationId: updateKeloListing
+      summary: Edit the title or description of a listing
+      description: >
+        A rejected listing becomes a draft again. A published listing in a restricted category goes back to review when its description changes. A prohibited term is refused (`prohibited_item`).
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string, minLength: 3, maxLength: 120 }
+                description: { type: string, minLength: 3, maxLength: 4000 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloListing' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/variants:
+    post:
+      tags: [KELO]
+      operationId: addKeloVariant
+      summary: Add a priced variant with stock to a stock item
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, price_minor, stock_on_hand]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                price_minor: { $ref: '#/components/schemas/AmountMinor' }
+                stock_on_hand: { type: integer, minimum: 0 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloVariant' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/variants/{variantId}:
+    patch:
+      tags: [KELO]
+      operationId: updateKeloVariant
+      summary: Change the name, price or stock of a variant
+      description: >
+        Stock cannot go below what orders have reserved (`conflict`). A price change on a published listing in a restricted category sends it back to review.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: variantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string }
+                price_minor: { $ref: '#/components/schemas/AmountMinor' }
+                stock_on_hand: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloVariant' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/sessions:
+    post:
+      tags: [KELO]
+      operationId: addKeloSession
+      summary: Add a dated session with a capacity to a scheduled service
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [starts_at, price_minor, capacity]
+              properties:
+                starts_at: { type: string, format: date-time }
+                price_minor: { $ref: '#/components/schemas/AmountMinor' }
+                capacity: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloSession' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/submit:
+    post:
+      tags: [KELO]
+      operationId: submitKeloListing
+      summary: Send a draft or suspended listing to review
+      description: >
+        Refused for a prohibited item (`prohibited_item`), while the workspace has `listing_suspended` (`workspace_restricted`), or without a priced variant or a future session.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloListing' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/images/upload-token:
+    post:
+      tags: [KELO]
+      operationId: grantKeloImageUpload
+      summary: Get a token to upload one image straight to the image store
+      description: >
+        The bytes never pass through the API. The token is bound to one pathname, one image type and at most 4 MB.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [content_type, size_bytes]
+              properties:
+                content_type: { enum: [image/jpeg, image/png, image/webp] }
+                size_bytes: { type: integer, minimum: 1, maximum: 4194304 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, required: [provider, access, pathname, token, valid_until], properties: { provider: { enum: [vercel_blob, simulator] }, access: { const: public }, pathname: { type: string }, token: { type: string }, valid_until: { type: string, format: date-time }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/listings/{id}/images:
+    post:
+      tags: [KELO]
+      operationId: attachKeloImage
+      summary: Attach an uploaded image after checking its path, type and size
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pathname]
+              properties:
+                pathname: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, required: [id, url, content_type, size_bytes], properties: { id: { type: string, format: uuid }, url: { type: string }, content_type: { type: string }, size_bytes: { type: integer }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/ops/kelo/listings:
+    get:
+      tags: [Operations]
+      operationId: listKeloListingsForReview
+      summary: Listings by status (default in_review), oldest first
+      description: >
+        Operator only.
+      security: [{ session: [] }]
+      parameters:
+        - { name: status, in: query, schema: { enum: [draft, in_review, published, rejected, suspended] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloListing' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/kelo/listings/{id}/decision:
+    post:
+      tags: [Operations]
+      operationId: moderateKeloListing
+      summary: Approve, reject or suspend a listing
+      description: >
+        Operator only. Audited, with the listing revision the decision saw.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [outcome, reason]
+              properties:
+                outcome: { enum: [approved, rejected, suspended] }
+                reason: { type: string, minLength: 10, maxLength: 500 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloListing' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/quote-requests:
+    post:
+      tags: [KELO]
+      operationId: requestKeloQuote
+      summary: Ask the merchant of a published quote-based listing for a quote
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [listing_id, details]
+              properties:
+                listing_id: { type: string, format: uuid }
+                details: { type: string, minLength: 10, maxLength: 1000, description: What is needed. Never health information. }
+      responses:
+        '201':
+          description: Request recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloQuoteRequest' }
+        '200':
+          description: Replay of an earlier request with the same Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloQuoteRequest' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/quote-requests:
+    get:
+      tags: [KELO]
+      operationId: listMyKeloQuoteRequests
+      summary: The signed-in buyer's quote requests and their quotes
+      description: Read under the consumer row-level barrier. A quote past its expiry shows as `expired`.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloQuoteRequest' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/quotes/{id}/decline:
+    post:
+      tags: [KELO]
+      operationId: declineKeloQuote
+      summary: Decline a live quote
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloQuote' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/quote-requests:
+    get:
+      tags: [KELO]
+      operationId: listKeloQuoteInbox
+      summary: Quote requests for the listings of the workspace
+      description: Nothing in a request identifies the buyer beyond what they wrote.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloQuoteRequest' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/quote-requests/{id}/quotes:
+    post:
+      tags: [KELO]
+      operationId: offerKeloQuote
+      summary: Answer a request with a price and an expiry (at most 30 days)
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [price_minor, expires_at]
+              properties:
+                price_minor: { $ref: '#/components/schemas/AmountMinor' }
+                expires_at: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Quote offered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloQuote' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     apiKey:
@@ -2003,6 +2522,102 @@ components:
         workspace_name: { type: string }
         role: { $ref: '#/components/schemas/Role' }
         expires_at: { type: string, format: date-time }
+    KeloVariant:
+      type: object
+      required: [id, name, price_minor, stock_on_hand, stock_reserved]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        price_minor: { $ref: '#/components/schemas/AmountMinor' }
+        stock_on_hand: { type: integer }
+        stock_reserved: { type: integer }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloSession:
+      type: object
+      required: [id, starts_at, price_minor, capacity, reserved]
+      properties:
+        id: { type: string, format: uuid }
+        starts_at: { type: string, format: date-time }
+        price_minor: { $ref: '#/components/schemas/AmountMinor' }
+        capacity: { type: integer }
+        reserved: { type: integer }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloListing:
+      type: object
+      required: [id, status, category, type, title, description, currency, revision, variants, sessions, images, published_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { enum: [draft, in_review, published, rejected, suspended] }
+        category: { type: string }
+        type: { enum: [stock_item, scheduled_service, quote_service] }
+        title: { type: string }
+        description: { type: string }
+        currency: { type: string }
+        revision: { type: integer }
+        variants: { type: array, items: { $ref: '#/components/schemas/KeloVariant' } }
+        sessions: { type: array, items: { $ref: '#/components/schemas/KeloSession' } }
+        images:
+          type: array
+          items: { type: object, properties: { id: { type: string }, url: { type: string }, content_type: { type: string }, size_bytes: { type: integer } } }
+        published_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloListingSummary:
+      type: object
+      required: [id, title, category, type, currency, store_name, from_price_minor, image_url]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        category: { type: string }
+        type: { enum: [stock_item, scheduled_service, quote_service] }
+        currency: { type: string }
+        store_name: { type: string }
+        from_price_minor: { type: [string, 'null'], description: The lowest current price; null for a quote-based service. }
+        image_url: { type: [string, 'null'] }
+    KeloPublicListing:
+      type: object
+      required: [id, title, description, category, type, currency, store, from_price_minor, variants, sessions, images]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        type: { enum: [stock_item, scheduled_service, quote_service] }
+        currency: { type: string }
+        store: { type: object, properties: { display_name: { type: string } } }
+        from_price_minor: { type: [string, 'null'] }
+        variants:
+          type: array
+          items: { type: object, properties: { id: { type: string }, name: { type: string }, price_minor: { type: string }, in_stock: { type: boolean } } }
+        sessions:
+          type: array
+          items: { type: object, properties: { id: { type: string }, starts_at: { type: string, format: date-time }, price_minor: { type: string }, available: { type: boolean } } }
+        images: { type: array, items: { type: object, properties: { url: { type: string } } } }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloQuote:
+      type: object
+      required: [id, price_minor, currency, expires_at, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        price_minor: { $ref: '#/components/schemas/AmountMinor' }
+        currency: { type: string }
+        expires_at: { type: string, format: date-time }
+        status: { enum: [offered, accepted, declined, expired] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloQuoteRequest:
+      type: object
+      required: [id, listing_id, listing_title, details, status, quotes, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        listing_id: { type: string, format: uuid }
+        listing_title: { type: string }
+        details: { type: string }
+        status: { enum: [open, quoted, accepted, withdrawn] }
+        quotes: { type: array, items: { $ref: '#/components/schemas/KeloQuote' } }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
     KeloStore:
       type: object
       required: [id, status, display_name, categories, workspace_id, provisioning_status, decision_reason, created_at, updated_at]

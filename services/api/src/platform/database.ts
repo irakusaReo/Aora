@@ -23,6 +23,8 @@ function adapter(connectionString: string): PrismaPg {
  *
  * - `withTenant` uses the `aora_app` role. Row-level security limits it to the
  *   tenant set for the transaction; with no tenant set it sees nothing.
+ * - `withConsumer` uses the same role with the consumer's account set instead,
+ *   for rows a person owns as a buyer (KELO).
  * - `asPlatform` uses the `aora_platform` role, for sign-in, workers,
  *   reconciliation and operator endpoints.
  *
@@ -49,6 +51,19 @@ export class Database implements OnModuleDestroy {
     return this.app.$transaction(async (tx) => {
       await tx.$queryRaw`
         select set_config('TimeZone', 'UTC', true), set_config('app.tenant_id', ${tenantId}, true)`;
+      return work(tx);
+    }, TRANSACTION);
+  }
+
+  /**
+   * The tenant-scoped role acting for one consumer (phase-4 P4-6): row-level
+   * security shows only rows whose `consumer_account_id` is this account. No
+   * tenant is set, so no merchant row is visible.
+   */
+  withConsumer<T>(accountId: string, work: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.app.$transaction(async (tx) => {
+      await tx.$queryRaw`
+        select set_config('TimeZone', 'UTC', true), set_config('app.account_id', ${accountId}, true)`;
       return work(tx);
     }, TRANSACTION);
   }

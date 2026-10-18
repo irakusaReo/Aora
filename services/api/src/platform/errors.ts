@@ -30,6 +30,7 @@ export type ErrorCode =
   | 'pin_not_set'
   | 'phone_required'
   | 'workspace_restricted'
+  | 'prohibited_item'
   | 'conflict'
   | 'internal_error';
 
@@ -55,6 +56,7 @@ const STATUS: Record<ErrorCode, number> = {
   pin_not_set: 409,
   phone_required: 409,
   workspace_restricted: 409,
+  prohibited_item: 422,
   conflict: 409,
   internal_error: 500,
 };

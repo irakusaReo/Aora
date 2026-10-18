@@ -109,7 +109,11 @@ model user_account {
   webhook_endpoint                                                                 webhook_endpoint[]
   step_up                                                                          step_up[]
   person                                                                           person                     @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  moderation_decision                                                              moderation_decision[]
   provisioning                                                                     provisioning[]
+  quote_quote_consumer_account_idTouser_account                                    quote[]                    @relation("quote_consumer_account_idTouser_account")
+  quote_quote_created_byTouser_account                                             quote[]                    @relation("quote_created_byTouser_account")
+  quote_request                                                                    quote_request[]
   store_store_applicant_account_idTouser_account                                   store[]                    @relation("store_applicant_account_idTouser_account")
   store_store_decided_byTouser_account                                             store[]                    @relation("store_decided_byTouser_account")
   notification                                                                     notification[]
@@ -162,6 +166,7 @@ model workspace {
   webhook_delivery                          webhook_delivery[]
   webhook_endpoint                          webhook_endpoint[]
   webhook_event                             developer_webhook_event[]
+  listing                                   listing[]
   provisioning                              provisioning[]
   store_store_existing_tenant_idToworkspace store[]                     @relation("store_existing_tenant_idToworkspace")
   store_store_tenant_idToworkspace          store?                      @relation("store_tenant_idToworkspace")
@@ -231,6 +236,8 @@ model asset {
   code             String             @id
   kind             String
   exponent         Int                @db.SmallInt
+  listing          listing[]
+  quote            quote[]
   account          account[]
   posting          posting[]
   payment_intent   payment_intent[]
@@ -1039,6 +1046,7 @@ model category {
   created_at           DateTime         @default(now()) @db.Timestamptz(6)
   category             category?        @relation("categoryTocategory", fields: [parent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_category       category[]       @relation("categoryTocategory")
+  listing              listing[]
   store_category       store_category[]
 
   @@unique([slug, version])
@@ -1096,6 +1104,7 @@ model store {
   mode                                                  String           @default("sandbox")
   created_at                                            DateTime         @default(now()) @db.Timestamptz(6)
   updated_at                                            DateTime         @default(now()) @db.Timestamptz(6)
+  listing                                               listing[]
   provisioning                                          provisioning?
   user_account_store_applicant_account_idTouser_account user_account     @relation("store_applicant_account_idTouser_account", fields: [applicant_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   business                                              business?        @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1122,5 +1131,181 @@ model store_category {
   store            store    @relation(fields: [store_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([store_id, category_slug])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model listing {
+  id                  String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String                   @db.Uuid
+  store_id            String                   @db.Uuid
+  category_slug       String
+  category_version    Int
+  type                String
+  title               String
+  description         String
+  currency            String
+  status              String                   @default("draft")
+  revision            Int                      @default(1)
+  search              Unsupported("tsvector")? @default(dbgenerated("to_tsvector('simple'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(description, ''::text)))"))
+  published_at        DateTime?                @db.Timestamptz(6)
+  mode                String                   @default("sandbox")
+  created_at          DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                 @default(now()) @db.Timestamptz(6)
+  category            category                 @relation(fields: [category_slug, category_version], references: [slug, version], onDelete: NoAction, onUpdate: NoAction)
+  asset               asset                    @relation(fields: [currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  store               store                    @relation(fields: [store_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace                @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  listing_image       listing_image[]
+  listing_session     listing_session[]
+  listing_variant     listing_variant[]
+  moderation_decision moderation_decision[]
+  quote_request       quote_request[]
+
+  @@unique([id, tenant_id])
+  @@index([category_slug, published_at(sort: Desc)], map: "listing_category", where: raw("(status = 'published'::text)"))
+  @@index([search], map: "listing_search", type: Gin, where: raw("(status = 'published'::text)"))
+  @@index([status, updated_at], map: "listing_status")
+  @@index([tenant_id, created_at(sort: Desc)], map: "listing_tenant")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model listing_image {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String   @db.Uuid
+  listing_id   String   @db.Uuid
+  pathname     String   @unique
+  url          String
+  content_type String
+  size_bytes   Int
+  position     Int      @default(0)
+  mode         String   @default("sandbox")
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  listing      listing  @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([listing_id, position], map: "listing_image_listing")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model listing_session {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String   @db.Uuid
+  listing_id  String   @db.Uuid
+  starts_at   DateTime @db.Timestamptz(6)
+  price_minor BigInt
+  capacity    Int
+  reserved    Int      @default(0)
+  mode        String   @default("sandbox")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  listing     listing  @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([listing_id, starts_at], map: "listing_session_listing")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model listing_variant {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id      String   @db.Uuid
+  listing_id     String   @db.Uuid
+  name           String
+  price_minor    BigInt
+  stock_on_hand  Int
+  stock_reserved Int      @default(0)
+  mode           String   @default("sandbox")
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @db.Timestamptz(6)
+  listing        listing  @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([listing_id], map: "listing_variant_listing")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model moderation_decision {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String       @db.Uuid
+  listing_id       String       @db.Uuid
+  listing_revision Int
+  outcome          String
+  reason           String
+  decided_by       String       @db.Uuid
+  mode             String       @default("sandbox")
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  user_account     user_account @relation(fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  listing          listing      @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([listing_id, created_at], map: "moderation_decision_listing")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model prohibited_term {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  term           String
+  category_slug  String?
+  reason         String
+  effective_from DateTime  @db.Timestamptz(6)
+  effective_to   DateTime? @db.Timestamptz(6)
+  mode           String    @default("sandbox")
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model quote {
+  id                                                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                            String        @db.Uuid
+  request_id                                           String        @db.Uuid
+  consumer_account_id                                  String        @db.Uuid
+  price_minor                                          BigInt
+  currency                                             String
+  expires_at                                           DateTime      @db.Timestamptz(6)
+  status                                               String        @default("offered")
+  created_by                                           String        @db.Uuid
+  decided_at                                           DateTime?     @db.Timestamptz(6)
+  mode                                                 String        @default("sandbox")
+  created_at                                           DateTime      @default(now()) @db.Timestamptz(6)
+  user_account_quote_consumer_account_idTouser_account user_account  @relation("quote_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_quote_created_byTouser_account          user_account  @relation("quote_created_byTouser_account", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  asset                                                asset         @relation(fields: [currency], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  quote_request                                        quote_request @relation(fields: [request_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([request_id, created_at], map: "quote_request_quotes")
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model quote_request {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String       @db.Uuid
+  listing_id          String       @db.Uuid
+  consumer_account_id String       @db.Uuid
+  idempotency_key     String
+  request_hash        String
+  details             String
+  status              String       @default("open")
+  mode                String       @default("sandbox")
+  created_at          DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
+  quote               quote[]
+  user_account        user_account @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  listing             listing      @relation(fields: [listing_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([consumer_account_id, idempotency_key])
+  @@unique([id, tenant_id])
+  @@index([consumer_account_id, created_at(sort: Desc)], map: "quote_request_consumer")
+  @@index([tenant_id, created_at(sort: Desc)], map: "quote_request_tenant")
   @@schema("kelo")
 }

@@ -27,6 +27,8 @@ export const PERMISSIONS = {
   'webhook.manage': ['admin'],
   'member.read': ['admin', 'finance'],
   'member.manage': ['admin'],
+  'kelo_listing.read': ['admin', 'finance', 'cashier'],
+  'kelo_listing.manage': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

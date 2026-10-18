@@ -50,9 +50,13 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **Not yet exercised on staging with a real sign-in:** a Daraja STK push from kony-web, a B2C payout, a refund, an API key call and a webhook delivery. Their automated tests pass; the owner's walk-through is the staging check.
 - **Next:** owner approval of Phase 3, then Phase 4 (more rails) after its credential request is answered.
 
+## Phase 4 checkpoints
+
+- **4A done (2026-10-18):** KELO store enlistment (new business or existing KONY workspace), operator vetting against category requirements, ADR 0008 provisioning (one step per transaction, backfill, audited retry, restrictions copied and enforced), twelve sandbox categories (O-15), catalogue with three listing types, stock and capacity bounds, prohibited items, moderation with revisions, public marketplace search, images through Vercel Blob client tokens (simulator until the store is connected). kony-web `/kelo` and `/w/<id>/kelo`; internal-ops `/kelo`. Migrations `20261018000100_kelo_stores`, `20261018000200_kelo_catalogue` (expand-only). ADR 0008 and 0017 addenda.
+
 ## Next
 
-1. Phase 4 per [plans/phase-4.md](plans/phase-4.md): 4A enlistment, provisioning, catalogue, images, moderation; 4B `kelo-web` marketplace; 4C layaway.
+1. Phase 4 per [plans/phase-4.md](plans/phase-4.md): 4B `kelo-web` marketplace (new Vercel project `kelo-web`); 4C layaway.
 2. Phase 5 (chain and contracts) needs the Base Sepolia batch (RPC URL, funded testnet signer key, explorer API key), requested on 2026-10-18 ahead of time. Until it arrives, chain work runs against a local chain.
 
 ## Blocked

@@ -45,3 +45,14 @@ A qualifying KELO merchant must get exactly one linked KONY workspace, automatic
 - Polling adds a small delay between approval and workspace creation.
 - The outbox table needs retention and monitoring (backlog age, dead count).
 - If KELO is ever a separate system, only the trigger changes; the workflow and its guarantees stay.
+
+## Addendum, 2026-10-18 (Phase 4A, as built)
+
+- **Trigger and event:** an operator's vetting approval of a `kelo.store` writes the `kelo.provisioning` record (`requested`) and the outbox event `kelo.store.approved` in one transaction (ADR 0017's "qualifying" = vetting approved).
+- **Two ways in, one workflow** (phase-4 P4-2): a new merchant enlists from KELO with business details; an existing KONY admin enlists their workspace (`business.workspace_id`, checked at enlistment and again at linking).
+- **Business resolution** reuses ADR 0012 matching, now one function shared with KONY onboarding (`business/matching.ts`) and holding the same advisory locks, so a business arriving by either door is recognised by the same rules. `review` stops at `failed_needs_review` with the matching rule as the reason; nothing is merged.
+- **Linking:** an existing workspace is linked only when the applicant is its active admin and it has no KELO store yet (`workspace_belongs_to_another_admin`, `workspace_has_store`). The unique index on `kelo.store(tenant_id)` enforces one KELO link per workspace; `tenancy.workspace(business_id, product)` enforces one workspace per business.
+- **Failure handling:** a step that throws rolls back; the record becomes `failed_retryable` with `last_step` unchanged, and the outbox retries with backoff. `reconciliation_required` is raised when stored links disagree (for example a store already pointing at a different business).
+- **Restrictions:** a closed list (`payouts_suspended`, `listing_suspended`) in `tenancy.workspace_restriction`, copied at the admin step, enforced server-side (payouts and listing submission refuse with `workspace_restricted`), lifted only by an operator with an audited reason (P4-4).
+- **Backfill:** `GET /v1/internal/cron/kelo-provisioning-backfill` restarts approved stores with no record, or with a non-terminal record untouched for 10 minutes.
+- **Notification:** the last step queues the `kelo.store.ready` email through the notifications module; it never blocks completion.

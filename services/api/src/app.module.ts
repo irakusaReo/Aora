@@ -62,6 +62,20 @@ import {
 } from './modules/kelo/stores.controller.js';
 import { StoresService } from './modules/kelo/stores.service.js';
 import {
+  KeloCategoriesController,
+  KeloListingsController,
+  KeloMarketplaceController,
+  KeloModerationController,
+  KeloWorkspaceStoreController,
+} from './modules/kelo/catalogue.controller.js';
+import { CatalogueService } from './modules/kelo/catalogue.service.js';
+import {
+  KeloBuyerQuotesController,
+  KeloMerchantQuotesController,
+} from './modules/kelo/quotes.controller.js';
+import { QuotesService } from './modules/kelo/quotes.service.js';
+import { IMAGE_STORE, SimulatedImageStore, VercelBlobImageStore } from './modules/kelo/images.js';
+import {
   ApiKeysController,
   WebhookDeliveriesController,
   WebhookEndpointsController,
@@ -110,6 +124,9 @@ const SHARED = [
   DeveloperService,
   StoresService,
   ProvisioningService,
+  SimulatedImageStore,
+  CatalogueService,
+  QuotesService,
   SessionGuard,
   WorkspaceGuard,
   OperatorGuard,
@@ -147,6 +164,13 @@ export const CONTROLLERS = [
   KeloStoreVettingController,
   KeloProvisioningController,
   WorkspaceRestrictionsController,
+  KeloCategoriesController,
+  KeloMarketplaceController,
+  KeloListingsController,
+  KeloModerationController,
+  KeloWorkspaceStoreController,
+  KeloBuyerQuotesController,
+  KeloMerchantQuotesController,
   CronController,
   NotificationsController,
   ProviderWebhooksController,
@@ -184,6 +208,16 @@ export class AppModule implements NestModule {
           // Daraja serves the mpesa rail when it is configured; otherwise the simulator does.
           provide: DARAJA_ADAPTER,
           useFactory: () => (config.daraja ? new DarajaAdapter(config.daraja) : null),
+        },
+        {
+          // KELO listing images go to Vercel Blob when a store is connected (O-7);
+          // otherwise to the simulator, which keeps nothing real.
+          provide: IMAGE_STORE,
+          inject: [SimulatedImageStore],
+          useFactory: (simulated: SimulatedImageStore) =>
+            config.blob.readWriteToken
+              ? new VercelBlobImageStore(config.blob.readWriteToken)
+              : simulated,
         },
         { provide: APP_INTERCEPTOR, useClass: DrainAfterResponseInterceptor },
         { provide: APP_FILTER, useClass: ErrorFilter },

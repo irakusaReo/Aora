@@ -17,7 +17,7 @@ describe('sandbox banner (CLAUDE.md rule 10)', () => {
     const names = readdirSync(apps, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.endsWith('-mobile'))
       .map((entry) => entry.name);
-    expect(names.sort()).toEqual(['internal-ops', 'kony-web']);
+    expect(names.sort()).toEqual(['internal-ops', 'kelo-web', 'kony-web']);
     for (const name of names) {
       const layout = readFileSync(`${apps}${name}/app/layout.tsx`, 'utf8');
       expect(layout, name).toContain('<SandboxBanner />');
