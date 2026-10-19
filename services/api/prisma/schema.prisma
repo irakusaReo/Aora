@@ -104,9 +104,13 @@ model user_account {
   audit_event                                                                      audit_event[]
   onboarding_application_onboarding_application_applicant_account_idTouser_account onboarding_application[]   @relation("onboarding_application_applicant_account_idTouser_account")
   onboarding_application_onboarding_application_decided_byTouser_account           onboarding_application[]   @relation("onboarding_application_decided_byTouser_account")
+  address_challenge_address_challenge_consumer_account_idTouser_account            address_challenge[]        @relation("address_challenge_consumer_account_idTouser_account")
   address_challenge                                                                address_challenge[]
+  observed_transfer                                                                observed_transfer[]
+  registered_address_registered_address_consumer_account_idTouser_account          registered_address[]       @relation("registered_address_consumer_account_idTouser_account")
   registered_address_registered_address_registered_byTouser_account                registered_address[]       @relation("registered_address_registered_byTouser_account")
   registered_address_registered_address_revoked_byTouser_account                   registered_address[]       @relation("registered_address_revoked_byTouser_account")
+  withdrawal_withdrawal_consumer_account_idTouser_account                          withdrawal[]               @relation("withdrawal_consumer_account_idTouser_account")
   withdrawal_withdrawal_created_byTouser_account                                   withdrawal[]               @relation("withdrawal_created_byTouser_account")
   withdrawal_withdrawal_decided_byTouser_account                                   withdrawal[]               @relation("withdrawal_decided_byTouser_account")
   consumer                                                                         consumer?
@@ -128,6 +132,7 @@ model user_account {
   quote_request                                                                    quote_request[]
   store_store_applicant_account_idTouser_account                                   store[]                    @relation("store_applicant_account_idTouser_account")
   store_store_decided_byTouser_account                                             store[]                    @relation("store_decided_byTouser_account")
+  account                                                                          account[]
   redemption                                                                       redemption[]
   vault_order                                                                      vault_order[]
   notification                                                                     notification[]
@@ -226,19 +231,21 @@ model workspace {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model account {
-  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id       String?          @db.Uuid
-  asset_code      String
-  type            String
-  qualifier       String           @default("")
-  normal_side     String
-  allow_negative  Boolean          @default(false)
-  mode            String           @default("sandbox")
-  created_at      DateTime         @default(now()) @db.Timestamptz(6)
-  asset           asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
-  workspace       workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  account_balance account_balance?
-  posting         posting[]
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id           String?          @db.Uuid
+  asset_code          String
+  type                String
+  qualifier           String           @default("")
+  normal_side         String
+  allow_negative      Boolean          @default(false)
+  mode                String           @default("sandbox")
+  created_at          DateTime         @default(now()) @db.Timestamptz(6)
+  consumer_account_id String?          @db.Uuid
+  asset               asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account        user_account?    @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  account_balance     account_balance?
+  posting             posting[]
 
   @@unique([type, qualifier, asset_code], map: "account_platform_unique", where: raw("(tenant_id IS NULL)"))
   @@unique([tenant_id, type, qualifier, asset_code], map: "account_tenant_unique", where: raw("(tenant_id IS NOT NULL)"))
@@ -270,6 +277,8 @@ model asset {
   withdrawal          withdrawal[]
   consumer_limit      consumer_limit[]
   merchant_payment    merchant_payment[]
+  payment_request     payment_request[]
+  transfer            transfer[]
   layaway_refund      layaway_refund[]
   listing             listing[]
   plan_template       plan_template[]
@@ -306,6 +315,7 @@ model journal_entry {
   created_txid        BigInt              @default(dbgenerated("txid_current()"))
   anchor_leaf         anchor_leaf[]
   observed_transfer   observed_transfer[]
+  transfer            transfer[]
   journal_entry       journal_entry?      @relation("journal_entryTojournal_entry", fields: [reverses_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_journal_entry journal_entry?      @relation("journal_entryTojournal_entry")
   workspace           workspace?          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1576,28 +1586,30 @@ model confirmation_policy {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model observed_transfer {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  network          String         @default("base-sepolia")
-  tx_hash          String
-  log_index        Int
-  block_number     BigInt
-  block_hash       String
-  token_address    String
-  from_address     String
-  to_address       String
-  amount           Decimal        @db.Decimal(78, 0)
-  asset_code       String?
-  status           String         @default("observed")
-  confirmations    Int            @default(0)
-  tenant_id        String?        @db.Uuid
-  journal_entry_id String?        @db.Uuid
-  mode             String         @default("sandbox")
-  observed_at      DateTime       @default(now()) @db.Timestamptz(6)
-  confirmed_at     DateTime?      @db.Timestamptz(6)
-  updated_at       DateTime       @default(now()) @db.Timestamptz(6)
-  asset            asset?         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
-  journal_entry    journal_entry? @relation(fields: [journal_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace        workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  network             String         @default("base-sepolia")
+  tx_hash             String
+  log_index           Int
+  block_number        BigInt
+  block_hash          String
+  token_address       String
+  from_address        String
+  to_address          String
+  amount              Decimal        @db.Decimal(78, 0)
+  asset_code          String?
+  status              String         @default("observed")
+  confirmations       Int            @default(0)
+  tenant_id           String?        @db.Uuid
+  journal_entry_id    String?        @db.Uuid
+  mode                String         @default("sandbox")
+  observed_at         DateTime       @default(now()) @db.Timestamptz(6)
+  confirmed_at        DateTime?      @db.Timestamptz(6)
+  updated_at          DateTime       @default(now()) @db.Timestamptz(6)
+  consumer_account_id String?        @db.Uuid
+  asset               asset?         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account        user_account?  @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  journal_entry       journal_entry? @relation(fields: [journal_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([tx_hash, log_index])
   @@index([status], map: "observed_transfer_pending", where: raw("(status = 'observed'::text)"))
@@ -1691,18 +1703,20 @@ model transition {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model address_challenge {
-  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id          String              @db.Uuid
-  nonce              String
-  message            String
-  created_by         String              @db.Uuid
-  expires_at         DateTime            @db.Timestamptz(6)
-  used_at            DateTime?           @db.Timestamptz(6)
-  mode               String              @default("sandbox")
-  created_at         DateTime            @default(now()) @db.Timestamptz(6)
-  user_account       user_account        @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace          workspace           @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  registered_address registered_address?
+  id                                                               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                                        String?             @db.Uuid
+  nonce                                                            String
+  message                                                          String
+  created_by                                                       String              @db.Uuid
+  expires_at                                                       DateTime            @db.Timestamptz(6)
+  used_at                                                          DateTime?           @db.Timestamptz(6)
+  mode                                                             String              @default("sandbox")
+  created_at                                                       DateTime            @default(now()) @db.Timestamptz(6)
+  consumer_account_id                                              String?             @db.Uuid
+  user_account_address_challenge_consumer_account_idTouser_account user_account?       @relation("address_challenge_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account                                                     user_account        @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                        workspace?          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  registered_address                                               registered_address?
 
   @@schema("chain")
 }
@@ -1710,22 +1724,24 @@ model address_challenge {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model registered_address {
-  id                                                          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id                                                   String            @db.Uuid
-  network                                                     String            @default("base-sepolia")
-  address                                                     String            @unique(map: "registered_address_active", where: raw("(status = 'active'::text)"))
-  label                                                       String?
-  challenge_id                                                String            @unique @db.Uuid
-  status                                                      String            @default("active")
-  registered_by                                               String            @db.Uuid
-  registered_at                                               DateTime          @default(now()) @db.Timestamptz(6)
-  revoked_by                                                  String?           @db.Uuid
-  revoked_at                                                  DateTime?         @db.Timestamptz(6)
-  mode                                                        String            @default("sandbox")
-  address_challenge                                           address_challenge @relation(fields: [challenge_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user_account_registered_address_registered_byTouser_account user_account      @relation("registered_address_registered_byTouser_account", fields: [registered_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user_account_registered_address_revoked_byTouser_account    user_account?     @relation("registered_address_revoked_byTouser_account", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace                                                   workspace         @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                                                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                                         String?           @db.Uuid
+  network                                                           String            @default("base-sepolia")
+  address                                                           String            @unique(map: "registered_address_active", where: raw("(status = 'active'::text)"))
+  label                                                             String?
+  challenge_id                                                      String            @unique @db.Uuid
+  status                                                            String            @default("active")
+  registered_by                                                     String            @db.Uuid
+  registered_at                                                     DateTime          @default(now()) @db.Timestamptz(6)
+  revoked_by                                                        String?           @db.Uuid
+  revoked_at                                                        DateTime?         @db.Timestamptz(6)
+  mode                                                              String            @default("sandbox")
+  consumer_account_id                                               String?           @db.Uuid
+  address_challenge                                                 address_challenge @relation(fields: [challenge_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_registered_address_consumer_account_idTouser_account user_account?     @relation("registered_address_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_registered_address_registered_byTouser_account       user_account      @relation("registered_address_registered_byTouser_account", fields: [registered_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_registered_address_revoked_byTouser_account          user_account?     @relation("registered_address_revoked_byTouser_account", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                         workspace?        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("chain")
 }
@@ -1733,29 +1749,32 @@ model registered_address {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model withdrawal {
-  id                                               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenant_id                                        String        @db.Uuid
-  idempotency_key                                  String
-  request_hash                                     String
-  amount                                           BigInt
-  asset_code                                       String        @default("USDC")
-  destination                                      String
-  status                                           String        @default("requested")
-  created_by                                       String        @db.Uuid
-  decided_by                                       String?       @db.Uuid
-  decided_at                                       DateTime?     @db.Timestamptz(6)
-  decision_reason                                  String?
-  operation_id                                     String?       @unique @db.Uuid
-  mode                                             String        @default("sandbox")
-  created_at                                       DateTime      @default(now()) @db.Timestamptz(6)
-  updated_at                                       DateTime      @default(now()) @db.Timestamptz(6)
-  asset                                            asset         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
-  user_account_withdrawal_created_byTouser_account user_account  @relation("withdrawal_created_byTouser_account", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user_account_withdrawal_decided_byTouser_account user_account? @relation("withdrawal_decided_byTouser_account", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  operation                                        operation?    @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace                                        workspace     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                                        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                                 String?       @db.Uuid
+  idempotency_key                                           String
+  request_hash                                              String
+  amount                                                    BigInt
+  asset_code                                                String        @default("USDC")
+  destination                                               String
+  status                                                    String        @default("requested")
+  created_by                                                String        @db.Uuid
+  decided_by                                                String?       @db.Uuid
+  decided_at                                                DateTime?     @db.Timestamptz(6)
+  decision_reason                                           String?
+  operation_id                                              String?       @unique @db.Uuid
+  mode                                                      String        @default("sandbox")
+  created_at                                                DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at                                                DateTime      @default(now()) @db.Timestamptz(6)
+  consumer_account_id                                       String?       @db.Uuid
+  asset                                                     asset         @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  user_account_withdrawal_consumer_account_idTouser_account user_account? @relation("withdrawal_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_withdrawal_created_byTouser_account          user_account  @relation("withdrawal_created_byTouser_account", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_withdrawal_decided_byTouser_account          user_account? @relation("withdrawal_decided_byTouser_account", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  operation                                                 operation?    @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                 workspace?    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([tenant_id, idempotency_key])
+  @@unique([consumer_account_id, idempotency_key], map: "withdrawal_consumer_key")
   @@schema("chain")
 }
 
@@ -1925,14 +1944,20 @@ model vault_order {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model consumer {
-  account_id       String             @id @db.Uuid
-  consent_id       String             @db.Uuid
-  status           String             @default("active")
-  mode             String             @default("sandbox")
-  created_at       DateTime           @default(now()) @db.Timestamptz(6)
-  user_account     user_account       @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  consent_record   consent_record     @relation(fields: [consent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  merchant_payment merchant_payment[]
+  account_id                                                     String             @id @db.Uuid
+  consent_id                                                     String             @db.Uuid
+  status                                                         String             @default("active")
+  mode                                                           String             @default("sandbox")
+  created_at                                                     DateTime           @default(now()) @db.Timestamptz(6)
+  user_account                                                   user_account       @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  consent_record                                                 consent_record     @relation(fields: [consent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  merchant_payment                                               merchant_payment[]
+  payment_request_payment_request_payer_account_idToconsumer     payment_request[]  @relation("payment_request_payer_account_idToconsumer")
+  payment_request_payment_request_requester_account_idToconsumer payment_request[]  @relation("payment_request_requester_account_idToconsumer")
+  recipient_recipient_recipient_account_idToconsumer             recipient[]        @relation("recipient_recipient_account_idToconsumer")
+  recipient_recipient_sender_account_idToconsumer                recipient[]        @relation("recipient_sender_account_idToconsumer")
+  transfer_transfer_recipient_account_idToconsumer               transfer[]         @relation("transfer_recipient_account_idToconsumer")
+  transfer_transfer_sender_account_idToconsumer                  transfer[]         @relation("transfer_sender_account_idToconsumer")
 
   @@schema("chiwo")
 }
@@ -2011,4 +2036,85 @@ model pay_code {
 
   @@index([tenant_id, created_at], map: "pay_code_tenant")
   @@schema("tenancy")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment_request {
+  id                                                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requester_account_id                                    String    @db.Uuid
+  payer_account_id                                        String?   @db.Uuid
+  amount                                                  BigInt
+  asset_code                                              String
+  note                                                    String?
+  status                                                  String    @default("open")
+  expires_at                                              DateTime  @db.Timestamptz(6)
+  paid_transfer_id                                        String?   @unique @db.Uuid
+  mode                                                    String    @default("sandbox")
+  created_at                                              DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                                              DateTime  @default(now()) @db.Timestamptz(6)
+  asset                                                   asset     @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  transfer_payment_request_paid_transfer_idTotransfer     transfer? @relation("payment_request_paid_transfer_idTotransfer", fields: [paid_transfer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "payment_request_paid_transfer")
+  consumer_payment_request_payer_account_idToconsumer     consumer? @relation("payment_request_payer_account_idToconsumer", fields: [payer_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+  consumer_payment_request_requester_account_idToconsumer consumer  @relation("payment_request_requester_account_idToconsumer", fields: [requester_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+  transfer_transfer_request_idTopayment_request           transfer? @relation("transfer_request_idTopayment_request")
+
+  @@index([payer_account_id, created_at(sort: Desc)], map: "payment_request_payer")
+  @@index([requester_account_id, created_at(sort: Desc)], map: "payment_request_requester")
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model recipient {
+  id                                                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sender_account_id                                 String    @db.Uuid
+  recipient_account_id                              String    @db.Uuid
+  confirmed_at                                      DateTime? @db.Timestamptz(6)
+  mode                                              String    @default("sandbox")
+  created_at                                        DateTime  @default(now()) @db.Timestamptz(6)
+  consumer_recipient_recipient_account_idToconsumer consumer  @relation("recipient_recipient_account_idToconsumer", fields: [recipient_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+  consumer_recipient_sender_account_idToconsumer    consumer  @relation("recipient_sender_account_idToconsumer", fields: [sender_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sender_account_id, recipient_account_id])
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model request_policy {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ttl_hours      Int
+  effective_from DateTime @unique @db.Timestamptz(6)
+  mode           String   @default("sandbox")
+
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model transfer {
+  id                                                         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sender_account_id                                          String           @db.Uuid
+  recipient_account_id                                       String           @db.Uuid
+  idempotency_key                                            String
+  request_hash                                               String
+  amount                                                     BigInt
+  asset_code                                                 String
+  note                                                       String?
+  request_id                                                 String?          @unique @db.Uuid
+  status                                                     String           @default("posted")
+  journal_entry_id                                           String           @db.Uuid
+  mode                                                       String           @default("sandbox")
+  created_at                                                 DateTime         @default(now()) @db.Timestamptz(6)
+  payment_request_payment_request_paid_transfer_idTotransfer payment_request? @relation("payment_request_paid_transfer_idTotransfer")
+  asset                                                      asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  journal_entry                                              journal_entry    @relation(fields: [journal_entry_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  consumer_transfer_recipient_account_idToconsumer           consumer         @relation("transfer_recipient_account_idToconsumer", fields: [recipient_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+  payment_request_transfer_request_idTopayment_request       payment_request? @relation("transfer_request_idTopayment_request", fields: [request_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  consumer_transfer_sender_account_idToconsumer              consumer         @relation("transfer_sender_account_idToconsumer", fields: [sender_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sender_account_id, idempotency_key])
+  @@index([recipient_account_id, created_at(sort: Desc)], map: "transfer_recipient")
+  @@index([sender_account_id, created_at(sort: Desc)], map: "transfer_sender")
+  @@schema("chiwo")
 }

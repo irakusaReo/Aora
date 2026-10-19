@@ -484,3 +484,45 @@ export interface ChiwoReceipt extends ChiwoMerchantPayment {
   reference: string;
   payer_number: 'sandbox_test_number';
 }
+
+export interface ChiwoUsdc {
+  network: { name: string; label: string; chain_id: number };
+  deposit_address: string | null;
+  wallet_label: string;
+  asset: { code: string; decimals: number; contract: string };
+  balances: { available_minor: string; withdrawals_in_flight_minor: string };
+  addresses: { id: string; address: string; label: string | null; status: string }[];
+  explorer_url: string;
+  note: string;
+}
+
+export interface ChiwoRecipient {
+  id: string;
+  display_name: string;
+  confirmed: boolean;
+}
+
+export interface ChiwoActivityItem {
+  kind: 'merchant_payment' | 'transfer' | 'deposit' | 'withdrawal';
+  id: string;
+  direction: 'in' | 'out';
+  status: string;
+  amount_minor: string;
+  currency: string;
+  counterparty: string;
+  created_at: string;
+}
+
+export interface ChiwoPaymentRequest {
+  id: string;
+  role: 'requester' | 'payer' | 'link';
+  status: 'open' | 'paid' | 'cancelled' | 'expired';
+  amount_minor: string;
+  currency: string;
+  note: string | null;
+  requester: { display_name: string };
+  payer: { display_name: string } | null;
+  expires_at: string;
+  paid_transfer_id: string | null;
+  created_at: string;
+}

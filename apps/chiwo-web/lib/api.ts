@@ -23,7 +23,16 @@ export async function api(): Promise<AoraApi> {
 
 /** A message safe to show: the API's own words, or a generic one. */
 export function messageOf(error: unknown, fallback: string): string {
+  if (error instanceof AoraApiError && error.code === 'step_up_required') {
+    return 'Confirm with your PIN first (PIN page), then try again.';
+  }
   return error instanceof AoraApiError ? error.message : fallback;
+}
+
+/** Where a server action lands: the page, with the API's message when something failed. */
+export function back(path: string, error: unknown, fallback: string): string {
+  const joiner = path.includes('?') ? '&' : '?';
+  return `${path}${joiner}error=${encodeURIComponent(messageOf(error, fallback))}`;
 }
 
 export function exponentOf(assets: { code: string; exponent: number }[], code: string): number {

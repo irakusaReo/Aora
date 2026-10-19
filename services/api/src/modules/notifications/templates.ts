@@ -31,6 +31,10 @@ const COPY: Record<string, Copy> = {
     'chiwo.payment.receipt.body':
       'Your payment of {amount} to {merchant} was confirmed by the provider. Receipt reference ending {reference}.',
     'chiwo.payment.receipt.where': 'Open CHIWO and sign in to see the receipt.',
+    'chiwo.usdc.received.subject': 'You received {amount}',
+    'chiwo.usdc.received.body':
+      '{sender} sent you {amount} (testnet USDC) in CHIWO. Reference ending {reference}.',
+    'chiwo.usdc.received.where': 'Open CHIWO and sign in to see it.',
     'sign_in.footer': 'If you did not try to sign in, you can ignore this email.',
   },
 };
@@ -115,6 +119,25 @@ const TEMPLATES: Record<string, (params: Params, locale: string) => RenderedEmai
     return layout(
       locale,
       copy(locale, 'chiwo.payment.receipt.subject', values),
+      `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
+      `${body}\n${where}`,
+    );
+  },
+  // CHIWO: USDC received from another consumer (phase 7B). Params: amount_minor,
+  // currency, exponent, sender (already masked), reference.
+  'chiwo.usdc.received': (params, locale) => {
+    const exponent = typeof params['exponent'] === 'number' ? params['exponent'] : 6;
+    const amount = `${text(params, 'currency')} ${formatMinorUnits(BigInt(text(params, 'amount_minor') || '0'), exponent)}`;
+    const values = {
+      amount,
+      sender: text(params, 'sender'),
+      reference: text(params, 'reference').slice(-6),
+    };
+    const body = copy(locale, 'chiwo.usdc.received.body', values);
+    const where = copy(locale, 'chiwo.usdc.received.where');
+    return layout(
+      locale,
+      copy(locale, 'chiwo.usdc.received.subject', values),
       `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
       `${body}\n${where}`,
     );

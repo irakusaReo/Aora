@@ -19,7 +19,12 @@ export type AccountType =
   | 'nam_vault_usdc'
   | 'nam_vault_rounding'
   | 'merchant_nam_funding_pending'
-  | 'merchant_nam_holding';
+  | 'merchant_nam_holding'
+  | 'consumer_usdc_available'
+  | 'consumer_usdc_withdrawals_in_flight';
+
+/** Account types a CHIWO consumer owns (phase-7 P7-2); no workspace ever holds one. */
+export type ConsumerAccountType = Extract<AccountType, `consumer_${string}`>;
 
 /** The closed list of account types and their fixed properties (ADR 0003). */
 const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean }> = {
@@ -58,6 +63,10 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   merchant_nam_funding_pending: { normalSide: 'credit', allowNegative: false },
   // The workspace's principal in the vault, at cost: a liability.
   merchant_nam_holding: { normalSide: 'credit', allowNegative: false },
+  // CHIWO (phase 7B). A consumer's USDC claim on AORA's wallet, free to send or withdraw: a liability.
+  consumer_usdc_available: { normalSide: 'credit', allowNegative: false },
+  // Reserved for the consumer's withdrawals not yet resolved: a liability.
+  consumer_usdc_withdrawals_in_flight: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {
@@ -120,6 +129,34 @@ export class LedgerService {
     ] as const) {
       await this.openAccount(tx, { tenantId, type, assetCode: 'USDC' });
     }
+  }
+
+  /**
+   * A consumer's own account, opened on first use (P7-2). It has no tenant: its
+   * owner is `consumer_account_id`, repeated in the qualifier so the platform
+   * uniqueness keeps exactly one per consumer, type and asset.
+   */
+  async consumerAccount(
+    tx: Tx,
+    input: { accountId: string; type: ConsumerAccountType; assetCode: string },
+  ): Promise<string> {
+    const chart = CHART[input.type];
+    await tx.$executeRaw`
+      insert into ledger.account
+        (tenant_id, consumer_account_id, asset_code, type, qualifier, normal_side, allow_negative)
+      values (null, ${input.accountId}::uuid, ${input.assetCode}, ${input.type}, ${input.accountId},
+              ${chart.normalSide}, ${chart.allowNegative})
+      on conflict do nothing`;
+    const account = await tx.account.findFirstOrThrow({
+      where: {
+        tenant_id: null,
+        consumer_account_id: input.accountId,
+        type: input.type,
+        asset_code: input.assetCode,
+      },
+      select: { id: true },
+    });
+    return account.id;
   }
 
   async findAccount(
