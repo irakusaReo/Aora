@@ -1,4 +1,4 @@
-import { formatMinor, type KeloPurchase, type List } from '@aora/api-client';
+import { formatMinor, type KeloCreditQuote, type KeloPurchase, type List } from '@aora/api-client';
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -32,6 +32,18 @@ async function act(form: FormData): Promise<void> {
           : { sandbox_scenario: 'success' },
         field(form, 'pay_key'),
       );
+    } else if (action === 'repay') {
+      await client.post(
+        `/v1/kelo/me/purchases/${id}/credit/repay`,
+        {
+          kind: field(form, 'kind'),
+          expected_amount_minor: field(form, 'expected_amount_minor'),
+          ...(field(form, 'rail') === 'mpesa'
+            ? { payer_phone: DARAJA_TEST_NUMBER }
+            : { sandbox_scenario: 'success' }),
+        },
+        field(form, 'pay_key'),
+      );
     } else if (action === 'cancel') {
       await client.post(`/v1/kelo/me/purchases/${id}/cancel`);
     } else if (action === 'confirm_delivery') {
@@ -56,6 +68,24 @@ export default async function Purchases({
     client.get<List<KeloPurchase>>('/v1/kelo/me/purchases'),
     client.get<List<{ code: string; exponent: number }>>('/v1/assets'),
   ]);
+  // Today's exact amounts for each open credit plan, from the API.
+  const quotes = new Map(
+    await Promise.all(
+      purchases.data
+        .filter(
+          (purchase) => purchase.credit && ['active', 'defaulted'].includes(purchase.credit.status),
+        )
+        .map(
+          async (purchase) =>
+            [
+              purchase.id,
+              await client.get<KeloCreditQuote>(
+                `/v1/kelo/me/purchases/${purchase.id}/credit/quote`,
+              ),
+            ] as const,
+        ),
+    ),
+  );
   return (
     <>
       <h1>{t('purchases.title')}</h1>
@@ -72,6 +102,7 @@ export default async function Purchases({
               money={money}
               act={act}
               today={today}
+              quote={quotes.get(purchase.id) ?? null}
             />
           );
         }

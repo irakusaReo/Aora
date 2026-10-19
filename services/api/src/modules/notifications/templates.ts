@@ -35,6 +35,18 @@ const COPY: Record<string, Copy> = {
     'chiwo.usdc.received.body':
       '{sender} sent you {amount} (testnet USDC) in CHIWO. Reference ending {reference}.',
     'chiwo.usdc.received.where': 'Open CHIWO and sign in to see it.',
+    'kelo.credit.reminder.upcoming.subject': 'KELO: {amount} due on {date}',
+    'kelo.credit.reminder.upcoming.body':
+      'Your KELO payment {seq} for {item} is {amount}, due on {date}. You can pay early at any time, with no penalty.',
+    'kelo.credit.reminder.overdue.subject': 'KELO: a payment of {amount} is overdue',
+    'kelo.credit.reminder.overdue.body':
+      'Your KELO payment {seq} for {item}, due on {date}, has not been paid. It is now {amount}, including a late charge of {charge}. Late charges on this plan can never be more than {cap} in total.',
+    'kelo.credit.reminder.help':
+      'Open KELO and sign in to pay, or to get help if you cannot pay on time. SANDBOX: the lender is simulated and not licensed.',
+    'kelo.credit.receipt.subject': 'KELO: payment of {amount} received',
+    'kelo.credit.receipt.body':
+      'We received your payment of {amount} for {item}: {principal} towards the price, {charges} in late charges and {interest} in interest. Receipt reference ending {reference}.',
+    'kelo.credit.receipt.where': 'Open KELO and sign in to see your statement.',
     'sign_in.footer': 'If you did not try to sign in, you can ignore this email.',
   },
 };
@@ -138,6 +150,54 @@ const TEMPLATES: Record<string, (params: Params, locale: string) => RenderedEmai
     return layout(
       locale,
       copy(locale, 'chiwo.usdc.received.subject', values),
+      `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
+      `${body}\n${where}`,
+    );
+  },
+  // KELO credit reminder (phase 8B, P8-11; r. 30(1)): to the borrower only, no
+  // link that acts, no threat. Params: kind, item, seq, due_on, amount_minor,
+  // currency, exponent, and for overdue late_charge_minor, late_charge_cap_minor.
+  'kelo.credit.reminder': (params, locale) => {
+    const exponent = typeof params['exponent'] === 'number' ? params['exponent'] : 2;
+    const money = (key: string): string =>
+      `${text(params, 'currency')} ${formatMinorUnits(BigInt(text(params, key) || '0'), exponent)}`;
+    const kind = text(params, 'kind') === 'overdue' ? 'overdue' : 'upcoming';
+    const values = {
+      amount: money('amount_minor'),
+      date: text(params, 'due_on'),
+      item: text(params, 'item'),
+      seq: typeof params['seq'] === 'number' ? String(params['seq']) : '',
+      charge: money('late_charge_minor'),
+      cap: money('late_charge_cap_minor'),
+    };
+    const body = copy(locale, `kelo.credit.reminder.${kind}.body`, values);
+    const help = copy(locale, 'kelo.credit.reminder.help');
+    return layout(
+      locale,
+      copy(locale, `kelo.credit.reminder.${kind}.subject`, values),
+      `<p>${escapeHtml(body)}</p><p>${escapeHtml(help)}</p>`,
+      `${body}\n${help}`,
+    );
+  },
+  // KELO credit repayment receipt (r. 39). Params: item, amount_minor,
+  // principal_minor, charges_minor, interest_minor, currency, exponent, reference.
+  'kelo.credit.receipt': (params, locale) => {
+    const exponent = typeof params['exponent'] === 'number' ? params['exponent'] : 2;
+    const money = (key: string): string =>
+      `${text(params, 'currency')} ${formatMinorUnits(BigInt(text(params, key) || '0'), exponent)}`;
+    const values = {
+      amount: money('amount_minor'),
+      principal: money('principal_minor'),
+      charges: money('charges_minor'),
+      interest: money('interest_minor'),
+      item: text(params, 'item'),
+      reference: text(params, 'reference').slice(-6),
+    };
+    const body = copy(locale, 'kelo.credit.receipt.body', values);
+    const where = copy(locale, 'kelo.credit.receipt.where');
+    return layout(
+      locale,
+      copy(locale, 'kelo.credit.receipt.subject', values),
       `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
       `${body}\n${where}`,
     );

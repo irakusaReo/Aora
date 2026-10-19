@@ -71,3 +71,11 @@ Differences from sections 2 to 4, none material:
 - **Routes:** the credit purchase reuses `POST /v1/kelo/purchases` with a body naming `decision_id`, `expected_total_payable_minor`, `agreement_version` and `kid_version`; repayments use `POST /v1/kelo/me/purchases/{id}/credit/instalments/{seq}/pay`; the buyer's purchase view gains `credit` (the agreement, or null).
 - **Cancellation refunds** reuse `kelo.layaway_refund` (no fee) and its provider path.
 - **Screens:** kelo-web credit plan card, decision form on the listing page, `/credit/checkout/{decision}` (decision and agreement), `/credit` (the limit, worded "You can spread up to …"), and a credit card in `/purchases`; internal-ops `/flags`.
+
+## 8. 8B as built (2026-10-19)
+
+- Migration `20261019000500_kelo_credit_repayments` (expand-only): `kelo.credit_repayment`; on parts `interest_waived_minor`, `paid_charges_minor`, `repayment_id`, `late_on`; a deferred trigger keeping late charges within the agreement's cap; `kelo.reminder_policy`.
+- 8A's single-part payment now goes through a repayment too, so every payment has one record and one allocation.
+- Routes: `GET …/credit/quote`, `POST …/credit/repay` (`next` or `payoff`, with the quoted amount), `GET …/credit/statement`; cron `GET /v1/internal/cron/kelo-credit` (seventh job, added to the scheduled workflow).
+- Emails: `kelo.credit.reminder` (upcoming, overdue) and `kelo.credit.receipt`.
+- kelo-web: "Pay early" in `/purchases` with the exact payoff, what it is made of and the interest saved; `/credit/statement/{purchase}`.

@@ -99,3 +99,14 @@ Phase-8 plan decisions P8-1 to P8-12; Kenya's credit conduct rules (O-8) are rea
 - **Payments:** the checkout line, then each part once due, by M-Pesa (Daraja test number) or the simulator, claimed before the payment exists as for layaway. Paying ahead waits for 8B's early repayment.
 
 Deviation from the plan: the consumer's receivable is named `consumer_kelo_credit_receivable` (not `kelo_consumer_receivable`), because Phase 7B's database rule gives a consumer only `consumer_*` account types.
+
+## Addendum, 2026-10-19 (Phase 8B: repayments and collections, as built)
+
+- **Repayments** (`kelo.credit_repayment`): one payment covering one part (`instalment`, the 8A route), the next part early (`next`) or everything (`payoff`). Its allocation is fixed when it starts (r. 56(1)) and the parts it covers are held `pending` until its result; at most one is in flight per agreement (a partial unique index). A failed repayment puts every part back as it was. The arithmetic is `services/api/src/modules/kelo/credit/repayment.ts`, property-tested.
+- **Interest to the day (r. 56(3)–(4)):** a part's interest accrues evenly over its own period (rounded half up): none before the period starts, pro rata inside it, all of it from its due date. Paying early waives the rest (`interest_waived_minor` on the part, recorded on the repayment). There is never a penalty. The quote (`GET …/credit/quote`) shows the exact amount, and a repayment must name it (`fee_changed` otherwise).
+- **Allocation (r. 56(2)):** principal, then late charges, then interest.
+- **Late charges (r. 29, r. 30(2)):** the daily `kelo-credit` job marks a part `late` once it is unpaid after the agreement's grace period and charges the agreement's late fee once, never past its cap (`lateChargeFor`, plus a deferred database trigger on the total).
+- **Non-performing (r. 57):** the same job marks an agreement `defaulted` once a part is overdue beyond its default period (60 days for Pay in 4, 90 for monthly financing). Nothing is reported to any bureau. Once nothing is overdue beyond the period it returns to `active`; paying everything closes it as `paid_off`.
+- **Limit growth (P8-6):** an agreement counts as repaid on time when no part was ever late and none was paid after its due date (Nairobi date).
+- **Reminders (P8-11, r. 30(1)):** `kelo.reminder_policy` (version 1: three days before and on the due date, 08:00 to 19:00 Nairobi time). By email to the borrower only, through the notifications module, deduplicated per part and day; an overdue reminder once per part, stating the charge and the cap. No link that acts, no bureau or threat. Nothing new is sent while the flag is off.
+- **Receipts and statements (r. 39, r. 47(2)):** a receipt email for every repayment; `GET …/credit/statement` lists every part, every repayment and the totals, free.

@@ -22,8 +22,17 @@ import {
   release,
   reserve,
 } from '../purchase-common.js';
-import { aprText, basisPoints, creditSchedule, dailyRateText, nairobiToday } from '../schedule.js';
+import {
+  addDays,
+  aprText,
+  basisPoints,
+  creditSchedule,
+  dailyRateText,
+  nairobiToday,
+} from '../schedule.js';
+import { NotificationsService } from '../../notifications/notifications.service.js';
 import { type BureauResult, sandboxBureau } from './bureau.js';
+import { type LineState, type Quote, quoteRepayment } from './repayment.js';
 import {
   evaluate,
   type Facts,
@@ -65,6 +74,135 @@ const STALE_CLAIM_SECONDS = 120;
 type Agreement = Prisma.credit_agreementGetPayload<object>;
 type Decision = Prisma.credit_decisionGetPayload<object>;
 type Instalment = Prisma.credit_instalmentGetPayload<object>;
+type Repayment = Prisma.credit_repaymentGetPayload<object>;
+
+/** Agreements that take repayments other than the first payment. */
+const OPEN_FOR_REPAYMENT = new Set(['active', 'defaulted']);
+const REPAYMENT_INTENT_PREFIX = 'kelo-credit-repayment:';
+const repaymentIntentKey = (repaymentId: string): string =>
+  `${REPAYMENT_INTENT_PREFIX}${repaymentId}`;
+
+export interface RepaymentStarted {
+  readonly repayment_id: string;
+  readonly kind: string;
+  readonly status: string;
+  readonly amount_minor: string;
+  readonly payment_intent_id: string | null;
+  /** The part paid, for a single-part payment (8A's route). */
+  readonly seq: number | null;
+}
+
+interface QuoteLineView {
+  readonly seq: number;
+  readonly principal_minor: string;
+  readonly charges_minor: string;
+  readonly interest_minor: string;
+  readonly waived_minor: string;
+}
+
+export interface QuoteAmountView {
+  readonly amount_minor: string;
+  readonly principal_minor: string;
+  readonly charges_minor: string;
+  readonly interest_minor: string;
+  /** Interest not charged because it is paid early (r. 56(4)). */
+  readonly waived_minor: string;
+  readonly no_penalty: true;
+  readonly lines: QuoteLineView[];
+}
+
+export interface QuoteView {
+  readonly as_of: string;
+  readonly currency: string;
+  readonly next: QuoteAmountView | null;
+  readonly payoff: QuoteAmountView | null;
+}
+
+export interface StatementView {
+  readonly agreement: CreditView;
+  readonly currency: string;
+  readonly repayments: {
+    id: string;
+    kind: string;
+    status: string;
+    amount_minor: string;
+    principal_minor: string;
+    charges_minor: string;
+    interest_minor: string;
+    waived_minor: string;
+    created_at: string;
+  }[];
+  readonly totals: {
+    paid_principal_minor: string;
+    paid_charges_minor: string;
+    paid_interest_minor: string;
+    waived_interest_minor: string;
+    outstanding_minor: string;
+  };
+}
+
+function lineState(line: Instalment): LineState {
+  return {
+    seq: line.seq,
+    due_on: line.due_on.toISOString().slice(0, 10),
+    principal_minor: line.principal_minor,
+    interest_minor: line.interest_minor,
+    paid_principal_minor: line.paid_principal_minor,
+    paid_interest_minor: line.paid_interest_minor,
+    interest_waived_minor: line.interest_waived_minor,
+    late_charges_minor: line.late_charges_minor,
+    paid_charges_minor: line.paid_charges_minor,
+    status: line.status,
+  };
+}
+
+function quoteView(quote: Quote): QuoteAmountView {
+  return {
+    amount_minor: quote.amount_minor.toString(),
+    principal_minor: quote.principal_minor.toString(),
+    charges_minor: quote.charges_minor.toString(),
+    interest_minor: quote.interest_minor.toString(),
+    waived_minor: quote.waived_minor.toString(),
+    no_penalty: true,
+    lines: quote.lines.map((line) => ({
+      seq: line.seq,
+      principal_minor: line.principal_minor.toString(),
+      charges_minor: line.charges_minor.toString(),
+      interest_minor: line.interest_minor.toString(),
+      waived_minor: line.waived_minor.toString(),
+    })),
+  };
+}
+
+function allocationOf(repayment: Repayment): {
+  seq: number;
+  principal_minor: bigint;
+  charges_minor: bigint;
+  interest_minor: bigint;
+  waived_minor: bigint;
+  prior_status: string;
+}[] {
+  return (repayment.allocation as Record<string, string | number>[]).map((line) => ({
+    seq: Number(line['seq']),
+    principal_minor: BigInt(line['principal_minor'] ?? 0),
+    charges_minor: BigInt(line['charges_minor'] ?? 0),
+    interest_minor: BigInt(line['interest_minor'] ?? 0),
+    waived_minor: BigInt(line['waived_minor'] ?? 0),
+    prior_status: String(line['prior_status'] ?? 'due'),
+  }));
+}
+
+function startedView(repayment: Repayment): RepaymentStarted {
+  const lines = allocationOf(repayment);
+  return {
+    repayment_id: repayment.id,
+    kind: repayment.kind,
+    status: repayment.status === 'submitting' ? 'pending' : repayment.status,
+    amount_minor: repayment.amount_minor.toString(),
+    payment_intent_id: repayment.payment_intent_id,
+    seq: lines.length === 1 ? (lines[0]?.seq ?? null) : null,
+  };
+}
 
 export interface LimitView {
   readonly limit_minor: string;
@@ -105,7 +243,12 @@ export interface CreditView {
   readonly apr_text: string;
   readonly checkout_seq: number;
   readonly late_charges: { fee_minor: string; total_cap_minor: string; grace_days: number };
-  readonly instalments: (CreditLineView & { paid_minor: string; status: string })[];
+  readonly instalments: (CreditLineView & {
+    late_charges_minor: string;
+    interest_waived_minor: string;
+    paid_minor: string;
+    status: string;
+  })[];
   readonly documents: {
     agreement: { key: string; version: string };
     kid: { key: string; version: string };
@@ -120,9 +263,6 @@ interface Policy {
   step_minor: bigint;
   max_minor: bigint;
 }
-
-const lineDue = (line: Instalment): bigint =>
-  line.principal_minor - line.paid_principal_minor + line.interest_minor - line.paid_interest_minor;
 
 /**
  * KELO credit (phase 8A; ADRs 0017, 0018). SANDBOX: the lender of record is
@@ -139,6 +279,7 @@ export class CreditService implements OnModuleInit {
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(PaymentsService) private readonly payments: PaymentsService,
     @Inject(FeatureFlagsService) private readonly flags: FeatureFlagsService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit(): void {
@@ -532,13 +673,11 @@ export class CreditService implements OnModuleInit {
     });
   }
 
-  // --- Payments ---
+  // --- Repayments (8A checkout and due parts; 8B early repayment) ---
 
   /**
-   * Starts the payment of the next line: at checkout the deposit or first part,
-   * then each part once it is due. Paying ahead is 8B's early repayment. The
-   * line is claimed for this request first, so a second request can never push
-   * a second payment.
+   * Pays one part: at checkout the deposit or first part, then each part once
+   * it is due (8A). Paying ahead goes through `repay`.
    */
   async pay(
     actor: { accountId: string; requestId: string },
@@ -549,68 +688,239 @@ export class CreditService implements OnModuleInit {
       scenario: Scenario | null;
       payerPhone: string | null;
     },
-  ): Promise<{ seq: number; status: string; payment_intent_id: string }> {
+  ): Promise<RepaymentStarted> {
+    return this.startRepayment(actor, idempotencyKey, {
+      purchaseId: input.purchaseId,
+      kind: 'instalment',
+      seq: input.seq,
+      expectedAmountMinor: null,
+      scenario: input.scenario,
+      payerPhone: input.payerPhone,
+    });
+  }
+
+  /** Pays the next part early, or everything (8B): interest only to the day, no penalty. */
+  async repay(
+    actor: { accountId: string; requestId: string },
+    idempotencyKey: string,
+    input: {
+      purchaseId: string;
+      kind: 'next' | 'payoff';
+      expectedAmountMinor: bigint;
+      scenario: Scenario | null;
+      payerPhone: string | null;
+    },
+  ): Promise<RepaymentStarted> {
+    return this.startRepayment(actor, idempotencyKey, { ...input, seq: null });
+  }
+
+  /** What paying the next part, or everything, costs today. Read-only. */
+  async quote(accountId: string, purchaseId: string): Promise<QuoteView> {
+    await this.flags.require('kelo_credit');
+    return this.db.asPlatform(async (tx) => {
+      const agreement = await this.agreementForBuyer(tx, accountId, purchaseId);
+      const lines = await tx.credit_instalment.findMany({ where: { agreement_id: agreement.id } });
+      const today = nairobiToday();
+      const terms = await this.repaymentTerms(tx, agreement);
+      const make = (kind: 'next' | 'payoff') => {
+        try {
+          return quoteView(quoteRepayment({ lines: lines.map(lineState), today, kind, ...terms }));
+        } catch {
+          return null;
+        }
+      };
+      const open = ['active', 'defaulted'].includes(agreement.status);
+      return {
+        as_of: today,
+        currency: agreement.currency,
+        next: open ? make('next') : null,
+        payoff: open ? make('payoff') : null,
+      };
+    });
+  }
+
+  /** The agreement, every part, every repayment and the totals (r. 39, r. 47(2)). */
+  async statement(accountId: string, purchaseId: string): Promise<StatementView> {
+    await this.flags.require('kelo_credit');
+    const repayments = await this.db.withConsumer(accountId, async (tx) => {
+      const agreement = await tx.credit_agreement.findFirst({
+        where: { purchase_id: purchaseId, consumer_account_id: accountId },
+      });
+      if (!agreement) throw new AppError('not_found', 'Purchase not found.');
+      return tx.credit_repayment.findMany({
+        where: { agreement_id: agreement.id },
+        orderBy: { created_at: 'asc' },
+      });
+    });
+    const view = (await this.views(accountId, [purchaseId])).get(purchaseId);
+    if (!view) throw new AppError('not_found', 'Purchase not found.');
+    const lines = await this.db.withConsumer(accountId, (tx) =>
+      tx.credit_instalment.findMany({ where: { agreement_id: view.agreement_id } }),
+    );
+    const sum = (pick: (line: Instalment) => bigint): bigint =>
+      lines.reduce((total, line) => total + pick(line), 0n);
+    const live = lines.filter((line) => line.status !== 'cancelled');
+    const outstanding = live.reduce(
+      (total, line) =>
+        total +
+        line.principal_minor -
+        line.paid_principal_minor +
+        line.late_charges_minor -
+        line.paid_charges_minor +
+        line.interest_minor -
+        line.paid_interest_minor -
+        line.interest_waived_minor,
+      0n,
+    );
+    return {
+      agreement: view,
+      repayments: repayments.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        status: row.status,
+        amount_minor: row.amount_minor.toString(),
+        principal_minor: row.principal_minor.toString(),
+        charges_minor: row.charges_minor.toString(),
+        interest_minor: row.interest_minor.toString(),
+        waived_minor: row.waived_minor.toString(),
+        created_at: row.created_at.toISOString(),
+      })),
+      totals: {
+        paid_principal_minor: sum((line) => line.paid_principal_minor).toString(),
+        paid_charges_minor: sum((line) => line.paid_charges_minor).toString(),
+        paid_interest_minor: sum((line) => line.paid_interest_minor).toString(),
+        waived_interest_minor: sum((line) => line.interest_waived_minor).toString(),
+        outstanding_minor: outstanding.toString(),
+      },
+      currency: await this.currencyOf(view.agreement_id),
+    };
+  }
+
+  /**
+   * Starts a repayment: its allocation is fixed now (r. 56(1)), the parts it
+   * covers are held as `pending`, and only then is the payment created, so a
+   * second request can never push a second payment. A repeat of the same
+   * request adopts it.
+   */
+  private async startRepayment(
+    actor: { accountId: string; requestId: string },
+    idempotencyKey: string,
+    input: {
+      purchaseId: string;
+      kind: 'instalment' | 'next' | 'payoff';
+      seq: number | null;
+      expectedAmountMinor: bigint | null;
+      scenario: Scenario | null;
+      payerPhone: string | null;
+    },
+  ): Promise<RepaymentStarted> {
     await this.flags.require('kelo_credit');
     const claimKey = createHash('sha256').update(idempotencyKey).digest('hex');
     const claimed = await this.db.asPlatform(async (tx) => {
       const purchase = await lockPurchaseForBuyer(tx, actor.accountId, input.purchaseId);
       const agreement = await this.lockAgreement(tx, purchase.id);
-      if (!['pending_first_payment', 'active'].includes(agreement.status)) {
+      const earlier = await tx.credit_repayment.findUnique({
+        where: { agreement_id_claim_key: { agreement_id: agreement.id, claim_key: claimKey } },
+      });
+      if (earlier) {
+        if (earlier.kind !== input.kind) {
+          throw new AppError(
+            'idempotency_key_reused',
+            'This Idempotency-Key was already used with a different request.',
+          );
+        }
+        return { repayment: earlier, tenantId: purchase.tenant_id };
+      }
+      const checkout = agreement.status === 'pending_first_payment';
+      if (
+        input.kind === 'instalment'
+          ? !checkout && !OPEN_FOR_REPAYMENT.has(agreement.status)
+          : !OPEN_FOR_REPAYMENT.has(agreement.status)
+      ) {
         throw new AppError('invalid_state_transition', 'This agreement takes no payments now.');
+      }
+      const inFlight = await tx.credit_repayment.findFirst({
+        where: { agreement_id: agreement.id, status: { in: ['submitting', 'pending'] } },
+      });
+      if (inFlight && !(await this.abandon(tx, inFlight))) {
+        throw new AppError(
+          'invalid_state_transition',
+          'A payment is being checked. Wait for its result.',
+        );
       }
       const lines = await tx.$queryRaw<Instalment[]>`
         select * from kelo.credit_instalment where agreement_id = ${agreement.id}::uuid
          order by seq for update`;
-      const next = lines.find((line) => line.status !== 'paid' && line.status !== 'cancelled');
-      if (!next || next.seq !== input.seq) {
-        throw new AppError('invalid_state_transition', 'Instalments are paid in order.');
+      const today = nairobiToday();
+      const terms = await this.repaymentTerms(tx, agreement);
+      let quote: Quote;
+      try {
+        quote = quoteRepayment({
+          lines: lines.map(lineState),
+          today,
+          kind: input.kind === 'payoff' ? 'payoff' : 'next',
+          ...terms,
+        });
+      } catch {
+        throw new AppError('invalid_state_transition', 'Nothing is owed on this agreement.');
       }
-      const checkout = agreement.status === 'pending_first_payment';
-      const due = next.due_on.toISOString().slice(0, 10) <= nairobiToday();
-      if (!checkout && !due) {
-        throw new AppError('invalid_state_transition', 'This part is not due yet.');
-      }
-      if (next.status === 'pending') {
-        throw new AppError(
-          'invalid_state_transition',
-          'This payment is being checked. Wait for its result.',
-        );
-      }
-      if (next.status === 'submitting' && next.claim_key !== claimKey) {
-        const stale =
-          next.claimed_at && next.claimed_at.getTime() < Date.now() - STALE_CLAIM_SECONDS * 1000;
-        const abandoned = stale
-          ? !(await tx.payment_intent.findFirst({
-              where: { idempotency_key: intentKey(next.id, next.claim_key ?? '') },
-            }))
-          : false;
-        if (!abandoned) {
-          throw new AppError(
-            'invalid_state_transition',
-            'A payment for this instalment is being started.',
-          );
+      if (input.kind === 'instalment') {
+        const next = quote.lines[0];
+        const line = lines.find((row) => row.seq === next?.seq);
+        if (!next || !line || next.seq !== input.seq) {
+          throw new AppError('invalid_state_transition', 'Instalments are paid in order.');
         }
+        if (!checkout && line.due_on.toISOString().slice(0, 10) > today) {
+          throw new AppError('invalid_state_transition', 'This part is not due yet.');
+        }
+      } else if (checkout) {
+        throw new AppError('invalid_state_transition', 'Pay the first payment first.');
+      } else if (quote.amount_minor !== input.expectedAmountMinor) {
+        // What the buyer was shown is what they pay, to the minor unit.
+        throw new AppError('fee_changed', 'The amount has changed. Review the new amount first.');
       }
-      await tx.credit_instalment.update({
-        where: { id: next.id },
-        data: { status: 'submitting', claim_key: claimKey, claimed_at: new Date() },
+      const prior = new Map(lines.map((line) => [line.seq, line.status]));
+      const repayment = await tx.credit_repayment.create({
+        data: {
+          agreement_id: agreement.id,
+          consumer_account_id: agreement.consumer_account_id,
+          claim_key: claimKey,
+          kind: input.kind,
+          quoted_on: new Date(`${today}T00:00:00Z`),
+          amount_minor: quote.amount_minor,
+          principal_minor: quote.principal_minor,
+          charges_minor: quote.charges_minor,
+          interest_minor: quote.interest_minor,
+          waived_minor: quote.waived_minor,
+          allocation: quote.lines.map((line) => ({
+            seq: line.seq,
+            principal_minor: line.principal_minor.toString(),
+            charges_minor: line.charges_minor.toString(),
+            interest_minor: line.interest_minor.toString(),
+            waived_minor: line.waived_minor.toString(),
+            prior_status: prior.get(line.seq) ?? 'due',
+          })),
+        },
       });
-      return {
-        instalmentId: next.id,
-        amount: lineDue(next),
-        tenantId: purchase.tenant_id,
-        currency: agreement.currency,
-      };
+      await tx.credit_instalment.updateMany({
+        where: { agreement_id: agreement.id, seq: { in: quote.lines.map((line) => line.seq) } },
+        data: { status: 'pending', repayment_id: repayment.id },
+      });
+      return { repayment, tenantId: purchase.tenant_id };
     });
 
+    const { repayment } = claimed;
+    if (repayment.status === 'failed' || repayment.status === 'succeeded') {
+      return startedView(repayment);
+    }
     // The payment, in its own transaction; a repeat of this request replays it.
     const { intent } = await this.payments.createIntent({
       tenantId: claimed.tenantId,
       accountId: actor.accountId,
       requestId: actor.requestId,
-      idempotencyKey: intentKey(claimed.instalmentId, claimKey),
-      amount: claimed.amount,
-      assetCode: claimed.currency,
+      idempotencyKey: repaymentIntentKey(repayment.id),
+      amount: repayment.amount_minor,
+      assetCode: await this.currencyOf(repayment.agreement_id),
       rail: 'mpesa',
       branchId: null,
       reference: null,
@@ -619,57 +929,82 @@ export class CreditService implements OnModuleInit {
       purpose: 'kelo_credit',
     });
     return this.db.asPlatform(async (tx) => {
-      const updated = await tx.credit_instalment.updateMany({
-        where: { id: claimed.instalmentId, status: 'submitting', claim_key: claimKey },
+      await tx.credit_repayment.updateMany({
+        where: { id: repayment.id, status: 'submitting' },
         data: { status: 'pending', payment_intent_id: intent.id },
       });
-      const line = await tx.credit_instalment.findUniqueOrThrow({
-        where: { id: claimed.instalmentId },
-      });
-      if (updated.count !== 1 && line.payment_intent_id !== intent.id) {
-        throw new AppError(
-          'invalid_state_transition',
-          'This instalment changed while the payment started.',
-        );
-      }
-      return { seq: line.seq, status: 'pending', payment_intent_id: intent.id };
+      return startedView(
+        await tx.credit_repayment.findUniqueOrThrow({ where: { id: repayment.id } }),
+      );
     });
+  }
+
+  /**
+   * A repayment stuck in `submitting` with no payment behind it, older than
+   * the claim timeout, is given up and its parts released. Returns whether it
+   * was; one with a payment is never given up here.
+   */
+  private async abandon(tx: Tx, repayment: Repayment): Promise<boolean> {
+    if (repayment.status !== 'submitting') return false;
+    if (repayment.created_at.getTime() > Date.now() - STALE_CLAIM_SECONDS * 1000) return false;
+    const intent = await tx.payment_intent.findFirst({
+      where: { idempotency_key: repaymentIntentKey(repayment.id) },
+    });
+    if (intent) return false;
+    await this.release(tx, repayment, 'failed');
+    return true;
+  }
+
+  /** Puts a repayment's parts back as they were and closes it. */
+  private async release(tx: Tx, repayment: Repayment, to: 'failed'): Promise<void> {
+    for (const line of allocationOf(repayment)) {
+      await tx.credit_instalment.updateMany({
+        where: {
+          agreement_id: repayment.agreement_id,
+          seq: line.seq,
+          repayment_id: repayment.id,
+          status: 'pending',
+        },
+        data: { status: line.prior_status, repayment_id: null },
+      });
+    }
+    await tx.credit_repayment.update({ where: { id: repayment.id }, data: { status: to } });
   }
 
   /**
    * A repayment reached a final state (from payments, through the outbox; at
    * least once). The first one puts the agreement in force; each is allocated
-   * to principal, then charges, then interest (r. 56(2)).
+   * principal, then charges, then interest (r. 56(2)), as fixed when it started.
    */
   private async handlePaymentResult(event: OutboxEvent): Promise<void> {
     const intentId = payloadId(event, 'intent_id');
     const outcome = (event.payload as { outcome?: unknown }).outcome;
     await this.db.asPlatform(async (tx) => {
-      const found = await tx.credit_instalment.findFirst({
-        where: { payment_intent_id: intentId },
-      });
+      const intent = await tx.payment_intent.findUnique({ where: { id: intentId } });
+      const repaymentId = intent?.idempotency_key.startsWith(REPAYMENT_INTENT_PREFIX)
+        ? intent.idempotency_key.slice(REPAYMENT_INTENT_PREFIX.length)
+        : null;
+      if (!intent || !repaymentId) return;
+      const found = await tx.credit_repayment.findUnique({ where: { id: repaymentId } });
       if (!found) return;
       const agreement = await this.lockAgreement(tx, null, found.agreement_id);
-      await tx.$queryRaw`select id from kelo.credit_instalment where id = ${found.id}::uuid for update`;
-      const line = await tx.credit_instalment.findUniqueOrThrow({ where: { id: found.id } });
+      await tx.$queryRaw`select id from kelo.credit_repayment where id = ${found.id}::uuid for update`;
+      const repayment = await tx.credit_repayment.findUniqueOrThrow({ where: { id: found.id } });
       // A result already applied changes nothing.
-      if (line.status !== 'pending' || line.payment_intent_id !== intentId) return;
+      if (!['submitting', 'pending'].includes(repayment.status)) return;
       if (outcome === 'failed') {
-        await tx.credit_instalment.update({
-          where: { id: line.id },
-          data: { status: 'due', payment_intent_id: null, claim_key: null, claimed_at: null },
-        });
+        await this.release(tx, repayment, 'failed');
         return;
       }
-      const intent = await tx.payment_intent.findUniqueOrThrow({ where: { id: intentId } });
-      const purchase = await tx.purchase.findUniqueOrThrow({
-        where: { id: agreement.purchase_id },
-      });
+      if (intent.amount !== repayment.amount_minor) {
+        throw new Error(`Repayment ${repayment.id} does not match payment ${intentId}.`);
+      }
       const receivable = await this.ledger.consumerAccount(tx, {
         accountId: agreement.consumer_account_id,
         type: 'consumer_kelo_credit_receivable',
         assetCode: agreement.currency,
       });
+      let current = agreement;
       if (agreement.status === 'pending_first_payment') {
         // In force: the buyer owes KELO the price; KELO owes the merchant on fulfilment.
         await this.ledger.post(tx, {
@@ -692,66 +1027,131 @@ export class CreditService implements OnModuleInit {
           ],
         });
         await this.moveAgreement(tx, agreement, 'active', 'provider', null);
+        const purchase = await tx.purchase.findUniqueOrThrow({
+          where: { id: agreement.purchase_id },
+        });
         await movePurchase(tx, purchase, 'payment_ready', 'system', null);
+        current = await tx.credit_agreement.findUniqueOrThrow({ where: { id: agreement.id } });
       }
-      // Principal first, then charges (8B), then interest (r. 56(2)).
-      const principal = line.principal_minor - line.paid_principal_minor;
-      const interest = intent.amount - principal;
-      if (interest < 0n || interest > line.interest_minor - line.paid_interest_minor) {
-        throw new Error(`Repayment ${intentId} does not match instalment ${line.id}.`);
-      }
+      // Principal, then charges, then interest (r. 56(2)).
       await this.ledger.post(tx, {
-        idempotencyKey: `kelo.credit.allocate:${intentId}`,
+        idempotencyKey: `kelo.credit.allocate:${repayment.id}`,
         tenantId: null,
         entryType: 'kelo_credit_allocation',
-        operationType: 'kelo_credit_instalment',
-        operationId: line.id,
+        operationType: 'kelo_credit_repayment',
+        operationId: repayment.id,
         postings: [
           {
             accountId: await this.platformAccount(
               tx,
               'kelo_credit_repayments_unapplied',
-              intent.asset_code,
+              agreement.currency,
             ),
             direction: 'debit',
-            amount: intent.amount,
+            amount: repayment.amount_minor,
           },
-          ...(principal > 0n
-            ? [{ accountId: receivable, direction: 'credit' as const, amount: principal }]
+          ...(repayment.principal_minor > 0n
+            ? [
+                {
+                  accountId: receivable,
+                  direction: 'credit' as const,
+                  amount: repayment.principal_minor,
+                },
+              ]
             : []),
-          ...(interest > 0n
+          ...(repayment.charges_minor > 0n
+            ? [
+                {
+                  accountId: await this.platformAccount(
+                    tx,
+                    'kelo_late_charge_income',
+                    agreement.currency,
+                  ),
+                  direction: 'credit' as const,
+                  amount: repayment.charges_minor,
+                },
+              ]
+            : []),
+          ...(repayment.interest_minor > 0n
             ? [
                 {
                   accountId: await this.platformAccount(
                     tx,
                     'kelo_interest_income',
-                    intent.asset_code,
+                    agreement.currency,
                   ),
                   direction: 'credit' as const,
-                  amount: interest,
+                  amount: repayment.interest_minor,
                 },
               ]
             : []),
         ],
       });
-      await tx.credit_instalment.update({
-        where: { id: line.id },
-        data: {
-          status: 'paid',
-          paid_at: new Date(),
-          paid_principal_minor: line.principal_minor,
-          paid_interest_minor: line.paid_interest_minor + interest,
+      const now = new Date();
+      for (const part of allocationOf(repayment)) {
+        const line = await tx.credit_instalment.findFirstOrThrow({
+          where: { agreement_id: agreement.id, seq: part.seq },
+        });
+        const paidPrincipal = line.paid_principal_minor + part.principal_minor;
+        const paidCharges = line.paid_charges_minor + part.charges_minor;
+        const paidInterest = line.paid_interest_minor + part.interest_minor;
+        const waived = line.interest_waived_minor + part.waived_minor;
+        const settled =
+          paidPrincipal === line.principal_minor &&
+          paidCharges === line.late_charges_minor &&
+          paidInterest + waived === line.interest_minor;
+        await tx.credit_instalment.update({
+          where: { id: line.id },
+          data: {
+            paid_principal_minor: paidPrincipal,
+            paid_charges_minor: paidCharges,
+            paid_interest_minor: paidInterest,
+            interest_waived_minor: waived,
+            status: settled ? 'paid' : part.prior_status,
+            ...(settled ? { paid_at: now } : {}),
+          },
+        });
+      }
+      await tx.credit_repayment.update({
+        where: { id: repayment.id },
+        data: { status: 'succeeded', payment_intent_id: intent.id },
+      });
+      const lines = await tx.credit_instalment.findMany({ where: { agreement_id: agreement.id } });
+      if (lines.every((line) => line.status === 'paid' || line.status === 'cancelled')) {
+        await this.moveAgreement(tx, current, 'paid_off', 'provider', null);
+      } else if (current.status === 'defaulted') {
+        // Performing again once nothing is overdue beyond the default period.
+        const today = nairobiToday(now);
+        const stillOverdue = lines.some(
+          (line) =>
+            ['due', 'late'].includes(line.status) &&
+            addDays(line.due_on.toISOString().slice(0, 10), current.default_after_days) < today,
+        );
+        if (!stillOverdue) await this.moveAgreement(tx, current, 'active', 'provider', null);
+      }
+      // A receipt for the transaction, to the borrower only (r. 39).
+      const purchase = await tx.purchase.findUniqueOrThrow({
+        where: { id: agreement.purchase_id },
+        include: { listing: { select: { title: true } } },
+      });
+      const asset = await tx.asset.findUniqueOrThrow({ where: { code: agreement.currency } });
+      await this.notifications.notify(tx, {
+        dedupeKey: `kelo.credit.receipt:${repayment.id}`,
+        accountId: agreement.consumer_account_id,
+        tenantId: null,
+        type: 'kelo.credit.receipt',
+        params: {
+          purchase_id: purchase.id,
+          item: purchase.listing.title,
+          amount_minor: repayment.amount_minor.toString(),
+          principal_minor: repayment.principal_minor.toString(),
+          charges_minor: repayment.charges_minor.toString(),
+          interest_minor: repayment.interest_minor.toString(),
+          currency: agreement.currency,
+          exponent: asset.exponent,
+          reference: repayment.id,
         },
       });
-      const open = await tx.credit_instalment.count({
-        where: { agreement_id: agreement.id, status: { notIn: ['paid', 'cancelled'] } },
-      });
-      if (open === 0) {
-        const current = await tx.credit_agreement.findUniqueOrThrow({
-          where: { id: agreement.id },
-        });
-        await this.moveAgreement(tx, current, 'paid_off', 'provider', null);
-      }
     });
   }
 
@@ -774,7 +1174,8 @@ export class CreditService implements OnModuleInit {
       }
       const paidPrincipal = lines.reduce((sum, line) => sum + line.paid_principal_minor, 0n);
       const paidInterest = lines.reduce((sum, line) => sum + line.paid_interest_minor, 0n);
-      const paid = paidPrincipal + paidInterest;
+      const paidCharges = lines.reduce((sum, line) => sum + line.paid_charges_minor, 0n);
+      const paid = paidPrincipal + paidInterest + paidCharges;
       await tx.credit_instalment.updateMany({
         where: { agreement_id: agreement.id, status: { in: ['due', 'late'] } },
         data: { status: 'cancelled' },
@@ -832,6 +1233,19 @@ export class CreditService implements OnModuleInit {
                     ),
                     direction: 'debit' as const,
                     amount: paidInterest,
+                  },
+                ]
+              : []),
+            ...(paidCharges > 0n
+              ? [
+                  {
+                    accountId: await this.platformAccount(
+                      tx,
+                      'kelo_late_charge_income',
+                      agreement.currency,
+                    ),
+                    direction: 'debit' as const,
+                    amount: paidCharges,
                   },
                 ]
               : []),
@@ -945,7 +1359,13 @@ export class CreditService implements OnModuleInit {
             principal_minor: line.principal_minor.toString(),
             interest_minor: line.interest_minor.toString(),
             amount_minor: (line.principal_minor + line.interest_minor).toString(),
-            paid_minor: (line.paid_principal_minor + line.paid_interest_minor).toString(),
+            late_charges_minor: line.late_charges_minor.toString(),
+            interest_waived_minor: line.interest_waived_minor.toString(),
+            paid_minor: (
+              line.paid_principal_minor +
+              line.paid_interest_minor +
+              line.paid_charges_minor
+            ).toString(),
             // A claim in progress is shown as what it is to the buyer: being checked.
             status: line.status === 'submitting' ? 'pending' : line.status,
           })),
@@ -1050,7 +1470,9 @@ export class CreditService implements OnModuleInit {
         (select count(*)::int from kelo.credit_agreement a
           where a.consumer_account_id = ${accountId}::uuid and a.status = 'paid_off'
             and not exists (select 1 from kelo.credit_instalment i
-                             where i.agreement_id = a.id and i.paid_at::date > i.due_on)) as repaid,
+                             where i.agreement_id = a.id
+                               and (i.late_on is not null
+                                    or (i.paid_at at time zone 'Africa/Nairobi')::date > i.due_on))) as repaid,
         (select coalesce(sum(i.principal_minor - i.paid_principal_minor), 0)::bigint
            from kelo.credit_instalment i join kelo.credit_agreement a on a.id = i.agreement_id
           where a.consumer_account_id = ${accountId}::uuid and a.status = any(${OPEN}::text[])
@@ -1120,19 +1542,53 @@ export class CreditService implements OnModuleInit {
     });
   }
 
+  /** The buyer's agreement for a purchase; anyone else's looks like one that does not exist. */
+  private async agreementForBuyer(
+    tx: Tx,
+    accountId: string,
+    purchaseId: string,
+  ): Promise<Agreement> {
+    const row = await tx.credit_agreement.findFirst({
+      where: { purchase_id: purchaseId, consumer_account_id: accountId },
+    });
+    if (!row) throw new AppError('not_found', 'Purchase not found.');
+    return row;
+  }
+
+  /** The part length and checkout part, from the agreement's own template version. */
+  private async repaymentTerms(
+    tx: Tx,
+    agreement: Agreement,
+  ): Promise<{ intervalDays: number; checkoutSeq: number }> {
+    const template = await tx.plan_template.findUniqueOrThrow({
+      where: { id: agreement.template_id },
+    });
+    return {
+      intervalDays: template.interval_days,
+      checkoutSeq: agreement.deposit_minor > 0n ? 0 : 1,
+    };
+  }
+
+  private async currencyOf(agreementId: string): Promise<string> {
+    const row = await this.db.asPlatform((tx) =>
+      tx.credit_agreement.findUniqueOrThrow({
+        where: { id: agreementId },
+        select: { currency: true },
+      }),
+    );
+    return row.currency;
+  }
+
   private platformAccount(
     tx: Tx,
     type:
       | 'kelo_merchant_payable_pending'
       | 'kelo_credit_repayments_unapplied'
       | 'kelo_interest_income'
+      | 'kelo_late_charge_income'
       | 'kelo_refunds_payable',
     assetCode: string,
   ): Promise<string> {
     return this.ledger.findAccount(tx, { tenantId: null, type, assetCode });
   }
-}
-
-function intentKey(instalmentId: string, claimKey: string): string {
-  return `kelo-credit:${instalmentId}:${claimKey}`;
 }

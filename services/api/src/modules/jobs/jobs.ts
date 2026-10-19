@@ -1,3 +1,7 @@
+import {
+  type CollectionsRun,
+  CreditCollectionsService,
+} from '../kelo/credit/collections.service.js';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   type CallHandler,
@@ -109,7 +113,17 @@ export class CronController {
     @Inject(ChainReconciliationService) private readonly chainRecon: ChainReconciliationService,
     @Inject(AnchoringService) private readonly anchoring: AnchoringService,
     @Inject(NamService) private readonly nam: NamService,
+    @Inject(CreditCollectionsService) private readonly collections: CreditCollectionsService,
   ) {}
+
+  /**
+   * KELO credit collections (phase 8B): late parts and their capped charges,
+   * non-performing marking, and reminders inside the contact window. Idempotent.
+   */
+  @Get('kelo-credit')
+  async keloCredit(): Promise<{ job: 'kelo-credit' } & CollectionsRun> {
+    return { job: 'kelo-credit', ...(await this.collections.run()) };
+  }
 
   /** Settles succeeded collections (ADR 0021). Idempotent; concurrent runs take different rows. */
   @Get('settlement')

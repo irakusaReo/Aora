@@ -1,19 +1,22 @@
-import type { KeloPurchase } from '@aora/api-client';
+import type { KeloCreditQuote, KeloPurchase } from '@aora/api-client';
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { t } from '../../lib/messages';
 
 /**
- * A credit purchase in the purchases hub: its parts paid and to come, what is
- * left, and the next due part. Paying early and reporting a return arrive in 8B and 8C.
+ * A credit purchase in the purchases hub (kelo-experience.md §2): its parts
+ * paid and to come, what is left, the next due part, and "Pay early" with the
+ * exact amount and no penalty. Reporting a return arrives in 8C.
  */
 export function CreditPurchaseCard({
   purchase,
   money,
   act,
   today,
+  quote,
 }: {
   purchase: KeloPurchase & { credit: NonNullable<KeloPurchase['credit']> };
+  quote: KeloCreditQuote | null;
   money: (minor: string) => string;
   act: (form: FormData) => Promise<void>;
   today: string;
@@ -48,6 +51,9 @@ export function CreditPurchaseCard({
           <li key={line.seq}>
             {line.due_on}: {money(line.amount_minor)}{' '}
             <span className="pill">{t(`instalment.status.${line.status}`)}</span>
+            {line.late_charges_minor !== '0' && (
+              <> {t('credit.late_charge', { amount: money(line.late_charges_minor) })}</>
+            )}
           </li>
         ))}
       </ol>
@@ -75,7 +81,51 @@ export function CreditPurchaseCard({
           <button type="submit">{t('credit.pay_due', { amount: money(next.amount_minor) })}</button>
         </form>
       )}
-      {credit.status === 'active' && <p className="muted">{t('credit.early_soon')}</p>}
+      {quote?.payoff && (
+        <section aria-label={t('credit.pay_early_title')}>
+          <h3>{t('credit.pay_early_title')}</h3>
+          <p className="muted">
+            {t('credit.pay_off_detail', {
+              principal: money(quote.payoff.principal_minor),
+              charges: money(quote.payoff.charges_minor),
+              interest: money(quote.payoff.interest_minor),
+              saved: money(quote.payoff.waived_minor),
+            })}
+          </p>
+          {(['payoff', 'next'] as const).map((kind) => {
+            const amount = kind === 'payoff' ? quote.payoff : quote.next;
+            if (!amount || (kind === 'next' && quote.payoff?.lines.length === 1)) return null;
+            return (
+              <form action={act} className="stack" key={kind}>
+                {hidden}
+                <input type="hidden" name="action" value="repay" />
+                <input type="hidden" name="kind" value={kind} />
+                <input type="hidden" name="expected_amount_minor" value={amount.amount_minor} />
+                <input type="hidden" name="pay_key" value={randomUUID()} />
+                <fieldset>
+                  <legend>{t('checkout.rail_label')}</legend>
+                  <label style={{ display: 'block' }}>
+                    <input type="radio" name="rail" value="simulator" required />{' '}
+                    {t('checkout.rail_simulator')}
+                  </label>
+                  <label style={{ display: 'block' }}>
+                    <input type="radio" name="rail" value="mpesa" required />{' '}
+                    {t('checkout.rail_mpesa')}
+                  </label>
+                </fieldset>
+                <button type="submit" className={kind === 'next' ? 'secondary' : undefined}>
+                  {t(kind === 'payoff' ? 'credit.pay_off' : 'credit.pay_next_early', {
+                    amount: money(amount.amount_minor),
+                  })}
+                </button>
+              </form>
+            );
+          })}
+        </section>
+      )}
+      <p>
+        <Link href={`/credit/statement/${purchase.id}`}>{t('credit.statement')}</Link>
+      </p>
       {credit.status === 'active' && purchase.status === 'merchant_confirmed' && (
         <form action={act}>
           {hidden}
