@@ -85,7 +85,7 @@ export interface DarajaConfig {
   } | null;
 }
 
-export type RateLimitName = 'pin_step_up_account';
+export type RateLimitName = 'pin_step_up_account' | 'chiwo_merchant_lookup';
 
 export interface AppConfig {
   readonly mode: 'sandbox';
@@ -233,7 +233,11 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
       pinLockSeconds: 15 * 60,
       pinSetupMaxFactorAgeMinutes: 10,
     },
-    rateLimits: { pin_step_up_account: { limit: 10, windowSeconds: 15 * 60 } },
+    rateLimits: {
+      pin_step_up_account: { limit: 10, windowSeconds: 15 * 60 },
+      // Pay codes are short, so lookups are limited per account to stop enumeration.
+      chiwo_merchant_lookup: { limit: 30, windowSeconds: 60 },
+    },
     jobs: { budgetMs: 45_000, leaseSeconds: 120 },
     invitations: { ttlHours: 7 * 24 },
     payments: {

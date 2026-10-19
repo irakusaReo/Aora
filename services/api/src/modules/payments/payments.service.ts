@@ -63,7 +63,12 @@ export const EVENT_DARAJA_CALLBACK = 'payments.daraja.callback';
 /** Handled by KELO: an instalment's payment reached a final state. */
 export const EVENT_LAYAWAY_PAYMENT_RESULT = 'kelo.layaway.payment_result';
 
+/** Handled by CHIWO: a consumer's payment to a merchant changed status (phase-7 P7-4). */
+export const EVENT_CHIWO_PAYMENT_RESULT = 'chiwo.merchant_payment.result';
+
 export type IntentPurpose = 'collection' | 'kelo_layaway';
+/** Who started the collection: the merchant (KONY) or a consumer paying them (CHIWO). */
+export type IntentChannel = 'kony' | 'chiwo';
 
 type Intent = Prisma.payment_intentGetPayload<object>;
 
@@ -160,8 +165,14 @@ export class PaymentsService implements OnModuleInit {
     apiKeyId?: string | null;
     /** `kelo_layaway`: an instalment held for the buyer, not a collection for the merchant (P4-9). */
     purpose?: IntentPurpose;
+    /** `chiwo`: a consumer's payment to this merchant, still the merchant's collection (P7-4). */
+    channel?: IntentChannel;
   }): Promise<{ intent: IntentView; replayed: boolean }> {
     const purpose = input.purpose ?? 'collection';
+    const channel = input.channel ?? 'kony';
+    if (channel === 'chiwo' && purpose !== 'collection') {
+      throw new AppError('invalid_request', 'A CHIWO payment is a collection.');
+    }
     // A scripted sandbox scenario always goes to the simulator; otherwise the
     // mpesa rail goes to Daraja when it is configured (ADR 0022).
     const daraja = !input.scenario && input.rail === 'mpesa' ? this.daraja : null;
@@ -193,6 +204,7 @@ export class PaymentsService implements OnModuleInit {
           input.reference,
           input.payerPhone,
           purpose,
+          channel,
         ]),
       )
       .digest('hex');
@@ -244,12 +256,12 @@ export class PaymentsService implements OnModuleInit {
         insert into payments.payment_intent
           (tenant_id, idempotency_key, request_hash, amount, asset_code, provider,
            sandbox_scenario, created_by, rail, fee_amount, tariff_version_id, branch_id, reference,
-           purpose)
+           purpose, channel)
         values (${input.tenantId}::uuid, ${input.idempotencyKey}, ${requestHash}, ${input.amount},
                 ${input.assetCode}, ${adapter.declaration.provider}, ${input.scenario},
                 ${input.accountId}::uuid,
                 ${input.rail}, ${quote.fee}, ${quote.tariffVersionId}::uuid,
-                ${input.branchId}::uuid, ${input.reference}, ${purpose})
+                ${input.branchId}::uuid, ${input.reference}, ${purpose}, ${channel})
         on conflict (tenant_id, idempotency_key) do nothing
         returning id`;
       const created = inserted[0];
@@ -746,6 +758,9 @@ export class PaymentsService implements OnModuleInit {
           : []),
       ],
     });
+    // A CHIWO payment was made by a consumer, not taken by anyone at the merchant:
+    // the consumer gets a receipt from CHIWO instead (P7-4).
+    if (intent.channel === 'chiwo') return 'succeeded';
     // Transaction alert to the person who took the payment, in the same transaction:
     // it exists if and only if the payment succeeded, and is sent once.
     const asset = await tx.asset.findUniqueOrThrow({ where: { code: intent.asset_code } });
@@ -1151,6 +1166,14 @@ export class PaymentsService implements OnModuleInit {
           currency: intent.asset_code,
           reference: intent.reference,
         },
+      });
+    }
+    if (intent.channel === 'chiwo') {
+      // CHIWO mirrors every status change on the consumer's side, in this same transaction.
+      await this.outbox.enqueue(tx, {
+        tenantId: null,
+        type: EVENT_CHIWO_PAYMENT_RESULT,
+        payload: { intent_id: intent.id, status: to },
       });
     }
     await this.audit.record(tx, {

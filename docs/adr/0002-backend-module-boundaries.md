@@ -48,3 +48,10 @@ Rules:
 - Boundary rules need tooling (lint rule, schema separation) and review discipline; without enforcement they will decay.
 - A module can later be extracted along its service interface if scale ever requires it.
 - Product modules cannot take shortcuts into platform tables; some queries will need an explicit platform service method.
+
+## Addendum, 2026-10-19 (Phase 7: CHIWO, the personal context)
+
+- A new product module, `chiwo`, owns the `chiwo` schema. It is the **personal context**: every route is under `/v1/chiwo/*`, acts for the signed-in person only, and refuses any request carrying `Aora-Workspace-Id` (`context_mismatch`). Workspace membership grants nothing in CHIWO, and a CHIWO account grants nothing in a workspace (brief §7.1; phase-7 plan P7-1).
+- Consumer isolation in the database: `chiwo` tables carry the consumer's account and have a `consumer_isolation` policy (`identity.current_account_id()`, set by `Database.withConsumer`) and **no tenant policy**, so the tenant-scoped role never sees them (P7-2).
+- `chiwo` → `payments` follows rule 3: a CHIWO payment to a merchant is created through `PaymentsService.createIntent` (channel `chiwo`), and CHIWO hears about status changes through the outbox event `chiwo.merchant_payment.result`, whose name lives in `payments` so that `payments` never imports `chiwo`.
+- Merchant pay codes (`tenancy.pay_code`) belong to `tenancy`: a workspace creates them; CHIWO reads only the trading name behind an active code.

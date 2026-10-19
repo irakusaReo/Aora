@@ -27,6 +27,10 @@ const COPY: Record<string, Copy> = {
     'kelo.store.ready.subject': 'Your KELO store {store} is ready',
     'kelo.store.ready.body':
       'Your KELO store {store} has been approved and is linked to your KONY workspace. Open KONY and sign in to add your first listing. Being an administrator of the workspace does not by itself let anyone pay out money.',
+    'chiwo.payment.receipt.subject': 'You paid {amount} to {merchant}',
+    'chiwo.payment.receipt.body':
+      'Your payment of {amount} to {merchant} was confirmed by the provider. Receipt reference ending {reference}.',
+    'chiwo.payment.receipt.where': 'Open CHIWO and sign in to see the receipt.',
     'sign_in.footer': 'If you did not try to sign in, you can ignore this email.',
   },
 };
@@ -92,6 +96,25 @@ const TEMPLATES: Record<string, (params: Params, locale: string) => RenderedEmai
     return layout(
       locale,
       copy(locale, 'payment.received.subject', values),
+      `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
+      `${body}\n${where}`,
+    );
+  },
+  // CHIWO receipt for a confirmed payment to a merchant (phase-7 P7-13).
+  // Params: amount_minor, currency, exponent, merchant, reference.
+  'chiwo.payment.receipt': (params, locale) => {
+    const exponent = typeof params['exponent'] === 'number' ? params['exponent'] : 2;
+    const amount = `${text(params, 'currency')} ${formatMinorUnits(BigInt(text(params, 'amount_minor') || '0'), exponent)}`;
+    const values = {
+      amount,
+      merchant: text(params, 'merchant'),
+      reference: text(params, 'reference').slice(-6),
+    };
+    const body = copy(locale, 'chiwo.payment.receipt.body', values);
+    const where = copy(locale, 'chiwo.payment.receipt.where');
+    return layout(
+      locale,
+      copy(locale, 'chiwo.payment.receipt.subject', values),
       `<p>${escapeHtml(body)}</p><p>${escapeHtml(where)}</p>`,
       `${body}\n${where}`,
     );

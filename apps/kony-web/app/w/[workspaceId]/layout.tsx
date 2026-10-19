@@ -36,6 +36,7 @@ export default async function WorkspaceLayout({
         <nav style={{ display: 'flex', gap: 16, marginTop: 8 }}>
           <Link href={base}>Collections</Link>
           <Link href={`${base}/branches`}>Branches</Link>
+          <Link href={`${base}/pay-codes`}>Pay codes</Link>
           <Link href={`${base}/kelo`}>KELO</Link>
           {membership.role !== 'cashier' && <Link href={`${base}/money`}>Money</Link>}
           {membership.role !== 'cashier' && <Link href={`${base}/treasury`}>USDC treasury</Link>}
