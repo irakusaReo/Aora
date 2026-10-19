@@ -1,7 +1,7 @@
 # CHIWO — Consumer Workflows (sandbox)
 
 - **Source:** brief §2.1, §4.1, §4.2, §7.1; [mvp-scope.md](mvp-scope.md) journeys J12 and J13; [phase-7 plan](../plans/phase-7.md).
-- **Status:** 7A built (sign-up, pay a merchant, receipts); 7B built (personal USDC, transfers, requests). 7C (NAM) follows.
+- **Status:** 7A built (sign-up, pay a merchant, receipts); 7B built (personal USDC, transfers, requests); 7C built (NAM Vault, personal).
 - Every screen and record is labelled sandbox. No real money moves.
 
 ## 1. Personal, never business
@@ -41,3 +41,7 @@ Testnet USDC on Base Sepolia, held for the consumer in AORA's sandbox testnet wa
 ## 6. Payment requests (7B)
 
 Ask someone for USDC by phone number, or make a request anyone with its link can pay. A request is paid once: a second payment is refused. It can be cancelled by the person who made it, and expires after seven days (sandbox setting).
+
+## 7. NAM Vault inside CHIWO (7C, journey J13)
+
+The same NAM USDC Vault (sandbox) as in KONY, but personal. CHIWO shows the product's facts, a personal disclosure (no return is offered or shown) and your position as three separate things: USDC set aside for an order, orders on chain, and the shares you hold with what the vault would give back for them now. You fund an order from your personal USDC balance with your PIN; the holding appears only once the vault deposit is confirmed on chain. Redemptions return USDC to your personal balance once confirmed. If you are also an admin or finance user of a business, its NAM position is a separate business profile that CHIWO never shows, and your personal position never appears in KONY.

@@ -32,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
                 <Link href="/send">{t('nav.send')}</Link>
                 <Link href="/requests">{t('nav.requests')}</Link>
                 <Link href="/usdc">{t('nav.usdc')}</Link>
+                <Link href="/nam">{t('nav.nam')}</Link>
                 <Link href="/security">{t('nav.security')}</Link>
                 <UserButton />
               </Show>

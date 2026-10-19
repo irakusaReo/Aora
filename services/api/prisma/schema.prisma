@@ -133,7 +133,11 @@ model user_account {
   store_store_applicant_account_idTouser_account                                   store[]                    @relation("store_applicant_account_idTouser_account")
   store_store_decided_byTouser_account                                             store[]                    @relation("store_decided_byTouser_account")
   account                                                                          account[]
+  holding                                                                          holding[]
+  holding_change                                                                   holding_change[]
+  redemption_redemption_consumer_account_idTouser_account                          redemption[]               @relation("redemption_consumer_account_idTouser_account")
   redemption                                                                       redemption[]
+  vault_order_vault_order_consumer_account_idTouser_account                        vault_order[]              @relation("vault_order_consumer_account_idTouser_account")
   vault_order                                                                      vault_order[]
   notification                                                                     notification[]
   payment_intent                                                                   payment_intent[]
@@ -1813,14 +1817,16 @@ model anchor_period {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model holding {
-  profile_id       String           @id @db.Uuid
-  tenant_id        String?          @db.Uuid
-  shares           Decimal          @default(0) @db.Decimal(78, 0)
-  cost_basis       BigInt           @default(0)
-  mode             String           @default("sandbox")
-  updated_at       DateTime         @default(now()) @db.Timestamptz(6)
-  investor_profile investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace        workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profile_id          String           @id @db.Uuid
+  tenant_id           String?          @db.Uuid
+  shares              Decimal          @default(0) @db.Decimal(78, 0)
+  cost_basis          BigInt           @default(0)
+  mode                String           @default("sandbox")
+  updated_at          DateTime         @default(now()) @db.Timestamptz(6)
+  consumer_account_id String?          @db.Uuid
+  user_account        user_account?    @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  investor_profile    investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("nam")
 }
@@ -1828,19 +1834,21 @@ model holding {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model holding_change {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id       String           @db.Uuid
-  tenant_id        String?          @db.Uuid
-  source_type      String
-  source_id        String           @db.Uuid
-  tx_hash          String
-  log_index        Int
-  shares_delta     Decimal          @db.Decimal(78, 0)
-  cost_delta       BigInt
-  mode             String           @default("sandbox")
-  created_at       DateTime         @default(now()) @db.Timestamptz(6)
-  investor_profile investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace        workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id          String           @db.Uuid
+  tenant_id           String?          @db.Uuid
+  source_type         String
+  source_id           String           @db.Uuid
+  tx_hash             String
+  log_index           Int
+  shares_delta        Decimal          @db.Decimal(78, 0)
+  cost_delta          BigInt
+  mode                String           @default("sandbox")
+  created_at          DateTime         @default(now()) @db.Timestamptz(6)
+  consumer_account_id String?          @db.Uuid
+  user_account        user_account?    @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  investor_profile    investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace           workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([source_type, source_id])
   @@unique([tx_hash, log_index])
@@ -1868,19 +1876,21 @@ model investor_profile {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model product {
-  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  code             String  @unique
-  name             String
-  kind             String
-  asset_code       String
-  fee_bps          Int
-  returns_claimed  Boolean @default(false)
-  asset_control    String
-  customer_owns    String
-  withdrawal_terms String
-  terms_key        String
-  mode             String  @default("sandbox")
-  asset            asset   @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                   String  @unique
+  name                   String
+  kind                   String
+  asset_code             String
+  fee_bps                Int
+  returns_claimed        Boolean @default(false)
+  asset_control          String
+  customer_owns          String
+  withdrawal_terms       String
+  terms_key              String
+  mode                   String  @default("sandbox")
+  customer_owns_personal String?
+  personal_terms_key     String?
+  asset                  asset   @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("nam")
 }
@@ -1888,24 +1898,26 @@ model product {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model redemption {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id       String           @db.Uuid
-  tenant_id        String?          @db.Uuid
-  idempotency_key  String
-  request_hash     String
-  shares           Decimal          @db.Decimal(78, 0)
-  status           String           @default("requested")
-  operation_id     String?          @unique @db.Uuid
-  assets           BigInt?
-  failure_reason   String?
-  created_by       String           @db.Uuid
-  mode             String           @default("sandbox")
-  created_at       DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime         @default(now()) @db.Timestamptz(6)
-  user_account     user_account     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  operation        operation?       @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  investor_profile investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace        workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                                        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id                                                String           @db.Uuid
+  tenant_id                                                 String?          @db.Uuid
+  idempotency_key                                           String
+  request_hash                                              String
+  shares                                                    Decimal          @db.Decimal(78, 0)
+  status                                                    String           @default("requested")
+  operation_id                                              String?          @unique @db.Uuid
+  assets                                                    BigInt?
+  failure_reason                                            String?
+  created_by                                                String           @db.Uuid
+  mode                                                      String           @default("sandbox")
+  created_at                                                DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at                                                DateTime         @default(now()) @db.Timestamptz(6)
+  consumer_account_id                                       String?          @db.Uuid
+  user_account_redemption_consumer_account_idTouser_account user_account?    @relation("redemption_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account                                              user_account     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  operation                                                 operation?       @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  investor_profile                                          investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                 workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([profile_id, idempotency_key])
   @@schema("nam")
@@ -1914,28 +1926,30 @@ model redemption {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model vault_order {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id       String           @db.Uuid
-  tenant_id        String?          @db.Uuid
-  idempotency_key  String
-  request_hash     String
-  amount           BigInt
-  asset_code       String           @default("USDC")
-  status           String           @default("funding_reserved")
-  consent_id       String           @db.Uuid
-  operation_id     String?          @unique @db.Uuid
-  shares           Decimal?         @db.Decimal(78, 0)
-  failure_reason   String?
-  created_by       String           @db.Uuid
-  mode             String           @default("sandbox")
-  created_at       DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime         @default(now()) @db.Timestamptz(6)
-  asset            asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
-  consent_record   consent_record   @relation(fields: [consent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user_account     user_account     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  operation        operation?       @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  investor_profile investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  workspace        workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                                                         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id                                                 String           @db.Uuid
+  tenant_id                                                  String?          @db.Uuid
+  idempotency_key                                            String
+  request_hash                                               String
+  amount                                                     BigInt
+  asset_code                                                 String           @default("USDC")
+  status                                                     String           @default("funding_reserved")
+  consent_id                                                 String           @db.Uuid
+  operation_id                                               String?          @unique @db.Uuid
+  shares                                                     Decimal?         @db.Decimal(78, 0)
+  failure_reason                                             String?
+  created_by                                                 String           @db.Uuid
+  mode                                                       String           @default("sandbox")
+  created_at                                                 DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at                                                 DateTime         @default(now()) @db.Timestamptz(6)
+  consumer_account_id                                        String?          @db.Uuid
+  asset                                                      asset            @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  consent_record                                             consent_record   @relation(fields: [consent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_vault_order_consumer_account_idTouser_account user_account?    @relation("vault_order_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account                                               user_account     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  operation                                                  operation?       @relation(fields: [operation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  investor_profile                                           investor_profile @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                                  workspace?       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([profile_id, idempotency_key])
   @@schema("nam")

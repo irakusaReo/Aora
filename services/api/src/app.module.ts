@@ -110,6 +110,7 @@ import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import { PayCodesController, PayCodesService } from './modules/tenancy/pay-codes.js';
 import { ChiwoController } from './modules/chiwo/chiwo.controller.js';
 import { ChiwoUsdcController } from './modules/chiwo/chiwo-usdc.controller.js';
+import { ChiwoNamController } from './modules/chiwo/chiwo-nam.controller.js';
 import { ConsumerGuard, ConsumerService } from './modules/chiwo/consumer.service.js';
 import { MerchantPaymentsService } from './modules/chiwo/merchant-payments.service.js';
 import { RequestsService } from './modules/chiwo/requests.service.js';
@@ -219,6 +220,7 @@ export const CONTROLLERS = [
   PayCodesController,
   ChiwoController,
   ChiwoUsdcController,
+  ChiwoNamController,
 ];
 
 @Module({})

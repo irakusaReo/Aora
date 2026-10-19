@@ -12,12 +12,51 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { ReconciliationService } from '../payments/reconciliation.service.js';
 
 const USDC = BASE_SEPOLIA.usdc.assetCode;
-const DISCLOSURE = 'nam_vault_disclosure';
 
 export interface Actor {
-  readonly tenantId: string;
   readonly accountId: string;
   readonly requestId: string;
+}
+
+/**
+ * Whose investment it is: a workspace (business investor profile, KONY) or one
+ * CHIWO consumer (personal investor profile). The two never share a profile, a
+ * holding or a ledger account (J13, phase-7 P7-14).
+ */
+export type NamOwner =
+  | { readonly kind: 'workspace'; readonly tenantId: string }
+  | { readonly kind: 'consumer'; readonly accountId: string };
+
+/** An owner's account, by what it is for; the type follows the owner (rule 5). */
+type OwnerRole = 'available' | 'funding_pending' | 'holding';
+type PlatformType = 'nam_vault_usdc' | 'nam_vault_rounding' | 'chain_wallet_usdc';
+
+const ROLE_TYPES = {
+  workspace: {
+    available: 'merchant_usdc_available',
+    funding_pending: 'merchant_nam_funding_pending',
+    holding: 'merchant_nam_holding',
+  },
+  consumer: {
+    available: 'consumer_usdc_available',
+    funding_pending: 'consumer_nam_funding_pending',
+    holding: 'consumer_nam_holding',
+  },
+} as const;
+
+function ownerColumns(owner: NamOwner): {
+  tenant_id: string | null;
+  consumer_account_id: string | null;
+} {
+  return owner.kind === 'workspace'
+    ? { tenant_id: owner.tenantId, consumer_account_id: null }
+    : { tenant_id: null, consumer_account_id: owner.accountId };
+}
+
+function ownerOf(row: { tenant_id: string | null; consumer_account_id: string | null }): NamOwner {
+  if (row.tenant_id) return { kind: 'workspace', tenantId: row.tenant_id };
+  if (row.consumer_account_id) return { kind: 'consumer', accountId: row.consumer_account_id };
+  throw new Error('A NAM record has no owner.');
 }
 
 export interface NamView {
@@ -86,29 +125,18 @@ export class NamService {
     @Inject(NamVaultGateway) private readonly gateway: NamVaultGateway,
   ) {}
 
-  async view(tenantId: string): Promise<NamView> {
+  async view(owner: NamOwner): Promise<NamView> {
     const vault = await this.gateway.vault();
-    const [product, terms] = await Promise.all([
-      this.db.asPlatform((tx) =>
-        tx.product.findUniqueOrThrow({ where: { code: 'nam_usdc_vault' } }),
-      ),
-      this.consent.currentTerms(DISCLOSURE),
-    ]);
+    const product = await this.db.asPlatform((tx) =>
+      tx.product.findUniqueOrThrow({ where: { code: 'nam_usdc_vault' } }),
+    );
+    const terms = await this.consent.currentTerms(this.disclosureKey(owner, product));
     const { holding, pending } = await this.db.asPlatform(async (tx) => {
-      const profile = await tx.investor_profile.findUnique({ where: { tenant_id: tenantId } });
-      const row = profile
-        ? await tx.holding.findUnique({ where: { profile_id: profile.id } })
-        : null;
+      const profile = await this.findProfile(tx, owner);
+      const row = profile ? await tx.holding.findUnique({ where: { profile_id: profile } }) : null;
       return {
         holding: row,
-        pending: await this.ledger.balanceOf(
-          tx,
-          await this.ledger.findAccount(tx, {
-            tenantId,
-            type: 'merchant_nam_funding_pending',
-            assetCode: USDC,
-          }),
-        ),
+        pending: await this.ledger.balanceOf(tx, await this.account(tx, owner, 'funding_pending')),
       };
     });
     const shares = holding ? exactInteger(holding.shares) : 0n;
@@ -121,7 +149,10 @@ export class NamService {
         fee_bps: product.fee_bps,
         returns_claimed: false,
         asset_control: product.asset_control,
-        customer_owns: product.customer_owns,
+        customer_owns:
+          owner.kind === 'consumer'
+            ? (product.customer_owns_personal ?? product.customer_owns)
+            : product.customer_owns,
         withdrawal_terms: product.withdrawal_terms,
         vault_address: vault,
         network: BASE_SEPOLIA.label,
@@ -142,17 +173,22 @@ export class NamService {
   // -------------------------------------------------------------------------
 
   async createOrder(
+    owner: NamOwner,
     actor: Actor,
     input: { idempotencyKey: string; amount: bigint; disclosureVersion: string },
   ): Promise<{ order: OrderView; replayed: boolean }> {
     await this.gateway.vault();
-    const terms = await this.consent.currentTerms(DISCLOSURE);
+    const product = await this.db.asPlatform((tx) =>
+      tx.product.findUniqueOrThrow({ where: { code: 'nam_usdc_vault' } }),
+    );
+    const terms = await this.consent.currentTerms(this.disclosureKey(owner, product));
+    const tenantId = owner.kind === 'workspace' ? owner.tenantId : null;
     const requestHash = createHash('sha256')
       .update(`${input.amount.toString()}|${input.disclosureVersion}`)
       .digest('hex');
     try {
       return await this.db.asPlatform(async (tx) => {
-        const profile = await this.profile(tx, actor.tenantId);
+        const profile = await this.profile(tx, owner);
         const existing = await tx.vault_order.findUnique({
           where: {
             profile_id_idempotency_key: {
@@ -176,25 +212,21 @@ export class NamService {
             'The NAM disclosure has changed. Read the current version and confirm it again.',
           );
         }
-        const available = await this.ledger.findAccount(tx, {
-          tenantId: actor.tenantId,
-          type: 'merchant_usdc_available',
-          assetCode: USDC,
-        });
+        const available = await this.account(tx, owner, 'available');
         if ((await this.ledger.balanceOf(tx, available)) < input.amount) {
-          throw new AppError('insufficient_funds', 'Not enough USDC is available in the treasury.');
+          throw new AppError('insufficient_funds', 'Not enough USDC is available.');
         }
         const consent = await this.consent.recordIn(tx, actor.accountId, actor.requestId, {
-          termsKey: DISCLOSURE,
+          termsKey: terms.key,
           termsVersion: terms.version,
           action: 'nam.order',
-          capacity: 'business',
-          tenantId: actor.tenantId,
+          capacity: owner.kind === 'workspace' ? 'business' : 'personal',
+          tenantId,
         });
         const row = await tx.vault_order.create({
           data: {
             profile_id: profile,
-            tenant_id: actor.tenantId,
+            ...ownerColumns(owner),
             idempotency_key: input.idempotencyKey,
             request_hash: requestHash,
             amount: input.amount,
@@ -208,14 +240,14 @@ export class NamService {
           'nam_funding_reserved',
           'nam_order',
           row.id,
-          actor.tenantId,
+          tenantId,
           [
-            ['merchant_usdc_available', actor.tenantId, 'debit', input.amount],
-            ['merchant_nam_funding_pending', actor.tenantId, 'credit', input.amount],
+            ['available', owner, 'debit', input.amount],
+            ['funding_pending', owner, 'credit', input.amount],
           ],
         );
         await this.audit.record(tx, {
-          tenantId: actor.tenantId,
+          tenantId,
           actorKind: 'user',
           actorAccountId: actor.accountId,
           action: 'nam.order.created',
@@ -230,16 +262,16 @@ export class NamService {
     } catch (error) {
       if (error instanceof AppError) throw error;
       if (String(error).includes('insufficient balance')) {
-        throw new AppError('insufficient_funds', 'Not enough USDC is available in the treasury.');
+        throw new AppError('insufficient_funds', 'Not enough USDC is available.');
       }
       throw error;
     }
   }
 
-  listOrders(tenantId: string): Promise<OrderView[]> {
-    return this.db.withTenant(tenantId, async (tx) => {
+  listOrders(owner: NamOwner): Promise<OrderView[]> {
+    return this.scoped(owner, async (tx) => {
       const rows = await tx.vault_order.findMany({
-        where: { tenant_id: tenantId },
+        where: ownerColumns(owner),
         orderBy: { created_at: 'desc' },
         take: 100,
       });
@@ -314,7 +346,7 @@ export class NamService {
           await this.changeHolding(
             tx,
             row.profile_id,
-            row.tenant_id,
+            ownerOf(row),
             'order',
             row.id,
             operation.tx_hash ?? '',
@@ -332,8 +364,8 @@ export class NamService {
             [
               ['nam_vault_usdc', null, 'debit', row.amount],
               ['chain_wallet_usdc', null, 'credit', row.amount],
-              ['merchant_nam_funding_pending', row.tenant_id, 'debit', row.amount],
-              ['merchant_nam_holding', row.tenant_id, 'credit', row.amount],
+              ['funding_pending', ownerOf(row), 'debit', row.amount],
+              ['holding', ownerOf(row), 'credit', row.amount],
             ],
           );
           await this.audit.record(tx, {
@@ -362,8 +394,8 @@ export class NamService {
             row.id,
             row.tenant_id,
             [
-              ['merchant_nam_funding_pending', row.tenant_id, 'debit', row.amount],
-              ['merchant_usdc_available', row.tenant_id, 'credit', row.amount],
+              ['funding_pending', ownerOf(row), 'debit', row.amount],
+              ['available', ownerOf(row), 'credit', row.amount],
             ],
           );
         });
@@ -385,13 +417,15 @@ export class NamService {
   // -------------------------------------------------------------------------
 
   async createRedemption(
+    owner: NamOwner,
     actor: Actor,
     input: { idempotencyKey: string; shares: bigint | 'all' },
   ): Promise<{ redemption: RedemptionView; replayed: boolean }> {
     await this.gateway.vault();
+    const tenantId = owner.kind === 'workspace' ? owner.tenantId : null;
     const requestHash = createHash('sha256').update(input.shares.toString()).digest('hex');
     return this.db.asPlatform(async (tx) => {
-      const profile = await this.profile(tx, actor.tenantId);
+      const profile = await this.profile(tx, owner);
       const existing = await tx.redemption.findUnique({
         where: {
           profile_id_idempotency_key: {
@@ -426,7 +460,7 @@ export class NamService {
       const row = await tx.redemption.create({
         data: {
           profile_id: profile,
-          tenant_id: actor.tenantId,
+          ...ownerColumns(owner),
           idempotency_key: input.idempotencyKey,
           request_hash: requestHash,
           shares: shares.toString(),
@@ -434,7 +468,7 @@ export class NamService {
         },
       });
       await this.audit.record(tx, {
-        tenantId: actor.tenantId,
+        tenantId,
         actorKind: 'user',
         actorAccountId: actor.accountId,
         action: 'nam.redemption.requested',
@@ -448,10 +482,10 @@ export class NamService {
     });
   }
 
-  listRedemptions(tenantId: string): Promise<RedemptionView[]> {
-    return this.db.withTenant(tenantId, async (tx) => {
+  listRedemptions(owner: NamOwner): Promise<RedemptionView[]> {
+    return this.scoped(owner, async (tx) => {
       const rows = await tx.redemption.findMany({
-        where: { tenant_id: tenantId },
+        where: ownerColumns(owner),
         orderBy: { created_at: 'desc' },
         take: 100,
       });
@@ -533,7 +567,7 @@ export class NamService {
           await this.changeHolding(
             tx,
             row.profile_id,
-            row.tenant_id,
+            ownerOf(row),
             'redemption',
             row.id,
             operation.tx_hash ?? '',
@@ -552,8 +586,8 @@ export class NamService {
             [
               ['chain_wallet_usdc', null, 'debit', assets],
               ['nam_vault_usdc', null, 'credit', assets],
-              ['merchant_nam_holding', row.tenant_id, 'debit', cost],
-              ['merchant_usdc_available', row.tenant_id, 'credit', assets],
+              ['holding', ownerOf(row), 'debit', cost],
+              ['available', ownerOf(row), 'credit', assets],
               ...(rounding > 0n
                 ? [['nam_vault_rounding', null, 'credit', rounding] as const]
                 : rounding < 0n
@@ -647,18 +681,75 @@ export class NamService {
   // Helpers
   // -------------------------------------------------------------------------
 
-  private async profile(tx: Tx, tenantId: string): Promise<string> {
-    await tx.$executeRaw`
-      insert into nam.investor_profile (kind, tenant_id) values ('business', ${tenantId}::uuid)
-      on conflict (tenant_id) do nothing`;
-    const row = await tx.investor_profile.findUniqueOrThrow({ where: { tenant_id: tenantId } });
-    return row.id;
+  /** The owner's investor profile, created on first use: business for a workspace, personal for a person. */
+  private async profile(tx: Tx, owner: NamOwner): Promise<string> {
+    if (owner.kind === 'workspace') {
+      await tx.$executeRaw`
+        insert into nam.investor_profile (kind, tenant_id) values ('business', ${owner.tenantId}::uuid)
+        on conflict (tenant_id) do nothing`;
+    } else {
+      const person = await this.personOf(tx, owner.accountId);
+      await tx.$executeRaw`
+        insert into nam.investor_profile (kind, person_id) values ('personal', ${person}::uuid)
+        on conflict (person_id) do nothing`;
+    }
+    const id = await this.findProfile(tx, owner);
+    if (!id) throw new Error('Investor profile was not created.');
+    return id;
+  }
+
+  private async findProfile(tx: Tx, owner: NamOwner): Promise<string | null> {
+    const row =
+      owner.kind === 'workspace'
+        ? await tx.investor_profile.findUnique({ where: { tenant_id: owner.tenantId } })
+        : await tx.investor_profile.findUnique({
+            where: { person_id: await this.personOf(tx, owner.accountId) },
+          });
+    return row?.id ?? null;
+  }
+
+  private async personOf(tx: Tx, accountId: string): Promise<string> {
+    const account = await tx.user_account.findUniqueOrThrow({
+      where: { id: accountId },
+      select: { person_id: true },
+    });
+    return account.person_id;
+  }
+
+  private disclosureKey(
+    owner: NamOwner,
+    product: { terms_key: string; personal_terms_key: string | null },
+  ): string {
+    return owner.kind === 'consumer'
+      ? (product.personal_terms_key ?? product.terms_key)
+      : product.terms_key;
+  }
+
+  private account(tx: Tx, owner: NamOwner, role: OwnerRole): Promise<string> {
+    return owner.kind === 'consumer'
+      ? this.ledger.consumerAccount(tx, {
+          accountId: owner.accountId,
+          type: ROLE_TYPES.consumer[role],
+          assetCode: USDC,
+        })
+      : this.ledger.findAccount(tx, {
+          tenantId: owner.tenantId,
+          type: ROLE_TYPES.workspace[role],
+          assetCode: USDC,
+        });
+  }
+
+  /** Reads as the owner sees them: the tenant role for a workspace, the consumer barrier for a person. */
+  private scoped<T>(owner: NamOwner, work: (tx: Tx) => Promise<T>): Promise<T> {
+    return owner.kind === 'workspace'
+      ? this.db.withTenant(owner.tenantId, work)
+      : this.db.withConsumer(owner.accountId, work);
   }
 
   private async changeHolding(
     tx: Tx,
     profileId: string,
-    tenantId: string | null,
+    owner: NamOwner,
     sourceType: 'order' | 'redemption',
     sourceId: string,
     txHash: string,
@@ -666,10 +757,12 @@ export class NamService {
     sharesDelta: bigint,
     costDelta: bigint,
   ): Promise<void> {
+    const { tenant_id: tenantId, consumer_account_id: consumerId } = ownerColumns(owner);
     await tx.holding_change.create({
       data: {
         profile_id: profileId,
         tenant_id: tenantId,
+        consumer_account_id: consumerId,
         source_type: sourceType,
         source_id: sourceId,
         tx_hash: txHash.toLowerCase(),
@@ -689,8 +782,9 @@ export class NamService {
       return;
     }
     await tx.$executeRaw`
-      insert into nam.holding (profile_id, tenant_id, shares, cost_basis)
-      values (${profileId}::uuid, ${tenantId}::uuid, ${sharesDelta.toString()}::numeric, ${costDelta})
+      insert into nam.holding (profile_id, tenant_id, consumer_account_id, shares, cost_basis)
+      values (${profileId}::uuid, ${tenantId}::uuid, ${consumerId}::uuid,
+              ${sharesDelta.toString()}::numeric, ${costDelta})
       on conflict (profile_id) do update
         set shares = nam.holding.shares + excluded.shares,
             cost_basis = nam.holding.cost_basis + excluded.cost_basis,
@@ -733,28 +827,21 @@ export class NamService {
     operationType: string,
     operationId: string,
     tenantId: string | null,
-    lines: readonly (readonly [
-      (
-        | 'merchant_usdc_available'
-        | 'merchant_nam_funding_pending'
-        | 'merchant_nam_holding'
-        | 'nam_vault_usdc'
-        | 'nam_vault_rounding'
-        | 'chain_wallet_usdc'
-      ),
-      string | null,
-      'debit' | 'credit',
-      bigint,
-    ])[],
+    // Each line is a platform account (owner null) or the owner's account for a role.
+    lines: readonly (
+      | readonly [PlatformType, null, 'debit' | 'credit', bigint]
+      | readonly [OwnerRole, NamOwner, 'debit' | 'credit', bigint]
+    )[],
   ): Promise<void> {
     const postings = [];
-    for (const [type, owner, direction, amount] of lines) {
+    for (const line of lines) {
+      const [, , direction, amount] = line;
       if (amount === 0n) continue;
-      postings.push({
-        accountId: await this.ledger.findAccount(tx, { tenantId: owner, type, assetCode: USDC }),
-        direction,
-        amount,
-      });
+      const accountId =
+        line[1] === null
+          ? await this.ledger.findAccount(tx, { tenantId: null, type: line[0], assetCode: USDC })
+          : await this.account(tx, line[1], line[0]);
+      postings.push({ accountId, direction, amount });
     }
     await this.ledger.post(tx, {
       idempotencyKey: key,
