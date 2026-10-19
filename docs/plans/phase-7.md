@@ -1,6 +1,6 @@
 # Phase 7 Plan — CHIWO (web)
 
-- **Status:** built (2026-10-19): 7A (PR #25) and 7B (PR #26) merged and on staging; 7C in PR. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
+- **Status:** done (2026-10-19): 7A (PR #25), 7B (PR #26) and 7C (PR #27) merged and on staging. `chiwo-web` deployment waits for the owner's approval. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
 - **Scope source:** [mvp-scope.md](../product/mvp-scope.md) §3 (checkpoints 7A, 7B, 7C), journeys J12 and J13 (CHIWO side); brief §2.1, §4.1, §4.2, §7.1 ("a person may act personally in CHIWO and on behalf of a company in KONY; these must not be conflated"), §7.2; O-11 (c) confirmed-recipient rule; O-14 (Daraja test number only).
 - **Branch:** `phase-7`. Merge rules as before: CI green on the head commit, every Vercel variable the code needs exists, new migrations already on staging (expand-only), then staging health and all cron jobs confirmed.
 - **Test discipline:** tests strictly first for every state machine (merchant payment, transfer, payment request, consumer withdrawal, personal NAM order), every ledger posting, idempotency, and consumer isolation (one consumer never sees another's rows; personal and business contexts never meet).
