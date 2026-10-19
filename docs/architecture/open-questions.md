@@ -109,6 +109,16 @@ The 2026 regulations forbid a credit provider to carry on payment services, savi
 - **No push notifications in the MVP:** they need a development build and a push service; email stays the channel (P9-16).
 - **Owner action to try the apps on a phone (not blocking the build):** switch on Clerk's **Native API** for the development instance (Clerk Dashboard → Native applications). Clerk notes it opens a request path that bypasses browser CAPTCHA; acceptable on a development instance capped at 100 users. Then follow [mobile.md](../operations/mobile.md).
 
+### Phase 10 owner decisions (2026-10-19, the MVP gate)
+
+Details and options in [phase-10.md](../plans/phase-10.md) §2 and [gate-runbook.md](../operations/gate-runbook.md).
+
+- **O-17 (owner): how staging is reset.** Ledger entries cannot be deleted, so a reset rebuilds the database. **Recommended:** rebuild in place (drop the application schemas on Neon `main` through the direct connection, re-migrate, re-bootstrap roles, seed, demo-seed), run by hand with a typed confirmation, only when the owner says so. It deletes every staging record, including the walk-through data. Alternatives: a fresh Neon branch per gate run (a Vercel Production variable change each time), or no reset (gate on existing data once it is clean). **Blocks:** G1 "reset is idempotent" on staging.
+- **O-18 (owner): how journey scripts sign in on staging,** where the sandbox authenticator is refused and Clerk test mode is off. **Recommended:** scripts run locally and in CI only; staging is covered by the owner's signed-in walk-through plus the read-only gate check. Alternative: create gate users in the Clerk development instance through Clerk's Backend API and sign them in with sign-in tokens (a new automated sign-in path on staging; creates users in the owner's Clerk instance). **Blocks:** 10C's staging run.
+- **O-19 (owner): mobile end-to-end on an emulator.** **Recommended:** a manual device check in the walk-through. Alternative: Maestro on an Android emulator in GitHub Actions (long runs; Actions minutes may be billed on a private repository). **Blocks:** nothing in the API gate.
+- **O-20 (owner): `kelo_credit` on staging for the gate run** (K2, K3, K5, K6). **Recommended:** the owner switches it on in internal-ops `/flags` for the gate run, then runs `pnpm db:seed:demo staging` again to add the credit plans. **Blocks:** K2, K3, K5, K6 on staging.
+- **Found by the gate check (2026-10-19):** one open reconciliation exception on staging since 2026-10-14, `state_mismatch` on a payment intent (AORA `pending_provider`, provider `settled`), from Phase 3 testing. An operator resolves it in internal-ops with an audited reason, or the O-17 reset clears it. **Blocks:** the gate line "no open reconciliation exception".
+
 ## Pre-pilot list (carried, 2026-10-18)
 
 Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); network fees (ETH) posted to the ledger, not only recorded (phase-5 P5-7); make `BLOB_READ_WRITE_TOKEN` a sensitive Vercel variable; ADRs 0009, 0010, 0011 decided; O-16 (credit entity or licensed partner, counsel's view).
