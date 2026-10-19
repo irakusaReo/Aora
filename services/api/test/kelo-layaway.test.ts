@@ -167,13 +167,16 @@ beforeAll(async () => {
 afterAll(() => h.close());
 
 describe('purchase state machine', () => {
-  it('allows exactly the layaway subset of the ADR 0017 order machine', () => {
+  it('allows exactly the ADR 0017 order machine, with returns and disputes (8C)', () => {
     expect(PURCHASE_TRANSITIONS).toEqual({
       placed: ['payment_ready', 'cancelled'],
-      payment_ready: ['merchant_confirmed', 'cancelled'],
-      merchant_confirmed: ['fulfilled', 'cancelled'],
+      payment_ready: ['merchant_confirmed', 'cancelled', 'disputed'],
+      merchant_confirmed: ['fulfilled', 'cancelled', 'disputed'],
       fulfilled: ['completed'],
-      completed: [],
+      completed: ['return_requested', 'disputed'],
+      return_requested: ['returned', 'completed'],
+      disputed: ['payment_ready', 'merchant_confirmed', 'completed', 'returned', 'cancelled'],
+      returned: [],
       cancelled: [],
     });
   });

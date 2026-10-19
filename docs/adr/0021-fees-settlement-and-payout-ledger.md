@@ -135,3 +135,11 @@ The entries are the Phase 6 ones with the owner's accounts in place of the works
 ## Addendum, 2026-10-19 (Phase 8B: credit repayments)
 
 A repayment's allocation entry (operation `kelo_credit_repayment`) debits `kelo_credit_repayments_unapplied` with the amount and credits the consumer's receivable with principal, `kelo_late_charge_income` with charges and `kelo_interest_income` with interest. Charges and interest are income only when paid (cash basis); a late charge on an unpaid part is not in the ledger. Cancelling an active agreement before fulfilment also reverses any charges received.
+
+## Addendum, 2026-10-19 (Phase 8C: returns and clawback)
+
+| Account | Owner | Normal side | Meaning |
+|---|---|---|---|
+| `merchant_kelo_clawback_receivable` | workspace | debit | Owed by the merchant for an accepted return, until netted from their next KELO settlement |
+
+An accepted return after delivery posts one entry naming the workspace: debit the clawback receivable with the merchant's net and `kelo_fee_revenue` with the discount fee; debit interest and charge income with what the buyer paid of them; credit the buyer's receivable with what they still owed and `kelo_refunds_payable` with everything they paid. Each later KELO settlement to that workspace credits the receivable first (under a per-workspace lock) and only the rest to `merchant_available`.

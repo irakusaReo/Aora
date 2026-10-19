@@ -79,3 +79,11 @@ Differences from sections 2 to 4, none material:
 - Routes: `GET …/credit/quote`, `POST …/credit/repay` (`next` or `payoff`, with the quoted amount), `GET …/credit/statement`; cron `GET /v1/internal/cron/kelo-credit` (seventh job, added to the scheduled workflow).
 - Emails: `kelo.credit.reminder` (upcoming, overdue) and `kelo.credit.receipt`.
 - kelo-web: "Pay early" in `/purchases` with the exact payoff, what it is made of and the interest saved; `/credit/statement/{purchase}`.
+
+## 9. 8C as built (2026-10-19)
+
+- Migration `20261019000600_kelo_returns` (expand-only): purchase states `return_requested`, `returned`, `disputed`; `kelo.purchase_claim` (one open per purchase, by an expression index); `credit_instalment.grace_from`; account type `merchant_kelo_clawback_receivable`.
+- `CreditService.unwind` is the one path that undoes a credit purchase: cancellation (8A), an accepted return, and an upheld dispute.
+- Routes: `POST /v1/kelo/me/purchases/{id}/claims`, `…/claims/{claim}/withdraw`; `POST /v1/workspace/kelo/claims/{id}/accept` (refund permission, step-up) and `…/reject`; `GET /v1/ops/kelo/claims`, `POST /v1/ops/kelo/claims/{id}/decision` (step-up).
+- Screens: kelo-web "Something wrong?" in each credit purchase card, the paused notice and withdraw; kony-web KELO orders shows the claim and accept (PIN) or reject (reason); internal-ops `/disputes`.
+- Deviation: no partial returns (one item per purchase), so "re-plans what is left" has nothing left to re-plan.

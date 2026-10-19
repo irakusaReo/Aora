@@ -26,6 +26,7 @@ import {
   type MerchantPurchaseView,
   type PlanOffer,
 } from './layaway.service.js';
+import { type ClaimView, ClaimsService } from './credit/claims.service.js';
 import { CreditService, type CreditView } from './credit/credit.service.js';
 import type { CreditOffer } from './credit/offer.js';
 
@@ -106,7 +107,7 @@ export class KeloPlansController {
   }
 }
 
-type PurchaseView = BuyerPurchaseView & { credit: CreditView | null };
+type PurchaseView = BuyerPurchaseView & { credit: CreditView | null; claim: ClaimView | null };
 
 /** A signed-in buyer's purchases: layaway (journey K4) and credit (K2, phase 8A). */
 @Controller('v1/kelo')
@@ -115,15 +116,21 @@ export class KeloPurchasesController {
   constructor(
     @Inject(LayawayService) private readonly layaway: LayawayService,
     @Inject(CreditService) private readonly credit: CreditService,
+    @Inject(ClaimsService) private readonly claims: ClaimsService,
   ) {}
 
-  /** Each purchase with its credit agreement, if it has one. */
+  /** Each purchase with its credit agreement and latest claim, if it has them. */
   private async withCredit(accountId: string, views: BuyerPurchaseView[]): Promise<PurchaseView[]> {
-    const credit = await this.credit.views(
-      accountId,
-      views.filter((view) => view.plan_type !== 'layaway').map((view) => view.id),
-    );
-    return views.map((view) => ({ ...view, credit: credit.get(view.id) ?? null }));
+    const ids = views.filter((view) => view.plan_type !== 'layaway').map((view) => view.id);
+    const [credit, claims] = await Promise.all([
+      this.credit.views(accountId, ids),
+      this.claims.forBuyer(accountId, ids),
+    ]);
+    return views.map((view) => ({
+      ...view,
+      credit: credit.get(view.id) ?? null,
+      claim: claims.get(view.id) ?? null,
+    }));
   }
 
   private async view(accountId: string, purchaseId: string): Promise<PurchaseView> {
@@ -165,7 +172,7 @@ export class KeloPurchasesController {
     });
     response.status(result.replayed ? 200 : 201);
     if (result.replayed) response.setHeader('Idempotent-Replay', 'true');
-    return { ...result.purchase, credit: null };
+    return { ...result.purchase, credit: null, claim: null };
   }
 
   @Get('me/purchases')
@@ -228,7 +235,10 @@ export class KeloPurchasesController {
 @Controller('v1/workspace/kelo')
 @UseGuards(SessionGuard, WorkspaceGuard)
 export class KeloMerchantPurchasesController {
-  constructor(@Inject(LayawayService) private readonly layaway: LayawayService) {}
+  constructor(
+    @Inject(LayawayService) private readonly layaway: LayawayService,
+    @Inject(ClaimsService) private readonly claims: ClaimsService,
+  ) {}
 
   @Get('listings/:id/plan-options')
   @Permit('kelo_listing.read')
@@ -254,8 +264,28 @@ export class KeloMerchantPurchasesController {
 
   @Get('purchases')
   @Permit('kelo_listing.read')
-  async list(@Req() request: Request): Promise<{ data: MerchantPurchaseView[] }> {
-    return { data: await this.layaway.merchantList(tenantOf(request).tenantId) };
+  async list(
+    @Req() request: Request,
+  ): Promise<{ data: (MerchantPurchaseView & { claim: ClaimView | null })[] }> {
+    const tenantId = tenantOf(request).tenantId;
+    const rows = await this.layaway.merchantList(tenantId);
+    const claims = await this.claims.forMerchant(
+      tenantId,
+      rows.map((row) => row.id),
+    );
+    return {
+      data: rows.map((row) => {
+        const claim = claims.get(row.id) ?? null;
+        // An open return waits on the merchant; an open dispute on KELO (8C).
+        const next_action: MerchantPurchaseView['next_action'] =
+          claim?.status === 'open'
+            ? claim.kind === 'return'
+              ? 'respond_to_return'
+              : 'wait_for_decision'
+            : row.next_action;
+        return { ...row, next_action, claim };
+      }),
+    };
   }
 
   @Post('purchases/:id/confirm')

@@ -440,7 +440,15 @@ export interface KeloCreditAgreement {
 export interface KeloPurchase {
   id: string;
   status:
-    'placed' | 'payment_ready' | 'merchant_confirmed' | 'fulfilled' | 'completed' | 'cancelled';
+    | 'placed'
+    | 'payment_ready'
+    | 'merchant_confirmed'
+    | 'fulfilled'
+    | 'completed'
+    | 'cancelled'
+    | 'return_requested'
+    | 'returned'
+    | 'disputed';
   plan_status: 'active' | 'paid_in_full' | 'settled' | 'cancelled' | 'refunded';
   plan_type: 'layaway' | 'pay_in_n' | 'monthly_financing';
   listing_id: string;
@@ -457,7 +465,23 @@ export interface KeloPurchase {
   }[];
   refund: { paid_minor: string; fee_minor: string; refund_minor: string; status: string } | null;
   credit: KeloCreditAgreement | null;
+  claim: KeloClaim | null;
   created_at: string;
+}
+
+// Returns and disputes (phase 8C).
+export interface KeloClaim {
+  id: string;
+  purchase_id: string;
+  kind: 'return' | 'dispute';
+  reason_code: 'not_delivered' | 'not_as_described' | 'faulty' | 'changed_mind' | 'other';
+  details: string | null;
+  status: 'open' | 'accepted' | 'rejected' | 'withdrawn';
+  decided_as: 'merchant' | 'operator' | 'buyer' | null;
+  decision_reason: string | null;
+  created_at: string;
+  decided_at: string | null;
+  workspace_id?: string;
 }
 
 export interface KeloMerchantPurchase {
@@ -471,7 +495,15 @@ export interface KeloMerchantPurchase {
   merchant_fee_minor: string;
   net_minor: string;
   currency: string;
-  next_action: 'wait_for_payments' | 'confirm' | 'fulfil' | 'wait_for_buyer' | 'none';
+  next_action:
+    | 'wait_for_payments'
+    | 'confirm'
+    | 'fulfil'
+    | 'wait_for_buyer'
+    | 'respond_to_return'
+    | 'wait_for_decision'
+    | 'none';
+  claim: KeloClaim | null;
   created_at: string;
 }
 

@@ -28,7 +28,8 @@ export type AccountType =
   | 'kelo_merchant_payable_pending'
   | 'kelo_credit_repayments_unapplied'
   | 'kelo_interest_income'
-  | 'kelo_late_charge_income';
+  | 'kelo_late_charge_income'
+  | 'merchant_kelo_clawback_receivable';
 
 /** Account types a CHIWO consumer owns (phase-7 P7-2); no workspace ever holds one. */
 export type ConsumerAccountType = Extract<AccountType, `consumer_${string}`>;
@@ -88,6 +89,9 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   kelo_interest_income: { normalSide: 'credit', allowNegative: false },
   // Late charges received (8B): income.
   kelo_late_charge_income: { normalSide: 'credit', allowNegative: false },
+  // KELO returns (phase 8C). Clawed back from a workspace for an accepted return,
+  // until netted from its next KELO settlement: an asset (ADR 0017).
+  merchant_kelo_clawback_receivable: { normalSide: 'debit', allowNegative: false },
 };
 
 export interface PostingInput {
@@ -178,6 +182,20 @@ export class LedgerService {
       select: { id: true },
     });
     return account.id;
+  }
+
+  /** A workspace's account, opened on first use (one per workspace, type and asset). */
+  async tenantAccount(
+    tx: Tx,
+    input: { tenantId: string; type: AccountType; assetCode: string },
+  ): Promise<string> {
+    const chart = CHART[input.type];
+    await tx.$executeRaw`
+      insert into ledger.account (tenant_id, asset_code, type, qualifier, normal_side, allow_negative)
+      values (${input.tenantId}::uuid, ${input.assetCode}, ${input.type}, '', ${chart.normalSide},
+              ${chart.allowNegative})
+      on conflict (tenant_id, type, qualifier, asset_code) where tenant_id is not null do nothing`;
+    return this.findAccount(tx, input);
   }
 
   async findAccount(

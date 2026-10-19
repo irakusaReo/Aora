@@ -132,6 +132,8 @@ model user_account {
   moderation_decision                                                              moderation_decision[]
   provisioning                                                                     provisioning[]
   purchase                                                                         purchase[]
+  purchase_claim_purchase_claim_consumer_account_idTouser_account                  purchase_claim[]           @relation("purchase_claim_consumer_account_idTouser_account")
+  purchase_claim_purchase_claim_decided_byTouser_account                           purchase_claim[]           @relation("purchase_claim_decided_byTouser_account")
   purchase_event                                                                   purchase_event[]
   quote_quote_consumer_account_idTouser_account                                    quote[]                    @relation("quote_consumer_account_idTouser_account")
   quote_quote_created_byTouser_account                                             quote[]                    @relation("quote_created_byTouser_account")
@@ -1552,6 +1554,7 @@ model purchase {
   listing_session     listing_session?     @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   plan_template       plan_template        @relation(fields: [template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   listing_variant     listing_variant?     @relation(fields: [variant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase_claim      purchase_claim[]
   purchase_event      purchase_event[]
 
   @@unique([consumer_account_id, idempotency_key])
@@ -2203,6 +2206,7 @@ model credit_agreement {
   credit_agreement_event                                             credit_agreement_event[]
   credit_instalment                                                  credit_instalment[]
   credit_repayment                                                   credit_repayment?
+  purchase_claim                                                     purchase_claim[]
 
   @@unique([purchase_id, tenant_id])
   @@schema("kelo")
@@ -2291,6 +2295,7 @@ model credit_instalment {
   paid_charges_minor    BigInt            @default(0)
   repayment_id          String?           @db.Uuid
   late_on               DateTime?         @db.Date
+  grace_from            DateTime?         @db.Date
   credit_agreement      credit_agreement  @relation(fields: [agreement_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user_account          user_account      @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   payment_intent        payment_intent?   @relation(fields: [payment_intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -2383,5 +2388,39 @@ model reminder_policy {
   mode              String    @default("sandbox")
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
 
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model purchase_claim {
+  id                                                            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                                     String            @db.Uuid
+  purchase_id                                                   String            @db.Uuid
+  consumer_account_id                                           String            @db.Uuid
+  agreement_id                                                  String?           @db.Uuid
+  idempotency_key                                               String
+  kind                                                          String
+  reason_code                                                   String
+  details                                                       String?
+  status                                                        String            @default("open")
+  prior_purchase_status                                         String
+  prior_agreement_status                                        String?
+  paused_lines                                                  Json              @default("[]")
+  decided_by                                                    String?           @db.Uuid
+  decided_as                                                    String?
+  decision_reason                                               String?
+  decided_at                                                    DateTime?         @db.Timestamptz(6)
+  mode                                                          String            @default("sandbox")
+  created_at                                                    DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at                                                    DateTime          @default(now()) @db.Timestamptz(6)
+  credit_agreement                                              credit_agreement? @relation(fields: [agreement_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_purchase_claim_consumer_account_idTouser_account user_account      @relation("purchase_claim_consumer_account_idTouser_account", fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account_purchase_claim_decided_byTouser_account          user_account?     @relation("purchase_claim_decided_byTouser_account", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase                                                      purchase          @relation(fields: [purchase_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([consumer_account_id, idempotency_key])
+  @@index([tenant_id, created_at(sort: Desc)], map: "purchase_claim_tenant")
   @@schema("kelo")
 }

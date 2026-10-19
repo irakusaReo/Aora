@@ -59,7 +59,7 @@ export const AGREEMENT_TRANSITIONS: Readonly<Record<AgreementStatus, readonly Ag
     pending_first_payment: ['active', 'cancelled'],
     active: ['paid_off', 'cancelled', 'defaulted', 'paused'],
     defaulted: ['paused', 'active', 'paid_off'],
-    paused: ['active', 'defaulted'],
+    paused: ['active', 'defaulted', 'cancelled'],
     paid_off: [],
     cancelled: [],
   };
@@ -1165,125 +1165,11 @@ export class CreditService implements OnModuleInit {
         throw new AppError('invalid_state_transition', 'This purchase can no longer be cancelled.');
       }
       const agreement = await this.lockAgreement(tx, purchase.id);
-      const lines = await tx.credit_instalment.findMany({ where: { agreement_id: agreement.id } });
-      if (lines.some((line) => line.status === 'pending' || line.status === 'submitting')) {
-        throw new AppError(
-          'invalid_state_transition',
-          'A payment is being checked. Cancel once it has a result.',
-        );
-      }
-      const paidPrincipal = lines.reduce((sum, line) => sum + line.paid_principal_minor, 0n);
-      const paidInterest = lines.reduce((sum, line) => sum + line.paid_interest_minor, 0n);
-      const paidCharges = lines.reduce((sum, line) => sum + line.paid_charges_minor, 0n);
-      const paid = paidPrincipal + paidInterest + paidCharges;
-      await tx.credit_instalment.updateMany({
-        where: { agreement_id: agreement.id, status: { in: ['due', 'late'] } },
-        data: { status: 'cancelled' },
+      await this.unwind(tx, purchase, agreement, {
+        to: 'cancelled',
+        actorKind: 'user',
+        actorAccountId: actor.accountId,
       });
-      await release(tx, purchase);
-      await movePurchase(tx, purchase, 'cancelled', 'user', actor.accountId);
-      await tx.purchase.update({ where: { id: purchase.id }, data: { plan_status: 'cancelled' } });
-      await purchaseEvent(
-        tx,
-        purchase,
-        'plan_status',
-        purchase.plan_status,
-        'cancelled',
-        'user',
-        actor.accountId,
-      );
-      const wasActive = agreement.status === 'active';
-      await this.moveAgreement(tx, agreement, 'cancelled', 'user', actor.accountId);
-
-      if (wasActive) {
-        // The agreement entry is undone: the merchant is owed nothing, the buyer
-        // owes nothing, and everything the buyer paid is owed back to them.
-        const receivable = await this.ledger.consumerAccount(tx, {
-          accountId: agreement.consumer_account_id,
-          type: 'consumer_kelo_credit_receivable',
-          assetCode: agreement.currency,
-        });
-        const owed = agreement.price_minor - paidPrincipal;
-        await this.ledger.post(tx, {
-          idempotencyKey: `kelo.credit.cancel:${agreement.id}`,
-          tenantId: null,
-          entryType: 'kelo_credit_cancellation',
-          operationType: 'kelo_credit_agreement',
-          operationId: agreement.id,
-          postings: [
-            {
-              accountId: await this.platformAccount(
-                tx,
-                'kelo_merchant_payable_pending',
-                agreement.currency,
-              ),
-              direction: 'debit',
-              amount: agreement.price_minor,
-            },
-            ...(owed > 0n
-              ? [{ accountId: receivable, direction: 'credit' as const, amount: owed }]
-              : []),
-            ...(paidInterest > 0n
-              ? [
-                  {
-                    accountId: await this.platformAccount(
-                      tx,
-                      'kelo_interest_income',
-                      agreement.currency,
-                    ),
-                    direction: 'debit' as const,
-                    amount: paidInterest,
-                  },
-                ]
-              : []),
-            ...(paidCharges > 0n
-              ? [
-                  {
-                    accountId: await this.platformAccount(
-                      tx,
-                      'kelo_late_charge_income',
-                      agreement.currency,
-                    ),
-                    direction: 'debit' as const,
-                    amount: paidCharges,
-                  },
-                ]
-              : []),
-            ...(paid > 0n
-              ? [
-                  {
-                    accountId: await this.platformAccount(
-                      tx,
-                      'kelo_refunds_payable',
-                      agreement.currency,
-                    ),
-                    direction: 'credit' as const,
-                    amount: paid,
-                  },
-                ]
-              : []),
-          ],
-        });
-        if (paid > 0n) {
-          // Paid back through the same refund path as layaway, with no fee.
-          const refund = await tx.layaway_refund.create({
-            data: {
-              tenant_id: purchase.tenant_id,
-              consumer_account_id: purchase.consumer_account_id,
-              purchase_id: purchase.id,
-              paid_minor: paid,
-              fee_minor: 0n,
-              refund_minor: paid,
-              currency: agreement.currency,
-            },
-          });
-          await this.outbox.enqueue(tx, {
-            tenantId: purchase.tenant_id,
-            type: EVENT_REFUND_SUBMIT,
-            payload: { refund_id: refund.id },
-          });
-        }
-      }
       await this.audit.record(tx, {
         tenantId: purchase.tenant_id,
         actorKind: 'user',
@@ -1296,6 +1182,183 @@ export class CreditService implements OnModuleInit {
         detail: { plan_type: purchase.plan_type },
       });
     });
+  }
+
+  /**
+   * Undoes a credit purchase by compensating entries (ADR 0017): the buyer owes
+   * nothing more and everything they paid is refunded with no fee. Cancelled
+   * before fulfilment, the merchant is owed nothing; returned after it, the
+   * merchant's net is clawed back as a receivable netted from their next KELO
+   * settlement, and KELO's discount fee is given up. The caller holds the
+   * purchase and agreement locks and records the audit event.
+   */
+  async unwind(
+    tx: Tx,
+    purchase: Prisma.purchaseGetPayload<object>,
+    agreement: Agreement,
+    options: {
+      to: 'cancelled' | 'returned';
+      actorKind: 'user' | 'system';
+      actorAccountId: string | null;
+    },
+  ): Promise<void> {
+    const lines = await tx.credit_instalment.findMany({ where: { agreement_id: agreement.id } });
+    if (lines.some((line) => line.status === 'pending' || line.status === 'submitting')) {
+      throw new AppError(
+        'invalid_state_transition',
+        'A payment is being checked. Try again once it has a result.',
+      );
+    }
+    const paidPrincipal = lines.reduce((sum, line) => sum + line.paid_principal_minor, 0n);
+    const paidInterest = lines.reduce((sum, line) => sum + line.paid_interest_minor, 0n);
+    const paidCharges = lines.reduce((sum, line) => sum + line.paid_charges_minor, 0n);
+    const paid = paidPrincipal + paidInterest + paidCharges;
+    await tx.credit_instalment.updateMany({
+      where: { agreement_id: agreement.id, status: { in: ['due', 'late', 'paused'] } },
+      data: { status: 'cancelled' },
+    });
+    if (options.to === 'cancelled') await release(tx, purchase);
+    await movePurchase(tx, purchase, options.to, options.actorKind, options.actorAccountId);
+    await tx.purchase.update({ where: { id: purchase.id }, data: { plan_status: 'cancelled' } });
+    await purchaseEvent(
+      tx,
+      purchase,
+      'plan_status',
+      purchase.plan_status,
+      'cancelled',
+      options.actorKind,
+      options.actorAccountId,
+    );
+    const inForce = ['active', 'defaulted', 'paused', 'paid_off'].includes(agreement.status);
+    // A paid-off agreement stays the record of what was lent and repaid.
+    if (agreement.status !== 'paid_off') {
+      await this.moveAgreement(
+        tx,
+        agreement,
+        'cancelled',
+        options.actorKind,
+        options.actorAccountId,
+      );
+    }
+    if (!inForce) return;
+
+    const currency = agreement.currency;
+    const receivable = await this.ledger.consumerAccount(tx, {
+      accountId: agreement.consumer_account_id,
+      type: 'consumer_kelo_credit_receivable',
+      assetCode: currency,
+    });
+    const owed = agreement.price_minor - paidPrincipal;
+    const net = purchase.total_minor - purchase.merchant_fee_minor;
+    const merchantSide =
+      options.to === 'cancelled'
+        ? [
+            {
+              accountId: await this.platformAccount(tx, 'kelo_merchant_payable_pending', currency),
+              direction: 'debit' as const,
+              amount: agreement.price_minor,
+            },
+          ]
+        : [
+            ...(net > 0n
+              ? [
+                  {
+                    accountId: await this.ledger.tenantAccount(tx, {
+                      tenantId: purchase.tenant_id,
+                      type: 'merchant_kelo_clawback_receivable',
+                      assetCode: currency,
+                    }),
+                    direction: 'debit' as const,
+                    amount: net,
+                  },
+                ]
+              : []),
+            ...(purchase.merchant_fee_minor > 0n
+              ? [
+                  {
+                    accountId: await this.platformAccount(tx, 'kelo_fee_revenue', currency),
+                    direction: 'debit' as const,
+                    amount: purchase.merchant_fee_minor,
+                  },
+                ]
+              : []),
+          ];
+    await this.ledger.post(tx, {
+      idempotencyKey: `kelo.credit.${options.to === 'cancelled' ? 'cancel' : 'return'}:${agreement.id}`,
+      // A clawback touches the workspace's own account, so the entry names its tenant.
+      tenantId: options.to === 'returned' ? purchase.tenant_id : null,
+      entryType: options.to === 'cancelled' ? 'kelo_credit_cancellation' : 'kelo_credit_return',
+      operationType: 'kelo_credit_agreement',
+      operationId: agreement.id,
+      postings: [
+        ...merchantSide,
+        ...(owed > 0n
+          ? [{ accountId: receivable, direction: 'credit' as const, amount: owed }]
+          : []),
+        ...(paidInterest > 0n
+          ? [
+              {
+                accountId: await this.platformAccount(tx, 'kelo_interest_income', currency),
+                direction: 'debit' as const,
+                amount: paidInterest,
+              },
+            ]
+          : []),
+        ...(paidCharges > 0n
+          ? [
+              {
+                accountId: await this.platformAccount(tx, 'kelo_late_charge_income', currency),
+                direction: 'debit' as const,
+                amount: paidCharges,
+              },
+            ]
+          : []),
+        ...(paid > 0n
+          ? [
+              {
+                accountId: await this.platformAccount(tx, 'kelo_refunds_payable', currency),
+                direction: 'credit' as const,
+                amount: paid,
+              },
+            ]
+          : []),
+      ],
+    });
+    if (paid > 0n) {
+      // Paid back through the same refund path as layaway, with no fee.
+      const refund = await tx.layaway_refund.create({
+        data: {
+          tenant_id: purchase.tenant_id,
+          consumer_account_id: purchase.consumer_account_id,
+          purchase_id: purchase.id,
+          paid_minor: paid,
+          fee_minor: 0n,
+          refund_minor: paid,
+          currency,
+        },
+      });
+      await this.outbox.enqueue(tx, {
+        tenantId: purchase.tenant_id,
+        type: EVENT_REFUND_SUBMIT,
+        payload: { refund_id: refund.id },
+      });
+    }
+  }
+
+  /** Locks a credit purchase's agreement (for claims). */
+  async lockAgreementOf(tx: Tx, purchaseId: string): Promise<Agreement> {
+    return this.lockAgreement(tx, purchaseId);
+  }
+
+  /** Moves an agreement through its machine, with its event (for claims). */
+  async moveAgreementAs(
+    tx: Tx,
+    agreement: Agreement,
+    to: AgreementStatus,
+    actorKind: 'user' | 'system',
+    actorAccountId: string | null,
+  ): Promise<void> {
+    await this.moveAgreement(tx, agreement, to, actorKind, actorAccountId);
   }
 
   /** Whether a purchase of this buyer is a credit purchase (for routing a cancellation). */
@@ -1586,7 +1649,8 @@ export class CreditService implements OnModuleInit {
       | 'kelo_credit_repayments_unapplied'
       | 'kelo_interest_income'
       | 'kelo_late_charge_income'
-      | 'kelo_refunds_payable',
+      | 'kelo_refunds_payable'
+      | 'kelo_fee_revenue',
     assetCode: string,
   ): Promise<string> {
     return this.ledger.findAccount(tx, { tenantId: null, type, assetCode });
