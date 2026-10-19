@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 9 — Mobile, in progress ([plan](plans/phase-9.md)): 9A merged; 9B (PR #36) and 9C built; merge and the end-of-phase report next. **Phase 8 — KELO credit ([plan](plans/phase-8.md)) is built, merged (PRs #30–#33) and on staging, with the `kelo_credit` flag off on staging.** Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
+- **Current phase:** Phase 10 — MVP gate, next, and a **stop point for the owner**. **Phase 9 — Mobile ([plan](plans/phase-9.md)) is built and merged (PRs #35–#37).** **Phase 8 — KELO credit ([plan](plans/phase-8.md)) is built, merged (PRs #30–#33) and on staging, with the `kelo_credit` flag off on staging.** Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 9: 9A merged, 9B and 9C built)
+- **Last updated:** 2026-10-19 (Phase 9 complete; Phase 10, the MVP gate, waits for the owner)
 
 ## Owner decisions of 2026-10-18
 
@@ -98,6 +98,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **9B built (2026-10-19, branch `phase-9b`, stacked on `phase-9a`):** `apps/chiwo-mobile`: sign-up with the phone and the terms read in the app (version recorded), pay a shop with fee and total first and the shown amounts sent back, payment status and receipt (unknown shown as "being checked"), activity in each item's own currency, USDC balance, find and confirm a person with the PIN, send USDC, payment requests (create, pay once, cancel), NAM position (funding, shares, holding apart; no yield). The PIN and phone screen moved into `packages/mobile` for all apps. 13 new app tests; contract test accepts a literal in a documented parameter segment. Bundle 4.3 MB.
 - **9A merged (2026-10-19, PR #35):** after the owner allowed merges. Staging health ok; seven cron jobs 200; reconciliation 0 exceptions (the API itself did not change).
 - **9C built (2026-10-19, branch `phase-9c`, stacked on `phase-9b`):** `apps/kelo-mobile`: browse and search, listing with plan-at-a-glance cards, layaway and credit checkout (two calls under one stored slot key), credit decision with plain-language reasons and nothing charged on a decline, purchases hub (next instalment, pay early or off at the API's quote, delivery, cancel, returns and disputes that pause the plan), statement; limit shown only as "you can spread up to", absent with the flag off. KELO merchant screen in `kony-mobile`: dashboard in kelo-experience order, orders with their next action, confirm, record delivery, accept a return (PIN) or reject it. 13 new tests.
+- **9B and 9C merged (2026-10-19, PRs #36, #37):** CI green on each head commit, including the mobile bundle step (each app about 4.3 MB of a 6 MB budget). Staging health ok; seven cron jobs 200; reconciliation 0 exceptions. 783 tests pass. No migration, no new endpoint, no Vercel change. **Phase 9 is complete.** Phase 10 (the MVP gate) is a stop point: it waits for the owner.
 
 ## Owner approvals of 2026-10-18 — carried out
 
@@ -107,10 +108,12 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Blocked
 
-- Nothing blocks Phase 9. Real Base Sepolia transactions wait for the wallet to be funded; until then chain work runs on a local chain.
+- Phase 10 (the MVP gate) waits for the owner under the run mode. Real Base Sepolia transactions wait for the wallet to be funded; until then chain work runs on a local chain.
 
 ## Waiting on the owner
 
+- Start Phase 10, the MVP gate (stop point in the run mode).
+- To try the mobile apps on a phone: switch on Clerk's Native API for the development instance ([operations/mobile.md](operations/mobile.md)).
 
 - Fund the sandbox wallet with Base Sepolia ETH and testnet USDC.
 - Whether to make `BLOB_READ_WRITE_TOKEN` sensitive on Vercel (remove and re-add).

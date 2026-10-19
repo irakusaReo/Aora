@@ -1,6 +1,6 @@
 # Phase 9 Plan — Mobile
 
-- **Status:** in progress (2026-10-19): 9A merged (PR #35); 9B built (PR #36); 9C built. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
+- **Status:** done (2026-10-19): 9A, 9B and 9C built, merged (PRs #35–#37) and confirmed against staging. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
 - **Scope source:** [mvp-scope.md](../product/mvp-scope.md) §3 (checkpoints 9A, 9B, 9C) and journey K8; [ADR 0016](../adr/0016-mobile-architecture.md) (mobile architecture), [ADR 0019](../adr/0019-clerk-integration.md) (Clerk); [kelo-experience.md](../product/kelo-experience.md).
 - **Branch:** one per checkpoint (`phase-9a`, `phase-9b`, `phase-9c`). Merge rules as before: CI green on the head commit, every needed Vercel variable present, then staging health and every cron job confirmed. Phase 9 adds no migration and no Vercel project: the apps are clients of the staging API and are not hosted.
 - **Test discipline:** tests strictly first for the idempotency-key store (a key survives an app restart), the outcome classifier (a timeout is "unknown", never "failed"), token storage (secure storage only), and the money formatting the apps use. Screens are tested alongside, rendered with a mocked API in CI.
