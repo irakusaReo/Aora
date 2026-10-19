@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 9 — Mobile, next ([mvp-scope.md](product/mvp-scope.md) §3). **Phase 8 — KELO credit ([plan](plans/phase-8.md)) is built, merged (PRs #30–#33) and on staging, with the `kelo_credit` flag off on staging.** Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
+- **Current phase:** Phase 9 — Mobile, in progress ([plan](plans/phase-9.md)): 9A `kony-mobile` built; 9B `chiwo-mobile` and 9C `kelo-mobile` next. **Phase 8 — KELO credit ([plan](plans/phase-8.md)) is built, merged (PRs #30–#33) and on staging, with the `kelo_credit` flag off on staging.** Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 8 complete; Phase 9 next)
+- **Last updated:** 2026-10-19 (Phase 9: 9A built)
 
 ## Owner decisions of 2026-10-18
 
@@ -92,6 +92,8 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **8C merged and on staging (2026-10-19, PR #32):** migration `…000600_kelo_returns` applied to staging first (the first attempt timed out before connecting; the retry applied it); `neon:verify staging` 8/8; health ok; seven cron jobs 200; reconciliation 0 exceptions.
 - **8D built (2026-10-19, branch `phase-8d`):** the KELO dashboard in KONY (`GET /v1/workspace/kelo/dashboard`, kony-web `/w/{id}/kelo/dashboard`): orders needing action, BNPL sales, settlements due and paid, returns and clawbacks, fees, all read from the ledger; no buyer or credit data. No migration. 4 new tests. Plan §10, ADR 0017 addendum.
 - **8D merged and on staging (2026-10-19, PR #33):** health ok; seven cron jobs 200; reconciliation 0 exceptions; `/v1/workspace/kelo/dashboard` live (401 signed out). 697 tests pass locally and in CI. **Phase 8 is complete.** To try credit on staging, an operator switches `kelo_credit` on in internal-ops `/flags`; it can be switched off again at once.
+- **Phase 9 plan written (2026-10-19):** [plans/phase-9.md](plans/phase-9.md), decisions P9-1 to P9-16. Expo SDK 58 (React 19.3.0, the web apps' version), pnpm isolated installs, Expo Go only (no Expo or EAS account), Clerk hosted authentication, set-up tasks stay on the web.
+- **9A built (2026-10-19, branch `phase-9a`):** `packages/mobile` (sandbox banner, translator, API provider and read hook with an in-memory last-good cache, idempotency-key store in secure storage, outcome classifier, money-action hook with PIN step-up, test helpers); `@aora/api-client` now device-safe (`AoraNetworkError` for an unknown outcome, timeout without `AbortSignal.timeout`); `apps/kony-mobile` (workspaces and invitations, collect by STK push or simulator, collections with gross/fee/net and refunds, balances by type and settlements, payouts with the fee first, USDC treasury and withdrawal approval, PIN and phone). Repository tests for mobile hygiene and the API contract; CI bundles each app for Android (6 MB budget; `kony-mobile` 4.3 MB) and scans the bundle for secrets. No migration. 757 tests pass (60 new). Runbook: [operations/mobile.md](operations/mobile.md). **Owner action to try it on a phone:** switch on Clerk's Native API for the development instance.
 
 ## Owner approvals of 2026-10-18 — carried out
 
@@ -116,7 +118,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 ## Known gaps carried forward
 
 - The owner's staging account has a random PIN that was not recorded; reset it by signing in again once an app exists.
-- Whether Expo session tokens lack the `azp` claim is unverified (ADR 0019); confirm with the mobile apps.
+- Expo session tokens carry no `azp` claim; the API already accepts that (ADR 0019 addendum of 2026-10-19). Confirm sign-in on a device during the walk-through.
 - `seed.ts` and `worker.ts` use top-level await (local only; never the Vercel entry file).
 - React Email not yet adopted (ADR 0020).
 - Daraja, Airtel, MTN and bank behaviour: nothing assumed; read from current documentation in each checkpoint.

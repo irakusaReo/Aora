@@ -102,6 +102,13 @@ The 2026 regulations forbid a credit provider to carry on payment services, savi
 - **No M-Pesa statement upload in the MVP:** the bureau simulator is the only optional data source, with its own consent (P8-7). ADR 0018 lists the statement as optional.
 - **Reminders by email only** until an SMS provider exists (P8-11).
 
+### Phase 9 Eng defaults (2026-10-19, no money, no legal position, nothing irreversible)
+
+- **Mobile covers the daily journeys; set-up stays on the web:** onboarding, branches, team, pay codes, payout recipients, developer keys, the KELO store and listing editor, treasury addresses and new withdrawals, and NAM orders are done in the web apps ([phase-9.md](../plans/phase-9.md) P9-10).
+- **End-to-end emulator tests (Maestro) deferred to the MVP gate preparation:** they need a development build and an Android emulator in CI; component tests with a fake API and the API's own journey tests cover Phase 9 (P9-12). ADR 0016 addendum.
+- **No push notifications in the MVP:** they need a development build and a push service; email stays the channel (P9-16).
+- **Owner action to try the apps on a phone (not blocking the build):** switch on Clerk's **Native API** for the development instance (Clerk Dashboard → Native applications). Clerk notes it opens a request path that bypasses browser CAPTCHA; acceptable on a development instance capped at 100 users. Then follow [mobile.md](../operations/mobile.md).
+
 ## Pre-pilot list (carried, 2026-10-18)
 
 Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); network fees (ETH) posted to the ledger, not only recorded (phase-5 P5-7); make `BLOB_READ_WRITE_TOKEN` a sensitive Vercel variable; ADRs 0009, 0010, 0011 decided; O-16 (credit entity or licensed partner, counsel's view).

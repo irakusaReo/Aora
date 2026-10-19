@@ -6,6 +6,7 @@ export default defineConfig({
       { test: { name: 'repo', include: ['tests/**/*.test.ts'], testTimeout: 60_000 } },
       'services/*/vitest.config.ts',
       'packages/*/vitest.config.ts',
+      'apps/*/vitest.config.ts',
     ],
   },
 });

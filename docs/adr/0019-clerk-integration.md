@@ -106,6 +106,14 @@ When the instance was configured, Clerk's dashboard showed phone number for sign
 - Invitations expire (seven days, configuration). Accepting twice gives one membership. A removed member who is invited again is reactivated, not duplicated.
 - The earlier route that added a member by phone number is removed: a phone number no longer proves anything at sign-in.
 
+## Addendum, 2026-10-19: the native apps (Phase 9)
+
+- The Expo apps sign in with Clerk's **hosted authentication** (`useHostedAuth` from `@clerk/expo/hosted-auth`, `@clerk/expo` 4.13.0), which opens the Account Portal in an in-app browser and offers the methods enabled on the instance (the email code). It works in Expo Go; the redirect falls back to `AuthSession.makeRedirectUri` there (the SDK's own documentation of `redirectUrl`).
+- The session token is kept by Clerk's `tokenCache` from `@clerk/expo/token-cache`, which uses expo-secure-store. The app refuses to start if that cache is unavailable, rather than keep the token anywhere else.
+- A native client's token carries no `azp` claim; the API already accepts a token without `azp` and checks `azp` whenever it is present (`clerk-auth-provider.ts`). The known gap "Expo tokens may lack `azp`" is therefore handled, and is confirmed on a device during the owner's walk-through.
+- **Owner action:** Clerk requires the **Native API** to be switched on for the instance before a native app can sign in (Clerk Dashboard → Native applications). Clerk warns it opens a request path that bypasses browser CAPTCHA.
+- Source: Clerk, "Expo Quickstart", https://clerk.com/docs/expo/getting-started/quickstart (read 2026-10-19).
+
 ## Sources (read 2026-10-13)
 
 - [C1] Clerk, "verifyToken()" — https://clerk.com/docs/reference/backend/verify-token

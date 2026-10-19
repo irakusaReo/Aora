@@ -49,7 +49,7 @@ jobs:
   verify:
     name: Lint, typecheck and test
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       # Throwaway database for tests. Trust authentication, no data, sandbox only.
       postgres:
@@ -142,6 +142,17 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2ktYnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA==
           NEXT_TELEMETRY_DISABLED: '1'
         run: pnpm --filter kony-web --filter internal-ops --filter kelo-web --filter chiwo-web build
+
+      # The native apps must bundle for Android, within budget, with nothing
+      # secret-shaped inside (phase-9 P9-14). No Expo account is involved.
+      - name: Bundle the mobile apps
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          for app in apps/*-mobile; do
+            (cd "$app" && npx expo export --platform android --output-dir dist)
+            node scripts/check-mobile-bundle.mjs "$app"
+          done
 
   # Applies SQL migrations to AORA staging (Neon `main`) through the DIRECT
   # connection, only on `main` and only after the tests above pass. Migrations

@@ -68,3 +68,14 @@ End-to-end runs use the sandbox authenticator only against a local database, con
 - The API must return display-ready schedules and decisions, which is also what keeps web and mobile consistent.
 - iOS coverage is manual until there is demand for more.
 - App-store accounts, signing and distribution are not part of the MVP.
+
+## Addendum, 2026-10-19: Phase 9 build choices
+
+Read against Expo's and Clerk's documentation on 2026-10-19 ([phase-9.md](../plans/phase-9.md) P9-1 to P9-16).
+
+- **Expo SDK 58** (React Native 0.88, React 19.3.0, expo-router 58), from Expo's `bundledNativeModules.json`. React 19.3.0 is the web apps' version, so the monorepo has one React.
+- **pnpm isolated installs stay.** Expo supports isolated dependencies from SDK 54 and configures Metro for monorepos automatically from SDK 52 ("Work with monorepos", docs.expo.dev); no `metro.config.js`. `nodeLinker: hoisted` is the documented fallback.
+- **Expo Go is enough; no binary build and so no Expo or EAS account in Phase 9.** Sign-in uses Clerk's hosted authentication, which Clerk's Expo quickstart lists as working in Expo Go; Clerk's native components (which need a development build) are not used.
+- **`packages/mobile`** is shared by the three native apps only (banner, theme, translator, API provider, idempotency-key store, outcome classifier, PIN prompt, state views). Web and native still share no components; they share `@aora/api-client` and the sandbox text.
+- **Testing:** unit and component levels run in Vitest with `react-native` aliased to `react-native-web` in jsdom, against a fake API. The contract level is a test that every route the apps call is documented in `openapi.yaml` with its method. CI bundles each app with `expo export --platform android` and fails over a 6 MB budget (Hermes bytecode; the first app measured 4.3 MB) or on any secret-shaped text in the bundle. **End-to-end on an emulator (Maestro) is deferred** to the MVP gate preparation, because it needs a development build; until then the device check is manual.
+
