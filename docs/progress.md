@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 8 — KELO credit, next (not started). Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging; `chiwo-web` waits for the owner's deployment approval. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
+- **Current phase:** Phase 8 — KELO credit, in progress ([plan](plans/phase-8.md)). Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging; `chiwo-web` is deployed at https://chiwo-web.vercel.app (2026-10-19). Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 7 merged and on staging; Phase 8 next)
+- **Last updated:** 2026-10-19 (chiwo-web deployed; Phase 8 started)
 
 ## Owner decisions of 2026-10-18
 
@@ -79,7 +79,11 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **7B merged and on staging (2026-10-19, PR #26):** migration applied to staging first; `neon:verify staging` 8/8 (after two network timeouts); health ok; six cron jobs 200; reconciliation 0 exceptions; `/v1/chiwo/usdc` live (401 signed out). On staging, on-chain receiving and withdrawing wait for the chain switch-on; transfers and requests work.
 - **7C built (2026-10-19, branch `phase-7c`):** NAM inside CHIWO. `NamService` is owner-aware (`NamOwner`: workspace or consumer); a personal investor profile per person; orders fund from `consumer_usdc_available` with personal consent to `nam_vault_disclosure_personal` v1 (personal wording as data: `nam.product.customer_owns_personal`); holdings only from confirmed vault events; redemptions back to the personal balance; consumer row-level security on NAM tables. Routes `/v1/chiwo/nam` (+ orders, redemptions); chiwo-web `/nam`. Migration `20261019000300_chiwo_nam` (expand-only). 6 new tests (`chiwo-nam.test.ts`) prove the same person's personal and business profiles stay apart; the 14 Phase 6 NAM tests still pass. ADR 0015 and 0021 addenda.
 - **7C merged and on staging (2026-10-19, PR #27):** migration applied to staging first; `neon:verify staging` 8/8; health ok; six cron jobs 200; reconciliation 0 exceptions; `/v1/chiwo/nam` live (401 signed out; `chain_unavailable` until the vault is deployed).
-- **Not yet exercised with a real sign-in:** chiwo-web is not deployed, so J12 and J13 (CHIWO side) are proven by automated tests only. Once deployed, the staging script is: sign up, pay a pay code by the simulator and by the Daraja test number, send and request USDC between two consumers (needs USDC: after the chain switch-on, or an operator attribution), and NAM (after the vault is deployed).
+- **Not yet exercised with a real sign-in:** chiwo-web is deployed (2026-10-19, owner-approved; its public terms page reads from the API and signed-out pages redirect to sign-in), but no one has signed in to it yet, so J12 and J13 (CHIWO side) are proven by automated tests only. The staging script is: sign up, pay a pay code by the simulator and by the Daraja test number, send and request USDC between two consumers (needs USDC: after the chain switch-on, or an operator attribution), and NAM (after the vault is deployed).
+
+## Phase 8 checkpoints
+
+- **Started 2026-10-19.** O-8 answered: Kenya's credit conduct rules read and cited in [compliance/kenya-credit-conduct.md](compliance/kenya-credit-conduct.md). The 2022 DCP Regulations were repealed on 2026-09-29; the CBK (Non-Deposit Taking Credit Providers) Regulations, 2026 apply, and name BNPL. O-16 (separating credit from payments and investment) added for counsel before any pilot; it does not block the sandbox.
 
 ## Owner approvals of 2026-10-18 — carried out
 
@@ -93,7 +97,6 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Waiting on the owner
 
-- Approval to create the `chiwo-web` Vercel project (Hobby, `fra1`, Root Directory `apps/chiwo-web`) and add its origin to `CLERK_AUTHORIZED_PARTIES` on `aora-api` (a Vercel Production setting).
 
 - Fund the sandbox wallet with Base Sepolia ETH and testnet USDC.
 - Whether to make `BLOB_READ_WRITE_TOKEN` sensitive on Vercel (remove and re-add).
