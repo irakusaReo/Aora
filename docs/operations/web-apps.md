@@ -5,9 +5,11 @@
 | KONY merchant app | `kony-web` | https://kony-web.vercel.app | `apps/kony-web` |
 | Operations console | `internal-ops` | https://internal-ops-rho.vercel.app | `apps/internal-ops` |
 | KELO marketplace | `kelo-web` | https://kelo-web.vercel.app | `apps/kelo-web` |
+| CHIWO personal payments | `chiwo-web` | https://chiwo-web.vercel.app | `apps/chiwo-web` |
 
-- All three projects are on the Hobby team `andres-projects-85e1a425`, connected to GitHub: a push to `main` deploys them; pull requests get previews.
+- All four projects are on the Hobby team `andres-projects-85e1a425`, connected to GitHub: a push to `main` deploys them; pull requests get previews.
 - Variables, **Production target only**: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` (public by design), `CLERK_SECRET_KEY` (sensitive), `AORA_API_URL=https://aora-api.vercel.app`. Previews have none of them, so a preview can never reach staging data.
+- `chiwo-web` (`prj_MEcrZDl4wN4pvEsfTpxsPEPKzyan`) was created on 2026-10-19 with the owner's approval: framework Next.js, Node 24, functions in `fra1`, files outside the root directory included, connected to GitHub (`main`). Its three variables were added to the Production target from `.env.local` (development-instance Clerk keys). Vercel stored `AORA_API_URL` as sensitive, which is harmless. Its origin was added to `CLERK_AUTHORIZED_PARTIES` on `aora-api` and `aora-api` was redeployed; Vercel now stores that variable as sensitive too, so its value can no longer be read back. The list is the Clerk instance plus the four app origins.
 - Function region: `kelo-web` runs in `fra1` (created 2026-10-18, owner-approved). **`kony-web` is in `iad1`**, contrary to the `fra1` rule in CLAUDE.md; moving it is a Production setting change and waits for the owner.
 - kelo-web browses without sign-in: it reads only public routes (`/v1/kelo/categories`, `/v1/kelo/marketplace/…`, `/v1/assets`, `/v1/terms/…`) until a buyer signs in.
 - The apps call the API from the server side only, with the signed-in person's Clerk session token. The API's `CLERK_AUTHORIZED_PARTIES` must list each app's origin; when a domain changes, update it there and redeploy `aora-api`.

@@ -88,9 +88,23 @@ Unresolved decisions, spec conflicts and unverified assumptions. Check here befo
 - **Changing it** is a data change (a new taxonomy version), not a code change.
 - **Blocks:** nothing.
 
+### O-8 answered (2026-10-19): Kenya's credit conduct rules
+
+Read and cited in [docs/compliance/kenya-credit-conduct.md](../compliance/kenya-credit-conduct.md). The 2022 Digital Credit Providers Regulations were **repealed on 2026-09-29**; the instrument in force is the CBK (Non-Deposit Taking Credit Providers) Regulations, 2026 (L.N. 191 of 2026), whose definition of "loan" names buy now pay later. Their requirements shape Phase 8: APR and periodic rate disclosed, a key information document, free early repayment, repayment allocated principal, then charges, then interest, the r. 29 cap on what a non-performing loan can recover, immediate decline reasons, separate data consents, and reminders only to the borrower inside a contact window.
+
+### O-16 (new, owner, for counsel before any pilot): separating credit from payments and investment
+
+The 2026 regulations forbid a credit provider to carry on payment services, savings or investment accounts, or deposit taking (r. 18(1)). AORA runs CHIWO payments, NAM investment and KELO credit on one platform. A live KELO book likely needs a separate licensed entity, or a licensed partner as lender of record, with payments and investment held elsewhere. **Not blocking the sandbox:** every credit record names the simulated lender of record and says it is unlicensed. Added to the pre-pilot list.
+
+### Phase 8 Eng defaults (2026-10-19, no money, no legal position, nothing irreversible)
+
+- **No repayment from a CHIWO balance in the MVP:** CHIWO holds USDC only and KELO plans are in KES; repayment is by M-Pesa ([phase-8.md](../plans/phase-8.md) P8-10).
+- **No M-Pesa statement upload in the MVP:** the bureau simulator is the only optional data source, with its own consent (P8-7). ADR 0018 lists the statement as optional.
+- **Reminders by email only** until an SMS provider exists (P8-11).
+
 ## Pre-pilot list (carried, 2026-10-18)
 
-Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); network fees (ETH) posted to the ledger, not only recorded (phase-5 P5-7); make `BLOB_READ_WRITE_TOKEN` a sensitive Vercel variable; ADRs 0009, 0010, 0011 decided.
+Before any pilot: enforce the Daraja callback IP allow-list; replace the sandbox payout float with a funded account; build Daraja reversal (X-14); per-key rate limits; upgrade from Vercel Hobby (O-10); O-12 legal review; a new Daraja app (X-13); a verified sending domain (O-13); a second Base RPC provider (D-11); network fees (ETH) posted to the ledger, not only recorded (phase-5 P5-7); make `BLOB_READ_WRITE_TOKEN` a sensitive Vercel variable; ADRs 0009, 0010, 0011 decided; O-16 (credit entity or licensed partner, counsel's view).
 
 ## Owner rulings (2026-10-13)
 
