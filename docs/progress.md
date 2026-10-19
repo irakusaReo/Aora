@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 8 — KELO credit, in progress ([plan](plans/phase-8.md)). Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging; `chiwo-web` is deployed at https://chiwo-web.vercel.app (2026-10-19). Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
+- **Current phase:** Phase 9 — Mobile, next ([mvp-scope.md](product/mvp-scope.md) §3). **Phase 8 — KELO credit ([plan](plans/phase-8.md)) is built, merged (PRs #30–#33) and on staging, with the `kelo_credit` flag off on staging.** Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 8D built)
+- **Last updated:** 2026-10-19 (Phase 8 complete; Phase 9 next)
 
 ## Owner decisions of 2026-10-18
 
@@ -91,6 +91,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **8C built (2026-10-19, branch `phase-8c`):** returns and disputes on credit purchases (`kelo.purchase_claim`): a return after delivery (merchant decides; accepting needs refund rights and a PIN step-up) or a dispute once paid for (an operator decides in internal-ops `/disputes`); an open claim pauses every open part (no reminders, charges or repayment); rejected or withdrawn, everything resumes with fresh grace; accepted, the credit is undone by compensating entries, everything paid is refunded, and after delivery the merchant's net becomes a clawback receivable netted from their next KELO settlement. One unwind path serves cancellations, returns and upheld disputes. Migration `20261019000600_kelo_returns` (expand-only). 9 new tests; 692 pass. ADR 0017 and 0021 addenda; plan §9.
 - **8C merged and on staging (2026-10-19, PR #32):** migration `…000600_kelo_returns` applied to staging first (the first attempt timed out before connecting; the retry applied it); `neon:verify staging` 8/8; health ok; seven cron jobs 200; reconciliation 0 exceptions.
 - **8D built (2026-10-19, branch `phase-8d`):** the KELO dashboard in KONY (`GET /v1/workspace/kelo/dashboard`, kony-web `/w/{id}/kelo/dashboard`): orders needing action, BNPL sales, settlements due and paid, returns and clawbacks, fees, all read from the ledger; no buyer or credit data. No migration. 4 new tests. Plan §10, ADR 0017 addendum.
+- **8D merged and on staging (2026-10-19, PR #33):** health ok; seven cron jobs 200; reconciliation 0 exceptions; `/v1/workspace/kelo/dashboard` live (401 signed out). 697 tests pass locally and in CI. **Phase 8 is complete.** To try credit on staging, an operator switches `kelo_credit` on in internal-ops `/flags`; it can be switched off again at once.
 
 ## Owner approvals of 2026-10-18 — carried out
 
@@ -100,7 +101,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 
 ## Blocked
 
-- Nothing blocks Phase 5. Real Base Sepolia transactions wait for the wallet to be funded; until then chain work runs on a local chain.
+- Nothing blocks Phase 9. Real Base Sepolia transactions wait for the wallet to be funded; until then chain work runs on a local chain.
 
 ## Waiting on the owner
 
@@ -108,7 +109,8 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - Fund the sandbox wallet with Base Sepolia ETH and testnet USDC.
 - Whether to make `BLOB_READ_WRITE_TOKEN` sensitive on Vercel (remove and re-add).
 - O-14: whether a real Safaricom number may be used in the Daraja sandbox.
-- The signed-in staging walk-through (non-blocking).
+- The signed-in staging walk-through (non-blocking), now including KELO credit with the flag switched on.
+- Whether to switch `kelo_credit` on for staging (an operator action in internal-ops `/flags`; default off).
 - Pre-pilot list: [open-questions.md](architecture/open-questions.md#pre-pilot-list-carried-2026-10-18).
 
 ## Known gaps carried forward

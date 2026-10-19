@@ -1,6 +1,6 @@
 # Phase 8 Plan — KELO credit
 
-- **Status:** in progress (started 2026-10-19). Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
+- **Status:** done (2026-10-19): 8A to 8D built, merged (PRs #30–#33) and on staging. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
 - **Scope source:** [mvp-scope.md](../product/mvp-scope.md) §3 (checkpoints 8A to 8D), journeys K2, K3, K5, K6 and K7; [ADR 0017](../adr/0017-kelo-marketplace-domain.md), [ADR 0018](../adr/0018-plan-types-and-credit-pricing.md); [kelo-experience.md](../product/kelo-experience.md); [kenya-credit-conduct.md](../compliance/kenya-credit-conduct.md) (O-8, read 2026-10-19).
 - **Branch:** one per checkpoint (`phase-8a` …). Merge rules as before: CI green on the head commit, migrations expand-only and on staging first, then staging health and every cron job confirmed.
 - **Test discipline:** tests strictly first for every state machine (decision, agreement, instalment, return), the schedule engine (property tests), every ledger posting, idempotency, the flag, and consumer and tenant isolation (a merchant never sees a consumer's limit, decision or profile).
