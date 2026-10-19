@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 7 — CHIWO web, in progress ([plan](plans/phase-7.md)); 7A merged and on staging (PR #25); 7B built. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
+- **Current phase:** Phase 8 — KELO credit, next (not started). Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging; `chiwo-web` waits for the owner's deployment approval. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 7A on staging; 7B built)
+- **Last updated:** 2026-10-19 (Phase 7 merged and on staging; Phase 8 next)
 
 ## Owner decisions of 2026-10-18
 
@@ -78,6 +78,8 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **7B built (2026-10-19, branch `phase-7b`):** personal USDC. Consumer ledger accounts (`ledger.account.consumer_account_id`, qualifier = owner, `consumer_*` types only; ADR 0003 addendum). The chain treasury is owner-aware: consumer deposit addresses by signature, deposits credited to the consumer, withdrawals to the consumer's own address with step-up and no second approver (ADR 0004 addendum). Transfers between consumers are ledger moves with recipient confirmation (O-11 c), step-up, limits as data and idempotency. Payment requests can be paid only once (row lock, open status, unique `request_id`), can be cancelled, and expire after a period set as data. Receipts and activity cover all kinds. chiwo-web pages `/usdc`, `/send`, `/requests`, `/security`. Migration `20261019000200_chiwo_usdc` (expand-only). 13 new tests (`chiwo-usdc.test.ts`, on the local chain).
 - **7B merged and on staging (2026-10-19, PR #26):** migration applied to staging first; `neon:verify staging` 8/8 (after two network timeouts); health ok; six cron jobs 200; reconciliation 0 exceptions; `/v1/chiwo/usdc` live (401 signed out). On staging, on-chain receiving and withdrawing wait for the chain switch-on; transfers and requests work.
 - **7C built (2026-10-19, branch `phase-7c`):** NAM inside CHIWO. `NamService` is owner-aware (`NamOwner`: workspace or consumer); a personal investor profile per person; orders fund from `consumer_usdc_available` with personal consent to `nam_vault_disclosure_personal` v1 (personal wording as data: `nam.product.customer_owns_personal`); holdings only from confirmed vault events; redemptions back to the personal balance; consumer row-level security on NAM tables. Routes `/v1/chiwo/nam` (+ orders, redemptions); chiwo-web `/nam`. Migration `20261019000300_chiwo_nam` (expand-only). 6 new tests (`chiwo-nam.test.ts`) prove the same person's personal and business profiles stay apart; the 14 Phase 6 NAM tests still pass. ADR 0015 and 0021 addenda.
+- **7C merged and on staging (2026-10-19, PR #27):** migration applied to staging first; `neon:verify staging` 8/8; health ok; six cron jobs 200; reconciliation 0 exceptions; `/v1/chiwo/nam` live (401 signed out; `chain_unavailable` until the vault is deployed).
+- **Not yet exercised with a real sign-in:** chiwo-web is not deployed, so J12 and J13 (CHIWO side) are proven by automated tests only. Once deployed, the staging script is: sign up, pay a pay code by the simulator and by the Daraja test number, send and request USDC between two consumers (needs USDC: after the chain switch-on, or an operator attribution), and NAM (after the vault is deployed).
 
 ## Owner approvals of 2026-10-18 — carried out
 
