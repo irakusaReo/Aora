@@ -28,6 +28,7 @@ import {
 } from './layaway.service.js';
 import { type ClaimView, ClaimsService } from './credit/claims.service.js';
 import { CreditService, type CreditView } from './credit/credit.service.js';
+import { type KeloDashboard, KeloDashboardService } from './dashboard.service.js';
 import type { CreditOffer } from './credit/offer.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -238,7 +239,15 @@ export class KeloMerchantPurchasesController {
   constructor(
     @Inject(LayawayService) private readonly layaway: LayawayService,
     @Inject(ClaimsService) private readonly claims: ClaimsService,
+    @Inject(KeloDashboardService) private readonly dashboards: KeloDashboardService,
   ) {}
+
+  /** The KELO dashboard (8D): every figure from the ledger, nothing about any buyer's credit. */
+  @Get('dashboard')
+  @Permit('settlement.read')
+  dashboard(@Req() request: Request): Promise<KeloDashboard> {
+    return this.dashboards.forWorkspace(tenantOf(request).tenantId);
+  }
 
   @Get('listings/:id/plan-options')
   @Permit('kelo_listing.read')

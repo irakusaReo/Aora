@@ -469,6 +469,35 @@ export interface KeloPurchase {
   created_at: string;
 }
 
+// The KELO dashboard in KONY (phase 8D): ledger figures only, nothing about buyers.
+export interface KeloDashboard {
+  currency: string;
+  orders_needing_action: {
+    confirm: number;
+    fulfil: number;
+    respond_to_return: number;
+    total: number;
+  };
+  bnpl_sales: { count: number; gross_minor: string };
+  settlements: {
+    due: { count: number; net_minor: string };
+    paid: {
+      count: number;
+      gross_minor: string;
+      fees_minor: string;
+      clawback_netted_minor: string;
+      to_available_minor: string;
+    };
+  };
+  returns: {
+    open: number;
+    accepted: number;
+    clawed_back_minor: string;
+    clawback_outstanding_minor: string;
+  };
+  fees: { charged_minor: string; refunded_minor: string; net_minor: string };
+}
+
 // Returns and disputes (phase 8C).
 export interface KeloClaim {
   id: string;

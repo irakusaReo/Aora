@@ -3622,6 +3622,38 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/dashboard:
+    get:
+      tags: [KELO]
+      operationId: getKeloDashboard
+      summary: The KELO dashboard of the workspace (orders needing action, BNPL sales, settlements, returns, fees)
+      description: >
+        Phase 8D. Every money figure is read from the ledger entries that name this workspace, so it equals the ledger: settlements paid (gross, KELO fee, clawback netted, paid to available), clawbacks and fees given up on returns, and the clawback still owed. Nothing about any buyer or their credit. Needs the settlement permission.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: The dashboard
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [currency, orders_needing_action, bnpl_sales, settlements, returns, fees]
+                properties:
+                  currency: { type: string }
+                  orders_needing_action: { type: object, properties: { confirm: { type: integer }, fulfil: { type: integer }, respond_to_return: { type: integer }, total: { type: integer } } }
+                  bnpl_sales: { type: object, properties: { count: { type: integer }, gross_minor: { type: string } } }
+                  settlements:
+                    type: object
+                    properties:
+                      due: { type: object, properties: { count: { type: integer }, net_minor: { type: string } } }
+                      paid: { type: object, properties: { count: { type: integer }, gross_minor: { type: string }, fees_minor: { type: string }, clawback_netted_minor: { type: string }, to_available_minor: { type: string } } }
+                  returns: { type: object, properties: { open: { type: integer }, accepted: { type: integer }, clawed_back_minor: { type: string }, clawback_outstanding_minor: { type: string } } }
+                  fees: { type: object, properties: { charged_minor: { type: string }, refunded_minor: { type: string }, net_minor: { type: string } } }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
   /v1/workspace/kelo/claims/{id}/accept:
     post:
       tags: [KELO]
