@@ -432,3 +432,55 @@ export interface NamRedemption {
   tx_hash: string | null;
   created_at: string;
 }
+
+// CHIWO (phase 7). The personal context: never sent with a workspace.
+export interface PayCode {
+  code: string;
+  branch_id: string | null;
+  status: 'active' | 'inactive';
+  created_at: string;
+}
+
+export interface ChiwoMe {
+  signed_up: boolean;
+  phone_on_file: boolean;
+  terms: { key: string; version: string };
+}
+
+export interface ChiwoMerchant {
+  code: string;
+  trading_name: string;
+}
+
+export interface ChiwoPaymentQuote {
+  pay_code: string;
+  amount_minor: string;
+  fee_minor: string;
+  total_minor: string;
+  currency: string;
+  rail: string;
+  provider: 'daraja_sandbox' | 'simulator';
+  payer_number: 'sandbox_test_number';
+  timing: string;
+  merchant: ChiwoMerchant;
+}
+
+export interface ChiwoMerchantPayment {
+  id: string;
+  kind?: 'merchant_payment';
+  status: 'submitted' | 'being_checked' | 'succeeded' | 'failed' | 'reconciliation_required';
+  amount_minor: string;
+  fee_minor: string;
+  total_minor: string;
+  currency: string;
+  rail: string;
+  merchant: ChiwoMerchant;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChiwoReceipt extends ChiwoMerchantPayment {
+  kind: 'merchant_payment';
+  reference: string;
+  payer_number: 'sandbox_test_number';
+}
