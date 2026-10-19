@@ -1,7 +1,7 @@
 # CHIWO — Consumer Workflows (sandbox)
 
 - **Source:** brief §2.1, §4.1, §4.2, §7.1; [mvp-scope.md](mvp-scope.md) journeys J12 and J13; [phase-7 plan](../plans/phase-7.md).
-- **Status:** 7A built (sign-up, pay a merchant, receipts). 7B (USDC, requests) and 7C (NAM) follow.
+- **Status:** 7A built (sign-up, pay a merchant, receipts); 7B built (personal USDC, transfers, requests). 7C (NAM) follows.
 - Every screen and record is labelled sandbox. No real money moves.
 
 ## 1. Personal, never business
@@ -28,3 +28,16 @@ Limits per payment and per day are data (`chiwo.consumer_limit`). A repeated req
 ## 4. Receipts and activity (7A)
 
 Activity lists everything the consumer did, newest first. A receipt shows the merchant's trading name, amount, fee, total, status, time and reference, with no phone number.
+
+## 5. Personal USDC (7B)
+
+Testnet USDC on Base Sepolia, held for the consumer in AORA's sandbox testnet wallet; the consumer's balance is a record in AORA's ledger.
+
+- **Receive on chain:** register your own address by signing a one-time message (no transaction, no funds move), then send testnet USDC from it to the AORA wallet shown. It counts once it has enough confirmations.
+- **Send to a person:** enter their phone number. CHIWO shows a masked name; confirm it with your PIN the first time. Transfers are instant, free and on AORA's books only (no chain transaction). Each needs your PIN.
+- **Withdraw:** to an address you registered, with your PIN. It completes only once confirmed on chain, and is never sent twice.
+- Limits per transfer, per withdrawal and per day apply.
+
+## 6. Payment requests (7B)
+
+Ask someone for USDC by phone number, or make a request anyone with its link can pay. A request is paid once: a second payment is refused. It can be cancelled by the person who made it, and expires after seven days (sandbox setting).

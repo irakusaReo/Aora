@@ -20,6 +20,26 @@ export interface Actor {
   readonly requestId: string;
 }
 
+/** Who a deposit address or withdrawal belongs to: a workspace, or one CHIWO consumer (P7-9). */
+export type Owner =
+  | { readonly kind: 'workspace'; readonly tenantId: string }
+  | { readonly kind: 'consumer'; readonly accountId: string };
+
+export interface PersonalUsdcView {
+  readonly network: { readonly name: string; readonly label: string; readonly chain_id: number };
+  /** Null when Base Sepolia is not configured here: transfers between consumers still work. */
+  readonly deposit_address: string | null;
+  readonly wallet_label: string;
+  readonly asset: { readonly code: string; readonly decimals: number; readonly contract: string };
+  readonly balances: {
+    readonly available_minor: string;
+    readonly withdrawals_in_flight_minor: string;
+  };
+  readonly addresses: AddressView[];
+  readonly explorer_url: string;
+  readonly note: string;
+}
+
 export interface TreasuryView {
   readonly network: { readonly name: string; readonly label: string; readonly chain_id: number };
   readonly deposit_address: string;
@@ -124,14 +144,28 @@ export class TreasuryService {
   // -------------------------------------------------------------------------
 
   /** A one-time message for the address owner to sign. It names no workspace and moves nothing. */
-  async createChallenge(
-    actor: Actor,
+  createChallenge(actor: Actor): Promise<{ id: string; message: string; expires_at: string }> {
+    return this.challengeFor({ kind: 'workspace', tenantId: actor.tenantId }, actor.accountId);
+  }
+
+  /** The same one-time message, for a CHIWO consumer's own address (P7-9). */
+  createPersonalChallenge(
+    accountId: string,
+  ): Promise<{ id: string; message: string; expires_at: string }> {
+    return this.challengeFor({ kind: 'consumer', accountId }, accountId);
+  }
+
+  private async challengeFor(
+    owner: Owner,
+    createdBy: string,
   ): Promise<{ id: string; message: string; expires_at: string }> {
     const nonce = randomBytes(16).toString('hex');
     const expires = new Date(Date.now() + CHALLENGE_TTL_MS);
     const message = [
       `AORA SANDBOX - ${BASE_SEPOLIA.label}, chain ${String(BASE_SEPOLIA.chainId)}`,
-      'Register this address to deposit testnet USDC into an AORA KONY sandbox workspace.',
+      owner.kind === 'workspace'
+        ? 'Register this address to deposit testnet USDC into an AORA KONY sandbox workspace.'
+        : 'Register this address as your own, for your personal AORA CHIWO sandbox account.',
       'Signing moves no funds and is not a transaction.',
       `Challenge: ${nonce}`,
       `Expires: ${expires.toISOString()}`,
@@ -139,10 +173,10 @@ export class TreasuryService {
     return this.db.asPlatform(async (tx) => {
       const row = await tx.address_challenge.create({
         data: {
-          tenant_id: actor.tenantId,
+          ...ownerColumns(owner),
           nonce,
           message,
-          created_by: actor.accountId,
+          created_by: createdBy,
           expires_at: expires,
         },
       });
@@ -150,13 +184,32 @@ export class TreasuryService {
     });
   }
 
-  async registerAddress(
+  registerAddress(
     actor: Actor,
+    input: { challengeId: string; address: string; signature: string; label: string | null },
+  ): Promise<AddressView> {
+    return this.registerFor(
+      { kind: 'workspace', tenantId: actor.tenantId },
+      { accountId: actor.accountId, requestId: actor.requestId },
+      input,
+    );
+  }
+
+  registerPersonalAddress(
+    actor: { accountId: string; requestId: string },
+    input: { challengeId: string; address: string; signature: string; label: string | null },
+  ): Promise<AddressView> {
+    return this.registerFor({ kind: 'consumer', accountId: actor.accountId }, actor, input);
+  }
+
+  private async registerFor(
+    owner: Owner,
+    actor: { accountId: string; requestId: string },
     input: { challengeId: string; address: string; signature: string; label: string | null },
   ): Promise<AddressView> {
     const challenge = await this.db.asPlatform((tx) =>
       tx.address_challenge.findFirst({
-        where: { id: input.challengeId, tenant_id: actor.tenantId },
+        where: { id: input.challengeId, ...ownerColumns(owner) },
       }),
     );
     if (!challenge) throw new AppError('not_found', 'Challenge not found.');
@@ -178,7 +231,7 @@ export class TreasuryService {
         });
         const row = await tx.registered_address.create({
           data: {
-            tenant_id: actor.tenantId,
+            ...ownerColumns(owner),
             address,
             label: input.label,
             challenge_id: challenge.id,
@@ -186,7 +239,7 @@ export class TreasuryService {
           },
         });
         await this.audit.record(tx, {
-          tenantId: actor.tenantId,
+          tenantId: owner.kind === 'workspace' ? owner.tenantId : null,
           actorKind: 'user',
           actorAccountId: actor.accountId,
           action: 'chain.address.registered',
@@ -302,6 +355,7 @@ export class TreasuryService {
           return;
         }
         const amount = exactInteger(row.amount);
+        const owner = ownerOf(registration);
         const entry = await this.ledger.post(tx, {
           idempotencyKey: `observed_transfer:${row.id}:credit`,
           tenantId: registration.tenant_id,
@@ -319,11 +373,7 @@ export class TreasuryService {
               amount,
             },
             {
-              accountId: await this.ledger.findAccount(tx, {
-                tenantId: registration.tenant_id,
-                type: 'merchant_usdc_available',
-                assetCode: USDC,
-              }),
+              accountId: await this.usdcAccount(tx, owner, 'available'),
               direction: 'credit',
               amount,
             },
@@ -334,6 +384,7 @@ export class TreasuryService {
           data: {
             status: 'credited',
             tenant_id: registration.tenant_id,
+            consumer_account_id: registration.consumer_account_id,
             journal_entry_id: entry.entryId,
           },
         });
@@ -711,12 +762,16 @@ export class TreasuryService {
   /** The three ledger movements of a withdrawal, each keyed so it posts once. */
   private async move(
     tx: Tx,
-    row: { id: string; tenant_id: string; amount: bigint },
+    row: {
+      id: string;
+      tenant_id: string | null;
+      consumer_account_id: string | null;
+      amount: bigint;
+    },
     kind: 'reserve' | 'release' | 'send',
   ): Promise<void> {
-    const account = (type: 'merchant_usdc_available' | 'merchant_usdc_withdrawals_in_flight') =>
-      this.ledger.findAccount(tx, { tenantId: row.tenant_id, type, assetCode: USDC });
-    const inFlight = await account('merchant_usdc_withdrawals_in_flight');
+    const owner = ownerOf(row);
+    const inFlight = await this.usdcAccount(tx, owner, 'in_flight');
     const other =
       kind === 'send'
         ? await this.ledger.findAccount(tx, {
@@ -724,7 +779,7 @@ export class TreasuryService {
             type: 'chain_wallet_usdc',
             assetCode: USDC,
           })
-        : await account('merchant_usdc_available');
+        : await this.usdcAccount(tx, owner, 'available');
     const postings =
       kind === 'reserve'
         ? [
@@ -742,6 +797,224 @@ export class TreasuryService {
       operationType: 'withdrawal',
       operationId: row.id,
       postings,
+    });
+  }
+
+  /** A workspace's or a consumer's USDC account: kept apart by type (rule 5). */
+  private usdcAccount(tx: Tx, owner: Owner, which: 'available' | 'in_flight'): Promise<string> {
+    if (owner.kind === 'consumer') {
+      return this.ledger.consumerAccount(tx, {
+        accountId: owner.accountId,
+        type:
+          which === 'available' ? 'consumer_usdc_available' : 'consumer_usdc_withdrawals_in_flight',
+        assetCode: USDC,
+      });
+    }
+    return this.ledger.findAccount(tx, {
+      tenantId: owner.tenantId,
+      type:
+        which === 'available' ? 'merchant_usdc_available' : 'merchant_usdc_withdrawals_in_flight',
+      assetCode: USDC,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // CHIWO: personal USDC (phase-7 P7-8, P7-9, P7-11)
+  // -------------------------------------------------------------------------
+
+  async personalView(accountId: string): Promise<PersonalUsdcView> {
+    let wallet: string | null = null;
+    try {
+      wallet = await this.chain.walletAddress();
+    } catch (error) {
+      if (!(error instanceof AppError && error.code === 'chain_unavailable')) throw error;
+    }
+    const owner: Owner = { kind: 'consumer', accountId };
+    const [available, inFlight, addresses] = await this.db.asPlatform(
+      async (tx) =>
+        [
+          await this.ledger.balanceOf(tx, await this.usdcAccount(tx, owner, 'available')),
+          await this.ledger.balanceOf(tx, await this.usdcAccount(tx, owner, 'in_flight')),
+          await tx.registered_address.findMany({
+            where: { consumer_account_id: accountId, status: 'active' },
+            orderBy: { registered_at: 'desc' },
+          }),
+        ] as const,
+    );
+    return {
+      network: {
+        name: BASE_SEPOLIA.network,
+        label: BASE_SEPOLIA.label,
+        chain_id: BASE_SEPOLIA.chainId,
+      },
+      deposit_address: wallet,
+      wallet_label: 'AORA sandbox testnet wallet',
+      asset: {
+        code: USDC,
+        decimals: BASE_SEPOLIA.usdc.decimals,
+        contract: BASE_SEPOLIA.usdc.address,
+      },
+      balances: {
+        available_minor: available.toString(),
+        withdrawals_in_flight_minor: inFlight.toString(),
+      },
+      addresses: addresses.map(addressView),
+      explorer_url: BASE_SEPOLIA.explorerUrl,
+      note: 'SANDBOX: testnet USDC on Base Sepolia only. Deposits count only from your registered address, after confirmation.',
+    };
+  }
+
+  /**
+   * An on-chain withdrawal to the consumer's own registered address (P7-11):
+   * reserved, then signed and sent once. No second approver: a person acts for
+   * themself. The caller (CHIWO) supplies its limits, which are its data.
+   */
+  async createPersonalWithdrawal(
+    actor: { accountId: string; requestId: string },
+    input: {
+      idempotencyKey: string;
+      amount: bigint;
+      addressId: string;
+      limits: { perTransactionMax: bigint; perDayMax: bigint };
+    },
+  ): Promise<{ withdrawal: WithdrawalView; replayed: boolean }> {
+    const requestHash = createHash('sha256')
+      .update(`${input.amount.toString()}|${input.addressId}`)
+      .digest('hex');
+    const result = await this.db.asPlatform(async (tx) => {
+      await tx.$queryRaw`
+        select id from identity.user_account where id = ${actor.accountId}::uuid for update`;
+      const existing = await tx.withdrawal.findUnique({
+        where: {
+          consumer_account_id_idempotency_key: {
+            consumer_account_id: actor.accountId,
+            idempotency_key: input.idempotencyKey,
+          },
+        },
+      });
+      if (existing) {
+        if (existing.request_hash !== requestHash) {
+          throw new AppError(
+            'idempotency_key_reused',
+            'This Idempotency-Key was used for a different withdrawal.',
+          );
+        }
+        return { row: existing, replayed: true };
+      }
+      const address = await tx.registered_address.findFirst({
+        where: { id: input.addressId, consumer_account_id: actor.accountId, status: 'active' },
+      });
+      if (!address) throw new AppError('not_found', 'Address not found.');
+      if (input.amount > input.limits.perTransactionMax) {
+        throw new AppError('limit_exceeded', 'This amount is above the limit for one withdrawal.');
+      }
+      const [today] = await tx.$queryRaw<{ total: bigint }[]>`
+        select coalesce(sum(amount), 0)::bigint as total from chain.withdrawal
+        where consumer_account_id = ${actor.accountId}::uuid and status not in ('rejected', 'failed')
+          and created_at > now() - interval '24 hours'`;
+      if ((today?.total ?? 0n) + input.amount > input.limits.perDayMax) {
+        throw new AppError(
+          'limit_exceeded',
+          'This withdrawal would take you over your daily limit.',
+        );
+      }
+      const owner: Owner = { kind: 'consumer', accountId: actor.accountId };
+      const available = await this.ledger.balanceOf(
+        tx,
+        await this.usdcAccount(tx, owner, 'available'),
+      );
+      if (available < input.amount) {
+        throw new AppError('insufficient_funds', 'Not enough USDC is available.');
+      }
+      const destination = (await this.chain.assertDestination(address.address)).toLowerCase();
+      const created = await tx.withdrawal.create({
+        data: {
+          consumer_account_id: actor.accountId,
+          idempotency_key: input.idempotencyKey,
+          request_hash: requestHash,
+          amount: input.amount,
+          destination,
+          created_by: actor.accountId,
+        },
+      });
+      await this.move(tx, created, 'reserve');
+      const row = await tx.withdrawal.update({
+        where: { id: created.id },
+        data: { status: 'submitted' },
+      });
+      await this.audit.record(tx, {
+        tenantId: null,
+        actorKind: 'user',
+        actorAccountId: actor.accountId,
+        action: 'chain.withdrawal.requested',
+        subjectType: 'withdrawal',
+        subjectId: row.id,
+        outcome: 'success',
+        requestId: actor.requestId,
+        detail: { amount: input.amount.toString(), asset: USDC, owner: 'consumer' },
+      });
+      return { row, replayed: false };
+    });
+    if (result.row.status === 'submitted' && result.row.operation_id === null) {
+      // Sent once; a failure here leaves it submitted for the chain job to retry the send.
+      await this.send(result.row.id).catch(() => undefined);
+    }
+    return {
+      withdrawal: await this.db.asPlatform(async (tx) =>
+        this.withdrawalView(
+          tx,
+          await tx.withdrawal.findUniqueOrThrow({ where: { id: result.row.id } }),
+        ),
+      ),
+      replayed: result.replayed,
+    };
+  }
+
+  async personalWithdrawal(accountId: string, id: string): Promise<WithdrawalView> {
+    return this.db.withConsumer(accountId, async (tx) => {
+      const row = await tx.withdrawal.findFirst({ where: { id, consumer_account_id: accountId } });
+      if (!row) throw new AppError('not_found', 'Withdrawal not found.');
+      return this.withdrawalView(tx, row);
+    });
+  }
+
+  /** The consumer's credited deposits and withdrawals, newest first, for CHIWO's activity. */
+  personalTransfers(accountId: string): Promise<(TransferView & { id: string })[]> {
+    return this.db.asPlatform(async (tx) => {
+      const inbound = await tx.observed_transfer.findMany({
+        where: { consumer_account_id: accountId, status: 'credited' },
+        orderBy: { observed_at: 'desc' },
+        take: 100,
+      });
+      const outbound = await tx.withdrawal.findMany({
+        where: { consumer_account_id: accountId },
+        orderBy: { created_at: 'desc' },
+        take: 100,
+      });
+      const views: (TransferView & { id: string })[] = inbound.map((row) => ({
+        id: row.id,
+        direction: 'in',
+        tx_hash: row.tx_hash,
+        amount_minor: exactInteger(row.amount).toString(),
+        currency: USDC,
+        counterparty: getAddress(row.from_address),
+        status: row.status,
+        at: row.observed_at.toISOString(),
+      }));
+      for (const row of outbound) {
+        const view = await this.withdrawalView(tx, row);
+        views.push({
+          id: row.id,
+          direction: 'out',
+          tx_hash: view.tx_hash,
+          amount_minor: view.amount_minor,
+          currency: USDC,
+          counterparty: view.destination,
+          status: view.status,
+          at: view.created_at,
+        });
+      }
+      return views.sort((a, b) => b.at.localeCompare(a.at));
     });
   }
 
@@ -812,6 +1085,18 @@ export class TreasuryService {
       return views.sort((a, b) => b.at.localeCompare(a.at));
     });
   }
+}
+
+function ownerColumns(owner: Owner): { tenant_id?: string; consumer_account_id?: string } {
+  return owner.kind === 'workspace'
+    ? { tenant_id: owner.tenantId }
+    : { consumer_account_id: owner.accountId };
+}
+
+function ownerOf(row: { tenant_id: string | null; consumer_account_id: string | null }): Owner {
+  if (row.tenant_id) return { kind: 'workspace', tenantId: row.tenant_id };
+  if (row.consumer_account_id) return { kind: 'consumer', accountId: row.consumer_account_id };
+  throw new Error('A treasury record has no owner.');
 }
 
 function addressView(row: {

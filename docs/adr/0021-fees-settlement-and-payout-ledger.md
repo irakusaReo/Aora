@@ -97,3 +97,12 @@ An order reserves `merchant_usdc_available` → `merchant_nam_funding_pending`. 
 ## Addendum, 2026-10-19 (Phase 7A: CHIWO payments to a merchant, phase-7 plan P7-4, P7-5)
 
 A consumer's payment to a KONY merchant through CHIWO **is the merchant's collection**: a payment intent in the merchant's workspace with purpose `collection` and channel `chiwo`. The fee comes from the tariff in effect and is charged to the merchant, exactly as for a collection the merchant starts, so gross − fee = net, settlement, refunds, webhooks and reconciliation are unchanged. The consumer pays the amount and nothing on top (`fee_minor` 0 in the quote, which the payment request must echo). No new account type: nothing is held for the consumer in fiat. The merchant's per-person "payment received" email is not sent for a `chiwo` intent (no one at the merchant started it); the consumer gets a CHIWO receipt email instead.
+
+## Addendum, 2026-10-19 (Phase 7B: personal USDC, phase-7 plan P7-8 to P7-12)
+
+| Account | Owner | Normal side | Meaning |
+|---|---|---|---|
+| `consumer_usdc_available` | consumer | credit | USDC the consumer may send or withdraw |
+| `consumer_usdc_withdrawals_in_flight` | consumer | credit | Reserved for the consumer's on-chain withdrawals not yet resolved |
+
+A confirmed deposit from a consumer's registered address debits `chain_wallet_usdc` and credits their `consumer_usdc_available`. A transfer between CHIWO consumers is one entry, sender's available to recipient's available, with no fee and no chain transaction; paying a payment request is such a transfer, and a request names at most one (`chiwo.transfer.request_id` unique). An on-chain withdrawal reserves into `…_in_flight`, leaves `chain_wallet_usdc` once confirmed, and is released if the transaction fails or reverts, exactly like a workspace withdrawal but with no second approver (P7-11). Limits per transfer, per withdrawal and per day are `chiwo.consumer_limit` rows (sandbox data).

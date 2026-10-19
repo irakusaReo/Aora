@@ -51,3 +51,7 @@ Behaviour:
 - Database-level enforcement means a bug in application code cannot post an unbalanced or mutated entry; it also means ledger migrations need careful review.
 - The running-balance row is a contention point for very active accounts; acceptable now, measurable later.
 - Reporting (statements, cash-flow views) reads from the ledger, so "collections", "settled" and "available" cannot drift apart.
+
+## Addendum, 2026-10-19 (Phase 7B: consumer accounts, phase-7 plan P7-2)
+
+A CHIWO consumer owns ledger accounts of their own. `ledger.account.consumer_account_id` names the owner; such an account has no tenant (a check allows at most one of the two), its `qualifier` repeats the consumer's id so the existing platform uniqueness `(type, qualifier, asset)` keeps exactly one per consumer, type and asset, and only `consumer_*` types may have a consumer owner (and they must). Consumer accounts are opened on first use (`LedgerService.consumerAccount`). Entries between consumers, and between a consumer and AORA's wallet, are platform entries (`tenant_id` null), so the posting-tenant trigger is unchanged and no workspace ever reads them. A personal balance is never added to a workspace balance (rule 5).

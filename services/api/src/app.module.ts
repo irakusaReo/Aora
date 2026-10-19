@@ -109,8 +109,11 @@ import {
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
 import { PayCodesController, PayCodesService } from './modules/tenancy/pay-codes.js';
 import { ChiwoController } from './modules/chiwo/chiwo.controller.js';
+import { ChiwoUsdcController } from './modules/chiwo/chiwo-usdc.controller.js';
 import { ConsumerGuard, ConsumerService } from './modules/chiwo/consumer.service.js';
 import { MerchantPaymentsService } from './modules/chiwo/merchant-payments.service.js';
+import { RequestsService } from './modules/chiwo/requests.service.js';
+import { UsdcService } from './modules/chiwo/usdc.service.js';
 import { APP_CONFIG, type AppConfig } from './platform/config.js';
 import { Database } from './platform/database.js';
 import type { WorkspaceHook } from './seed-data.js';
@@ -156,6 +159,8 @@ const SHARED = [
   PayCodesService,
   ConsumerService,
   MerchantPaymentsService,
+  UsdcService,
+  RequestsService,
   ConsumerGuard,
   SessionGuard,
   WorkspaceGuard,
@@ -213,6 +218,7 @@ export const CONTROLLERS = [
   ProviderWebhooksController,
   PayCodesController,
   ChiwoController,
+  ChiwoUsdcController,
 ];
 
 @Module({})

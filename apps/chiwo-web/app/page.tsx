@@ -1,4 +1,4 @@
-import { type ChiwoMe, type ChiwoMerchantPayment, formatMinor, type List } from '@aora/api-client';
+import { type ChiwoActivityItem, type ChiwoMe, formatMinor, type List } from '@aora/api-client';
 import { auth } from '@clerk/nextjs/server';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -78,7 +78,7 @@ export default async function Home({
     );
   }
   const [activity, assets] = await Promise.all([
-    client.get<List<ChiwoMerchantPayment>>('/v1/chiwo/activity'),
+    client.get<List<ChiwoActivityItem>>('/v1/chiwo/activity'),
     client.get<List<{ code: string; exponent: number }>>('/v1/assets'),
   ]);
   return (
@@ -92,19 +92,29 @@ export default async function Home({
         <div className="card">
           <table>
             <tbody>
-              {activity.data.map((payment) => (
-                <tr key={payment.id}>
+              {activity.data.map((item) => (
+                <tr key={`${item.kind}:${item.id}`}>
                   <td>
-                    <Link href={`/payments/${payment.id}`}>{payment.merchant.trading_name}</Link>
+                    {item.kind === 'merchant_payment' ? (
+                      <Link href={`/payments/${item.id}`}>{item.counterparty}</Link>
+                    ) : (
+                      <span title={item.counterparty}>{item.counterparty.slice(0, 24)}</span>
+                    )}
+                  </td>
+                  <td className="muted">{t(`activity.kind.${item.kind}`)}</td>
+                  <td>
+                    {item.direction === 'in' ? '+' : '−'}
+                    {item.currency}{' '}
+                    {formatMinor(item.amount_minor, exponentOf(assets.data, item.currency))}
                   </td>
                   <td>
-                    {payment.currency}{' '}
-                    {formatMinor(payment.total_minor, exponentOf(assets.data, payment.currency))}
+                    <span className="pill">
+                      {item.kind === 'merchant_payment'
+                        ? t(`payment.status.${item.status}`)
+                        : item.status}
+                    </span>
                   </td>
-                  <td>
-                    <span className="pill">{t(`payment.status.${payment.status}`)}</span>
-                  </td>
-                  <td className="muted">{formatDate(payment.created_at)}</td>
+                  <td className="muted">{formatDate(item.created_at)}</td>
                 </tr>
               ))}
             </tbody>

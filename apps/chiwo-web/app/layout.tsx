@@ -29,6 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }):
               <Show when="signed-in">
                 <Link href="/">{t('nav.home')}</Link>
                 <Link href="/pay">{t('nav.pay')}</Link>
+                <Link href="/send">{t('nav.send')}</Link>
+                <Link href="/requests">{t('nav.requests')}</Link>
+                <Link href="/usdc">{t('nav.usdc')}</Link>
+                <Link href="/security">{t('nav.security')}</Link>
                 <UserButton />
               </Show>
               <Show when="signed-out">

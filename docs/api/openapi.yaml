@@ -3361,7 +3361,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ChiwoMerchantPayment' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ChiwoActivityItem' } }, mode: { $ref: '#/components/schemas/Mode' } } }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
@@ -3372,18 +3372,337 @@ paths:
       summary: A receipt, with parties masked
       security: [{ session: [] }]
       parameters:
-        - { name: kind, in: path, required: true, schema: { type: string, enum: [merchant_payment] } }
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [merchant_payment, transfer, withdrawal] } }
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ChiwoReceipt' }
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/ChiwoReceipt' }
+                  - { $ref: '#/components/schemas/ChiwoTransfer' }
+                  - { $ref: '#/components/schemas/ChiwoWithdrawal' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/usdc:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoUsdc
+      summary: "Personal USDC on Base Sepolia (sandbox)"
+      description: >
+        Balances are a claim on AORA's sandbox testnet wallet. `deposit_address` is null where Base Sepolia is not configured; transfers between CHIWO consumers still work.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoUsdc' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/usdc/address-challenges:
+    post:
+      tags: [CHIWO]
+      operationId: createChiwoAddressChallenge
+      summary: "A one-time message to sign, proving an address is the consumer's own"
+      security: [{ session: [] }]
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [id, message, expires_at], properties: { id: { type: string, format: uuid }, message: { type: string }, expires_at: { type: string, format: date-time }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/usdc/addresses:
+    post:
+      tags: [CHIWO]
+      operationId: registerChiwoAddress
+      summary: "Register the consumer's own Base Sepolia address by signature"
+      description: >
+        Confirmed deposits from it are credited to this consumer only, after the confirmation policy.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challenge_id, address, signature]
+              properties:
+                challenge_id: { type: string, format: uuid }
+                address: { type: string }
+                signature: { type: string }
+                label: { type: string, maxLength: 60 }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoAddress' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/usdc/withdrawals:
+    post:
+      tags: [CHIWO]
+      operationId: createChiwoWithdrawal
+      summary: "Send USDC on chain to the consumer's own registered address"
+      description: >
+        Needs a PIN step-up (`step_up_required`). Reserved, then signed and sent once; complete only after confirmation. Never resent while its status is unknown. Limits are data.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor, address_id]
+              properties:
+                amount_minor: { type: string, pattern: '^[1-9][0-9]{0,18}$' }
+                address_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoWithdrawal' }
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoWithdrawal' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/recipients:
+    get:
+      tags: [CHIWO]
+      operationId: listChiwoRecipients
+      summary: "People the consumer can send to"
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ChiwoRecipient' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [CHIWO]
+      operationId: addChiwoRecipient
+      summary: "Find a CHIWO consumer by phone number"
+      description: >
+        Shows a masked name only. Rate-limited, since it reveals who uses CHIWO. Unconfirmed until the sender confirms (O-11 c).
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone]
+              properties:
+                phone: { type: string }
+      responses:
+        '200':
+          description: Already added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoRecipient' }
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoRecipient' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/recipients/{id}/confirm:
+    post:
+      tags: [CHIWO]
+      operationId: confirmChiwoRecipient
+      summary: "Confirm the person shown before the first transfer to them"
+      description: >
+        Needs a PIN step-up (`step_up_required`).
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoRecipient' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/transfers:
+    post:
+      tags: [CHIWO]
+      operationId: createChiwoTransfer
+      summary: "Send USDC to another CHIWO consumer"
+      description: >
+        Needs a PIN step-up (`step_up_required`). A ledger move on AORA's books (no chain transaction). The recipient must be confirmed (`recipient_not_confirmed`). Idempotent; limits are data.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipient_id, amount_minor]
+              properties:
+                recipient_id: { type: string, format: uuid }
+                amount_minor: { type: string, pattern: '^[1-9][0-9]{0,18}$' }
+                note: { type: string, maxLength: 140 }
+      responses:
+        '200':
+          description: Replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoTransfer' }
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoTransfer' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/requests:
+    get:
+      tags: [CHIWO]
+      operationId: listChiwoRequests
+      summary: "Requests the consumer made or must pay"
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ChiwoPaymentRequest' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [CHIWO]
+      operationId: createChiwoRequest
+      summary: "Ask for USDC"
+      description: >
+        Names a payer by phone, or none (anyone with the link may pay). Expires after the configured period.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor]
+              properties:
+                amount_minor: { type: string, pattern: '^[1-9][0-9]{0,18}$' }
+                note: { type: string, maxLength: 140 }
+                payer_phone: { type: string }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoPaymentRequest' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/requests/{id}:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoRequest
+      summary: "One request (requester, named payer, or link holder)"
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoPaymentRequest' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/requests/{id}/cancel:
+    post:
+      tags: [CHIWO]
+      operationId: cancelChiwoRequest
+      summary: "Cancel an open request (requester only)"
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoPaymentRequest' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/requests/{id}/pay:
+    post:
+      tags: [CHIWO]
+      operationId: payChiwoRequest
+      summary: "Pay a request; it can be paid only once"
+      description: >
+        Needs a PIN step-up (`step_up_required`). The request is locked and must be open; a transfer can name a request once. A paid, cancelled or expired request is refused (`invalid_state_transition`).
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { allOf: [{ $ref: '#/components/schemas/ChiwoPaymentRequest' }, { type: object, required: [transfer], properties: { transfer: { $ref: '#/components/schemas/ChiwoTransfer' } } }] }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     apiKey:
@@ -3629,6 +3948,96 @@ components:
             kind: { const: merchant_payment }
             reference: { type: string }
             payer_number: { const: sandbox_test_number }
+    ChiwoActivityItem:
+      type: object
+      required: [kind, id, direction, status, amount_minor, currency, counterparty, created_at]
+      properties:
+        kind: { type: string, enum: [merchant_payment, transfer, deposit, withdrawal] }
+        id: { type: string }
+        direction: { type: string, enum: [in, out] }
+        status: { type: string }
+        amount_minor: { type: string }
+        currency: { type: string }
+        counterparty: { type: string, description: 'A trading name, a masked person or an address.' }
+        created_at: { type: string, format: date-time }
+    ChiwoAddress:
+      type: object
+      required: [id, address, label, status, registered_at]
+      properties:
+        id: { type: string, format: uuid }
+        address: { type: string }
+        label: { type: [string, 'null'] }
+        status: { type: string, enum: [active, revoked] }
+        registered_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoUsdc:
+      type: object
+      required: [network, deposit_address, wallet_label, asset, balances, addresses, explorer_url, note, mode]
+      properties:
+        network: { type: object, properties: { name: { type: string }, label: { type: string }, chain_id: { type: integer } } }
+        deposit_address: { type: [string, 'null'] }
+        wallet_label: { type: string }
+        asset: { type: object, properties: { code: { type: string }, decimals: { type: integer }, contract: { type: string } } }
+        balances: { type: object, required: [available_minor, withdrawals_in_flight_minor], properties: { available_minor: { type: string }, withdrawals_in_flight_minor: { type: string } } }
+        addresses: { type: array, items: { $ref: '#/components/schemas/ChiwoAddress' } }
+        explorer_url: { type: string }
+        note: { type: string }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoWithdrawal:
+      type: object
+      required: [id, amount_minor, currency, destination, status, tx_hash, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { const: withdrawal }
+        amount_minor: { type: string }
+        currency: { type: string }
+        destination: { type: string }
+        status: { type: string, enum: [submitted, completed, failed, reconciliation_required] }
+        created_by: { type: string }
+        decided_by: { type: [string, 'null'] }
+        tx_hash: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoRecipient:
+      type: object
+      required: [id, display_name, confirmed]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, description: 'Masked: never the full name or number.' }
+        confirmed: { type: boolean }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoTransfer:
+      type: object
+      required: [id, kind, direction, status, amount_minor, fee_minor, currency, counterparty, note, request_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { const: transfer }
+        direction: { type: string, enum: [in, out] }
+        status: { const: posted }
+        amount_minor: { type: string }
+        fee_minor: { type: string }
+        currency: { type: string }
+        counterparty: { type: string }
+        note: { type: [string, 'null'] }
+        request_id: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoPaymentRequest:
+      type: object
+      required: [id, role, status, amount_minor, currency, note, requester, payer, expires_at, paid_transfer_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [requester, payer, link] }
+        status: { type: string, enum: [open, paid, cancelled, expired] }
+        amount_minor: { type: string }
+        currency: { type: string }
+        note: { type: [string, 'null'] }
+        requester: { type: object, properties: { display_name: { type: string } } }
+        payer: { type: [object, 'null'], properties: { display_name: { type: string } } }
+        expires_at: { type: string, format: date-time }
+        paid_transfer_id: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
     Mode:
       const: sandbox
       description: Every record and response is sandbox data.

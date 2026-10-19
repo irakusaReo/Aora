@@ -3,9 +3,9 @@
 Read this with `CLAUDE.md` to resume work in a fresh session.
 
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
-- **Current phase:** Phase 7 — CHIWO web, in progress ([plan](plans/phase-7.md)); 7A built. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
+- **Current phase:** Phase 7 — CHIWO web, in progress ([plan](plans/phase-7.md)); 7A merged and on staging (PR #25); 7B built. Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 7A built; PR open)
+- **Last updated:** 2026-10-19 (Phase 7A on staging; 7B built)
 
 ## Owner decisions of 2026-10-18
 
@@ -74,6 +74,8 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 ## Phase 7 checkpoints
 
 - **7A built (2026-10-19, branch `phase-7`):** CHIWO module (`services/api/src/modules/chiwo/`): personal context under `/v1/chiwo/*` that refuses `Aora-Workspace-Id` (`context_mismatch`) and needs a CHIWO account (`sign_up_required`); sign-up with a phone on file and personal consent to `chiwo_terms`; consumer row-level isolation (no tenant policy on `chiwo` tables); merchant pay codes (`tenancy.pay_code`, `services/api/src/modules/tenancy/pay-codes.ts`); payments to a merchant as the merchant's collection (intent channel `chiwo`), with the quote's fee and total echoed (`fee_changed`), limits as data (`chiwo.consumer_limit`), idempotency, status mirrored through the outbox (`chiwo.merchant_payment.result`), a consumer receipt email and no merchant per-person alert; receipts and activity. kony-web `/w/<id>/pay-codes`; new app `apps/chiwo-web` (sign-up, pay, activity, receipt), built in CI, **not deployed**: its Vercel project and its origin in `CLERK_AUTHORIZED_PARTIES` wait for the owner's approval. Migration `20261019000100_chiwo` (expand-only). 18 new tests; 629 API tests pass (one `payouts.test.ts` teardown timed out once under full-suite load and passed alone). ADR 0002 and 0021 addenda; [chiwo-consumer-workflows.md](product/chiwo-consumer-workflows.md).
+- **7A merged and on staging (2026-10-19, PR #25):** migration `…20261019000100_chiwo` applied to staging first; `neon:verify staging` passes; health ok; all six cron jobs 200; reconciliation 0 exceptions; `/v1/chiwo/me` and `/v1/pay-codes` live (401 signed out). CI caught a missed app in the sandbox-banner test (fixed in the PR).
+- **7B built (2026-10-19, branch `phase-7b`):** personal USDC. Consumer ledger accounts (`ledger.account.consumer_account_id`, qualifier = owner, `consumer_*` types only; ADR 0003 addendum). The chain treasury is owner-aware: consumer deposit addresses by signature, deposits credited to the consumer, withdrawals to the consumer's own address with step-up and no second approver (ADR 0004 addendum). Transfers between consumers are ledger moves with recipient confirmation (O-11 c), step-up, limits as data and idempotency. Payment requests can be paid only once (row lock, open status, unique `request_id`), can be cancelled, and expire after a period set as data. Receipts and activity cover all kinds. chiwo-web pages `/usdc`, `/send`, `/requests`, `/security`. Migration `20261019000200_chiwo_usdc` (expand-only). 13 new tests (`chiwo-usdc.test.ts`, on the local chain).
 
 ## Owner approvals of 2026-10-18 — carried out
 

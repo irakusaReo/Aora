@@ -32,6 +32,20 @@ import {
   type PaymentQuote,
   type ReceiptView,
 } from './merchant-payments.service.js';
+import { type TransferView, UsdcService } from './usdc.service.js';
+import type { WithdrawalView } from '../chain/treasury.service.js';
+
+/** One line of a consumer's activity, whatever it was. */
+export interface ActivityItem {
+  readonly kind: 'merchant_payment' | 'transfer' | 'deposit' | 'withdrawal';
+  readonly id: string;
+  readonly direction: 'in' | 'out';
+  readonly status: string;
+  readonly amount_minor: string;
+  readonly currency: string;
+  readonly counterparty: string;
+  readonly created_at: string;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CURRENCY = z.string().regex(/^[A-Z]{3}$/);
@@ -80,6 +94,7 @@ export class ChiwoController {
   constructor(
     @Inject(ConsumerService) private readonly consumers: ConsumerService,
     @Inject(MerchantPaymentsService) private readonly payments: MerchantPaymentsService,
+    @Inject(UsdcService) private readonly usdc: UsdcService,
   ) {}
 
   @Get('me')
@@ -159,13 +174,48 @@ export class ChiwoController {
     return this.payments.get(sessionOf(request).accountId, id);
   }
 
-  /** Everything the consumer did, newest first. Merchant payments in 7A; transfers join in 7B. */
+  /** Everything the consumer did, newest first: payments, transfers, deposits and withdrawals. */
   @Get('activity')
-  async activity(
-    @Req() request: Request,
-  ): Promise<{ data: (MerchantPaymentView & { kind: 'merchant_payment' })[] }> {
-    const payments = await this.payments.list(sessionOf(request).accountId);
-    return { data: payments.map((payment) => ({ ...payment, kind: 'merchant_payment' as const })) };
+  async activity(@Req() request: Request): Promise<{ data: ActivityItem[] }> {
+    const accountId = sessionOf(request).accountId;
+    const [payments, transfers, chain] = await Promise.all([
+      this.payments.list(accountId),
+      this.usdc.listTransfers(accountId),
+      this.usdc.chainActivity(accountId),
+    ]);
+    const items: ActivityItem[] = [
+      ...payments.map((p) => ({
+        kind: 'merchant_payment' as const,
+        id: p.id,
+        direction: 'out' as const,
+        status: p.status,
+        amount_minor: p.total_minor,
+        currency: p.currency,
+        counterparty: p.merchant.trading_name,
+        created_at: p.created_at,
+      })),
+      ...transfers.map((t) => ({
+        kind: 'transfer' as const,
+        id: t.id,
+        direction: t.direction,
+        status: t.status,
+        amount_minor: t.amount_minor,
+        currency: t.currency,
+        counterparty: t.counterparty,
+        created_at: t.created_at,
+      })),
+      ...chain.map((c) => ({
+        kind: c.direction === 'in' ? ('deposit' as const) : ('withdrawal' as const),
+        id: c.id,
+        direction: c.direction,
+        status: c.status,
+        amount_minor: c.amount_minor,
+        currency: c.currency,
+        counterparty: c.counterparty,
+        created_at: c.at,
+      })),
+    ];
+    return { data: items.sort((a, b) => b.created_at.localeCompare(a.created_at)) };
   }
 
   @Get('receipts/:kind/:id')
@@ -173,10 +223,20 @@ export class ChiwoController {
     @Param('kind') kind: string,
     @Param('id') id: string,
     @Req() request: Request,
-  ): Promise<ReceiptView> {
-    if (kind !== 'merchant_payment' || !UUID.test(id)) {
-      throw new AppError('not_found', 'Receipt not found.');
+  ): Promise<ReceiptView | TransferView | (WithdrawalView & { kind: 'withdrawal' })> {
+    if (!UUID.test(id)) throw new AppError('not_found', 'Receipt not found.');
+    const accountId = sessionOf(request).accountId;
+    switch (kind) {
+      case 'merchant_payment':
+        return this.payments.receipt(accountId, id);
+      case 'transfer':
+        return this.usdc.transfer(accountId, id);
+      case 'withdrawal':
+        return this.usdc
+          .withdrawal(accountId, id)
+          .then((withdrawal) => ({ ...withdrawal, kind: 'withdrawal' as const }));
+      default:
+        throw new AppError('not_found', 'Receipt not found.');
     }
-    return this.payments.receipt(sessionOf(request).accountId, id);
   }
 }
