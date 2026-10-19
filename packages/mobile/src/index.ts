@@ -29,6 +29,7 @@ export { classify, type Outcome } from './outcome';
 export { PinPrompt } from './pin-prompt';
 export { clearResourceCache, type Resource, ResourceView, useResource } from './resource';
 export { SandboxBanner } from './sandbox-banner';
+export { SecurityScreen } from './security';
 export { type Services, ServicesProvider, useServices } from './services';
 export { colors, space } from './theme';
 export { WebOnly } from './web-only';

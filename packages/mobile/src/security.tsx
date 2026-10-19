@@ -1,19 +1,9 @@
 import type { Me } from '@aora/api-client';
-import {
-  Body,
-  Button,
-  Card,
-  Heading,
-  MoneyActionView,
-  Muted,
-  ResourceView,
-  Screen,
-  TextField,
-  useAction,
-  useResource,
-} from '@aora/mobile';
 import { useState } from 'react';
-import { t } from '../messages';
+import { Body, Button, Card, Heading, Muted, Screen, TextField } from './components';
+import { t } from './messages';
+import { MoneyActionView, useMoneyAction as useAction } from './money-action';
+import { ResourceView, useResource } from './resource';
 
 /** The phone number (payment identity, held by AORA) and the transaction PIN (ADR 0019). */
 export function SecurityScreen(): React.JSX.Element {

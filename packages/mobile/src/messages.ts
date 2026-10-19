@@ -18,4 +18,16 @@ export const t = translator({
   'pin.cancel': 'Cancel',
   'pin.wrong': 'That PIN did not work.',
   'web.only': 'This is done on the web app: {url}',
+  'security.title': 'PIN and phone number',
+  'security.phone': 'Phone number',
+  'security.phone_set': 'Your phone number is saved. Changing it is done on the web app.',
+  'security.phone_label': 'Phone number in international format, such as +254712345678',
+  'security.phone_save': 'Save phone number',
+  'security.phone_saved': 'Phone number saved.',
+  'security.pin': 'Transaction PIN',
+  'security.pin_help':
+    'Six digits, not a repeated digit or a simple sequence. Setting it needs a recent sign-in: if asked, sign out and in again first.',
+  'security.pin_label': 'New PIN',
+  'security.pin_save': 'Set PIN',
+  'security.pin_saved': 'PIN set.',
 });
