@@ -103,7 +103,14 @@ export interface MerchantPurchaseView {
   readonly net_minor: string;
   readonly currency: string;
   /** What the merchant should do next, in a code a screen can word. */
-  readonly next_action: 'wait_for_payments' | 'confirm' | 'fulfil' | 'wait_for_buyer' | 'none';
+  readonly next_action:
+    | 'wait_for_payments'
+    | 'confirm'
+    | 'fulfil'
+    | 'wait_for_buyer'
+    | 'respond_to_return'
+    | 'wait_for_decision'
+    | 'none';
   readonly created_at: string;
 }
 
@@ -919,6 +926,15 @@ export class LayawayService implements OnModuleInit {
       data: { fulfilment_evidence: evidence.slice(0, 120) },
     });
     const net = purchase.total_minor - purchase.merchant_fee_minor;
+    const clawbackAccount = await this.ledger.tenantAccount(tx, {
+      tenantId: purchase.tenant_id,
+      type: 'merchant_kelo_clawback_receivable',
+      assetCode: purchase.currency,
+    });
+    // One settlement at a time per workspace nets its clawback, so it is never netted twice.
+    await tx.$executeRaw`select pg_advisory_xact_lock(hashtextextended(${`kelo.clawback:${purchase.tenant_id}`}, 0))`;
+    const owedBack = await this.ledger.balanceOf(tx, clawbackAccount);
+    const offset = owedBack < net ? owedBack : net;
     await this.ledger.post(tx, {
       idempotencyKey: `kelo.${credit ? 'credit' : 'layaway'}.settle:${purchase.id}`,
       tenantId: purchase.tenant_id,
@@ -935,7 +951,11 @@ export class LayawayService implements OnModuleInit {
           direction: 'debit',
           amount: purchase.total_minor,
         },
-        ...(net > 0n
+        // A clawback the merchant owes for an accepted return is netted first (ADR 0017).
+        ...(offset > 0n
+          ? [{ accountId: clawbackAccount, direction: 'credit' as const, amount: offset }]
+          : []),
+        ...(net - offset > 0n
           ? [
               {
                 accountId: await this.ledger.findAccount(tx, {
@@ -944,7 +964,7 @@ export class LayawayService implements OnModuleInit {
                   assetCode: purchase.currency,
                 }),
                 direction: 'credit' as const,
-                amount: net,
+                amount: net - offset,
               },
             ]
           : []),
@@ -991,6 +1011,7 @@ export class LayawayService implements OnModuleInit {
         total_minor: purchase.total_minor.toString(),
         merchant_fee_minor: purchase.merchant_fee_minor.toString(),
         net_minor: net.toString(),
+        clawback_netted_minor: offset.toString(),
       },
     });
   }

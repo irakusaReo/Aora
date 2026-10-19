@@ -75,7 +75,8 @@ export class CreditCollectionsService {
         select i.id, i.agreement_id from kelo.credit_instalment i
           join kelo.credit_agreement a on a.id = i.agreement_id
          where i.status = 'due' and a.status = any(${COLLECTING}::text[])
-           and i.due_on + a.grace_days < ${today}::date
+           -- A part resumed after a pause counts from the day it resumed (8C).
+           and greatest(i.due_on, coalesce(i.grace_from, i.due_on)) + a.grace_days < ${today}::date
          order by i.agreement_id, i.seq`,
     );
     let marked = 0;
@@ -130,7 +131,7 @@ export class CreditCollectionsService {
         select distinct a.id from kelo.credit_agreement a
           join kelo.credit_instalment i on i.agreement_id = a.id
          where a.status = 'active' and i.status in ('due', 'late')
-           and i.due_on + a.default_after_days < ${today}::date`,
+           and greatest(i.due_on, coalesce(i.grace_from, i.due_on)) + a.default_after_days < ${today}::date`,
     );
     let count = 0;
     for (const { id } of agreements) {

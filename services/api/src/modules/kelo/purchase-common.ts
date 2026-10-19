@@ -8,16 +8,32 @@ import { AppError } from '../../platform/errors.js';
  */
 
 export type PurchaseStatus =
-  'placed' | 'payment_ready' | 'merchant_confirmed' | 'fulfilled' | 'completed' | 'cancelled';
+  | 'placed'
+  | 'payment_ready'
+  | 'merchant_confirmed'
+  | 'fulfilled'
+  | 'completed'
+  | 'cancelled'
+  | 'return_requested'
+  | 'returned'
+  | 'disputed';
 export type PlanType = 'layaway' | 'pay_in_n' | 'monthly_financing';
 
-/** The subset of ADR 0017's order machine that layaway and credit use. */
+/**
+ * ADR 0017's order machine as layaway and credit use it: delivery is one step
+ * (no partial fulfilment), and a return or dispute (8C) can follow delivery;
+ * a dispute can also come before it. A dispute returns to where it was, or
+ * ends in a return or a cancellation.
+ */
 export const PURCHASE_TRANSITIONS: Readonly<Record<PurchaseStatus, readonly PurchaseStatus[]>> = {
   placed: ['payment_ready', 'cancelled'],
-  payment_ready: ['merchant_confirmed', 'cancelled'],
-  merchant_confirmed: ['fulfilled', 'cancelled'],
+  payment_ready: ['merchant_confirmed', 'cancelled', 'disputed'],
+  merchant_confirmed: ['fulfilled', 'cancelled', 'disputed'],
   fulfilled: ['completed'],
-  completed: [],
+  completed: ['return_requested', 'disputed'],
+  return_requested: ['returned', 'completed'],
+  disputed: ['payment_ready', 'merchant_confirmed', 'completed', 'returned', 'cancelled'],
+  returned: [],
   cancelled: [],
 };
 

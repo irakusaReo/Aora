@@ -44,6 +44,19 @@ async function act(form: FormData): Promise<void> {
         },
         field(form, 'pay_key'),
       );
+    } else if (action === 'open_claim') {
+      const details = field(form, 'details');
+      await client.post(
+        `/v1/kelo/me/purchases/${id}/claims`,
+        {
+          kind: field(form, 'kind'),
+          reason_code: field(form, 'reason_code'),
+          ...(details ? { details } : {}),
+        },
+        field(form, 'claim_key'),
+      );
+    } else if (action === 'withdraw_claim') {
+      await client.post(`/v1/kelo/me/purchases/${id}/claims/${field(form, 'claim_id')}/withdraw`);
     } else if (action === 'cancel') {
       await client.post(`/v1/kelo/me/purchases/${id}/cancel`);
     } else if (action === 'confirm_delivery') {

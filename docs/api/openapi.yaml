@@ -3233,6 +3233,108 @@ paths:
                       outstanding_minor: { type: string }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/claims:
+    post:
+      tags: [KELO]
+      operationId: openKeloClaim
+      summary: Ask for a return (after delivery) or open a dispute (once paid for)
+      description: >
+        Phase 8C, credit purchases only, `not_found` while the `kelo_credit` flag is off. One open claim per purchase. While it is open every open part is paused: no reminders, no late charges, no repayment. `details` is purchase data only, never health information.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, reason_code]
+              properties:
+                kind: { enum: [return, dispute] }
+                reason_code: { enum: [not_delivered, not_as_described, faulty, changed_mind, other] }
+                details: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '201':
+          description: Opened
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloClaim' }
+        '200':
+          description: Replay of an earlier request with the same Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloClaim' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/claims/{claim}/withdraw:
+    post:
+      tags: [KELO]
+      operationId: withdrawKeloClaim
+      summary: Withdraw an open claim; the schedule resumes
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: claim, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Withdrawn
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloClaim' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/ops/kelo/claims:
+    get:
+      tags: [Operations]
+      operationId: listKeloDisputes
+      summary: Open KELO disputes, oldest first (platform operators)
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: Open disputes
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/KeloClaim' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/kelo/claims/{id}/decision:
+    post:
+      tags: [Operations]
+      operationId: decideKeloDispute
+      summary: Uphold or reject a dispute, with a reason (platform operators, step-up)
+      description: >
+        Upheld after delivery it is a return (refund and clawback); upheld before delivery it is a cancellation (refund, nothing owed to the merchant). Rejected, the purchase and schedule return to where they were. Audited.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [outcome, reason]
+              properties:
+                outcome: { enum: [accepted, rejected] }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+      responses:
+        '200':
+          description: Decided
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloClaim' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /v1/kelo/credit/limit:
     get:
       tags: [KELO]
@@ -3515,6 +3617,53 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/KeloMerchantPurchase' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/claims/{id}/accept:
+    post:
+      tags: [KELO]
+      operationId: acceptKeloReturn
+      summary: Accept a return; the buyer is refunded and the merchant's net is clawed back
+      description: >
+        Phase 8C, `not_found` while the `kelo_credit` flag is off. Returns only (a dispute is decided by KELO, `invalid_state_transition`). Needs the refund permission and a step-up. The credit is undone by compensating entries, everything the buyer paid is refunded with no fee, KELO gives up its discount fee, and the merchant's net becomes a clawback receivable netted from their next KELO settlement.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloClaim' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/workspace/kelo/claims/{id}/reject:
+    post:
+      tags: [KELO]
+      operationId: rejectKeloReturn
+      summary: Reject a return, with a reason; the buyer's schedule resumes
+      description: Phase 8C. Parts whose due date passed during the pause get their full grace period again from today.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 300 } } }
+      responses:
+        '200':
+          description: Rejected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloClaim' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
@@ -4642,7 +4791,7 @@ components:
       required: [id, status, plan_status, plan_type, listing_id, listing_title, total_minor, paid_minor, currency, receive_after_last_payment, instalments, refund, credit, created_at]
       properties:
         id: { type: string, format: uuid }
-        status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled] }
+        status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled, return_requested, returned, disputed] }
         plan_status: { enum: [active, paid_in_full, settled, cancelled, refunded] }
         plan_type: { enum: [layaway, pay_in_n, monthly_financing] }
         listing_id: { type: string, format: uuid }
@@ -4770,6 +4919,21 @@ components:
         payment_intent_id: { type: [string, 'null'], format: uuid }
         seq: { type: [integer, 'null'] }
         mode: { $ref: '#/components/schemas/Mode' }
+    KeloClaim:
+      type: object
+      required: [id, purchase_id, kind, reason_code, details, status, decided_as, decision_reason, created_at, decided_at]
+      properties:
+        id: { type: string, format: uuid }
+        purchase_id: { type: string, format: uuid }
+        kind: { enum: [return, dispute] }
+        reason_code: { enum: [not_delivered, not_as_described, faulty, changed_mind, other] }
+        details: { type: [string, 'null'] }
+        status: { enum: [open, accepted, rejected, withdrawn] }
+        decided_as: { type: [string, 'null'], enum: [merchant, operator, buyer, null] }
+        decision_reason: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        decided_at: { type: [string, 'null'], format: date-time }
+        workspace_id: { type: string, format: uuid, description: Operator queue only. }
     FeatureFlag:
       type: object
       required: [key, enabled, reason, changed_at]
@@ -4783,7 +4947,7 @@ components:
       required: [id, status, plan_status, plan_type, listing_title, total_minor, paid_minor, merchant_fee_minor, net_minor, currency, next_action, created_at]
       properties:
         id: { type: string, format: uuid }
-        status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled] }
+        status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled, return_requested, returned, disputed] }
         plan_status: { enum: [active, paid_in_full, settled, cancelled, refunded] }
         plan_type: { enum: [layaway, pay_in_n, monthly_financing], description: Never anything about the buyer's credit. }
         listing_title: { type: string }

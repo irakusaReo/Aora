@@ -6,8 +6,10 @@ import { t } from '../../lib/messages';
 /**
  * A credit purchase in the purchases hub (kelo-experience.md §2): its parts
  * paid and to come, what is left, the next due part, and "Pay early" with the
- * exact amount and no penalty. Reporting a return arrives in 8C.
+ * exact amount and no penalty; and "Report a return" or a problem (8C), which
+ * pauses the plan while it is looked at.
  */
+const REASONS = ['not_delivered', 'not_as_described', 'faulty', 'changed_mind', 'other'] as const;
 export function CreditPurchaseCard({
   purchase,
   money,
@@ -143,6 +145,66 @@ export function CreditPurchaseCard({
           })}
         </p>
       )}
+      {purchase.claim && (
+        <p>
+          <span className="pill">
+            {t(`claim.status.${purchase.claim.status}`, {
+              reason: purchase.claim.decision_reason ?? '',
+            })}
+          </span>
+        </p>
+      )}
+      {purchase.claim?.status === 'open' && (
+        <>
+          <p className="muted">{t('claim.paused')}</p>
+          <form action={act}>
+            {hidden}
+            <input type="hidden" name="action" value="withdraw_claim" />
+            <input type="hidden" name="claim_id" value={purchase.claim.id} />
+            <button type="submit" className="secondary">
+              {t('claim.withdraw')}
+            </button>
+          </form>
+        </>
+      )}
+      {purchase.claim?.status !== 'open' &&
+        ['payment_ready', 'merchant_confirmed', 'completed'].includes(purchase.status) && (
+          <details>
+            <summary>{t('claim.title')}</summary>
+            <form action={act} className="stack">
+              {hidden}
+              <input type="hidden" name="action" value="open_claim" />
+              <input type="hidden" name="claim_key" value={randomUUID()} />
+              <input
+                type="hidden"
+                name="kind"
+                value={purchase.status === 'completed' ? 'return' : 'dispute'}
+              />
+              <label>
+                {t('claim.reason_label')}
+                <select name="reason_code" required defaultValue="">
+                  <option value="" disabled />
+                  {REASONS.filter((reason) =>
+                    purchase.status === 'completed'
+                      ? reason !== 'not_delivered'
+                      : reason !== 'changed_mind',
+                  ).map((reason) => (
+                    <option key={reason} value={reason}>
+                      {t(`claim.reason.${reason}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t('claim.details_label')}
+                <textarea name="details" maxLength={500} rows={3} />
+              </label>
+              <button type="submit" className="secondary">
+                {t(purchase.status === 'completed' ? 'claim.return' : 'claim.dispute')}
+              </button>
+            </form>
+          </details>
+        )}
       {['placed', 'payment_ready', 'merchant_confirmed'].includes(purchase.status) && (
         <form action={act}>
           {hidden}

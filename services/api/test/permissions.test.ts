@@ -21,6 +21,13 @@ const EXPECTED: Record<
   'GET /v1/workspace/kelo/purchases': { admin: true, finance: true, cashier: true },
   'POST /v1/workspace/kelo/purchases/:id/confirm': { admin: true, finance: false, cashier: false },
   'POST /v1/workspace/kelo/purchases/:id/fulfil': { admin: true, finance: false, cashier: false },
+  'POST /v1/workspace/kelo/claims/:id/accept': {
+    admin: true,
+    finance: true,
+    cashier: false,
+    stepUp: true,
+  },
+  'POST /v1/workspace/kelo/claims/:id/reject': { admin: true, finance: false, cashier: false },
   'GET /v1/workspace/kelo/quote-requests': { admin: true, finance: true, cashier: true },
   'POST /v1/workspace/kelo/quote-requests/:id/quotes': {
     admin: true,

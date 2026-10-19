@@ -198,7 +198,7 @@ describe('agreement state machine', () => {
       pending_first_payment: ['active', 'cancelled'],
       active: ['paid_off', 'cancelled', 'defaulted', 'paused'],
       defaulted: ['paused', 'active', 'paid_off'],
-      paused: ['active', 'defaulted'],
+      paused: ['active', 'defaulted', 'cancelled'],
       paid_off: [],
       cancelled: [],
     });
