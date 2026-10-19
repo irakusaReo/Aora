@@ -22,17 +22,19 @@ To use a local API instead of staging, set `AORA_MOBILE_API_URL` in `.env.local`
 
 | App | On the phone | On the web app instead |
 |---|---|---|
-| `kony-mobile` | Choose a workspace, accept an invitation, collect by M-Pesa (STK push) or simulator, collections with gross, fee and net, refunds, balances by type, settlements, payouts with the fee shown first, USDC treasury and withdrawal approval, PIN and phone | Onboarding, branches, team, pay codes, payout recipients, developer keys, the KELO store and listings, treasury addresses and new withdrawals, NAM Vault |
+| `kony-mobile` | Choose a workspace, accept an invitation, KELO orders (dashboard, confirm, record delivery, answer a return), collect by M-Pesa (STK push) or simulator, collections with gross, fee and net, refunds, balances by type, settlements, payouts with the fee shown first, USDC treasury and withdrawal approval, PIN and phone | Onboarding, branches, team, pay codes, payout recipients, developer keys, the KELO store and listings, treasury addresses and new withdrawals, NAM Vault |
 | `chiwo-mobile` | Sign-up (phone, terms), pay a shop by pay code with the fee first, payment status and receipt, activity, USDC balance, find and confirm a person and send USDC, payment requests (create, pay, cancel), NAM position, PIN and phone | Registering an on-chain address, withdrawing on chain, NAM orders and redemptions |
+| `kelo-mobile` | Browse and search the marketplace, a listing with its plan cards, layaway and Pay in N or monthly-financing checkout (credit only while `kelo_credit` is on), the credit decision with its reasons, the purchases hub (pay the next instalment, pay early or pay off at the API's quote, confirm delivery, cancel, returns and disputes), the credit statement, PIN and phone | Asking for a quote, the KELO store and listings (merchant side, in kony-mobile's web app) |
 
 ## Checks
 
-- `pnpm vitest run --project mobile --project kony-mobile --project chiwo-mobile`: screens rendered with a fake API, in CI.
+- `pnpm vitest run --project mobile --project kony-mobile --project chiwo-mobile --project kelo-mobile`: screens rendered with a fake API, in CI.
 - `cd apps/kony-mobile && npx expo export --platform android --output-dir dist && node ../../scripts/check-mobile-bundle.mjs .`: the bundle builds, stays within budget and holds nothing secret-shaped. CI runs it for every app.
 - **Device check (manual, owner walk-through):** each journey once on a mid-range Android phone on a throttled connection, including signing in, a PIN step-up and a "we are checking" state (choose the simulator scenario `timeout_then_success`).
 
 ## Security notes
 
 - The session token is kept only by Clerk's secure token cache (Keychain, Keystore). Idempotency keys for money actions are kept in the same secure storage until the outcome is definite. Nothing else is stored on the phone; read data is cached in memory only.
+- The marketplace needs a sign-in on mobile (the web marketplace can be browsed signed out); one identity signs in to all three apps.
 - The PIN is held in memory only while it is typed and is cleared once sent.
 - Every screen sits under the sandbox banner.
