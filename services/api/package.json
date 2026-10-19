@@ -17,7 +17,9 @@
     "neon:verify": "node --env-file-if-exists=../../.env.local scripts/neon-verify.mjs",
     "ops:grant-operator": "node --env-file-if-exists=../../.env.local scripts/grant-operator.mjs",
     "secrets:generate": "node scripts/generate-secrets.mjs",
-    "db:migrate:env": "node --env-file-if-exists=../../.env.local scripts/migrate-env.mjs"
+    "db:migrate:env": "node --env-file-if-exists=../../.env.local scripts/migrate-env.mjs",
+    "db:seed:demo": "node --env-file-if-exists=../../.env.local scripts/seed-demo-env.mjs",
+    "gate:check": "node --env-file-if-exists=../../.env.local scripts/gate-check-env.mjs"
   },
   "dependencies": {
     "@clerk/backend": "3.23.2",

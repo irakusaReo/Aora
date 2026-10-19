@@ -25,6 +25,8 @@
     "start:api": "pnpm --filter @aora/api start",
     "start:worker": "pnpm --filter @aora/api start:worker",
     "db:seed": "pnpm --filter @aora/api db:seed",
+    "db:seed:demo": "pnpm --filter @aora/api db:seed:demo",
+    "gate:check": "pnpm --filter @aora/api gate:check",
     "neon:bootstrap": "pnpm --filter @aora/api neon:bootstrap",
     "ops:grant-operator": "pnpm --filter @aora/api ops:grant-operator",
     "secrets:generate": "pnpm --filter @aora/api secrets:generate",
