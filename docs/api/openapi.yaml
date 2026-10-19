@@ -33,6 +33,7 @@ tags:
   - name: Webhooks
   - name: Notifications
   - name: KELO
+  - name: CHIWO
   - name: Operations
   - name: Internal
 paths:
@@ -3100,6 +3101,289 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+  /v1/pay-codes:
+    get:
+      tags: [Workspace]
+      operationId: listPayCodes
+      summary: The workspace's CHIWO pay codes
+      description: Permission `pay_code.read` (admin, finance, cashier). A cashier shows a code at the till.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/PayCode' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Workspace]
+      operationId: createPayCode
+      summary: Create a pay code a CHIWO consumer can pay
+      description: >
+        Permission `pay_code.manage` (admin). Eight characters with no 0, O, 1 or
+        I. A code reveals only the trading name to a consumer and grants nothing.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                branch_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayCode' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/pay-codes/{code}/deactivate:
+    post:
+      tags: [Workspace]
+      operationId: deactivatePayCode
+      summary: Stop a pay code from taking payments
+      description: Permission `pay_code.manage` (admin). Idempotent.
+      security: [{ session: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Workspace' }
+        - { name: code, in: path, required: true, schema: { type: string, pattern: '^[2-9A-HJ-NP-Z]{8}$' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayCode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/me:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoMe
+      summary: Whether the signed-in person has a CHIWO account
+      description: >
+        Personal route: acts for the signed-in person only. Every CHIWO route
+        refuses a request that carries `Aora-Workspace-Id` (`context_mismatch`),
+        and every one except this and sign-up needs a CHIWO account
+        (`sign_up_required`). Workspace membership grants nothing here.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMe' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/sign-up:
+    post:
+      tags: [CHIWO]
+      operationId: chiwoSignUp
+      summary: Open a personal CHIWO account
+      description: >
+        Needs a phone number on file (`phone_required`) and the version of
+        `chiwo_terms` in effect; records personal-capacity consent. 201 when
+        created, 200 when the account already exists.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [terms_version]
+              properties:
+                terms_version: { type: string, minLength: 1, maxLength: 40 }
+      responses:
+        '200':
+          description: Already signed up
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMe' }
+        '201':
+          description: Signed up
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMe' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/merchants/{code}:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoMerchant
+      summary: The merchant behind a pay code
+      description: Trading name only. Rate-limited per account. 404 for an unknown or inactive code.
+      security: [{ session: [] }]
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMerchant' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/payments/quote:
+    post:
+      tags: [CHIWO]
+      operationId: quoteChiwoPayment
+      summary: What paying a merchant will cost and how long it takes, before authorising
+      description: >
+        The consumer pays no fee (the tariff charges the merchant). In the
+        sandbox the M-Pesa prompt goes to Safaricom's test number, never to the
+        consumer's own phone.
+      security: [{ session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pay_code, amount_minor, currency]
+              properties:
+                pay_code: { type: string }
+                amount_minor: { type: string, pattern: '^[1-9][0-9]{0,18}$' }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoPaymentQuote' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/payments:
+    get:
+      tags: [CHIWO]
+      operationId: listChiwoPayments
+      summary: The consumer's payments to merchants, newest first
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ChiwoMerchantPayment' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [CHIWO]
+      operationId: createChiwoPayment
+      summary: Pay a KONY merchant by M-Pesa
+      description: >
+        Must echo the quote's fee and total (`fee_changed` otherwise). Becomes the
+        merchant's collection (channel `chiwo`) with gross, fee and net from the
+        tariff; the consumer's status follows it. Per-payment and per-day limits
+        are data (`limit_exceeded`). The same key and body replay (200); a
+        different body is refused.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pay_code, amount_minor, currency, expected_fee_minor, expected_total_minor]
+              properties:
+                pay_code: { type: string }
+                amount_minor: { type: string, pattern: '^[1-9][0-9]{0,18}$' }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+                expected_fee_minor: { type: string, pattern: '^(0|[1-9][0-9]{0,18})$' }
+                expected_total_minor: { type: string, pattern: '^[1-9][0-9]{0,18}$' }
+                sandbox_scenario: { type: string, description: 'Simulator script; sends the payment to the simulator instead of Daraja.' }
+      responses:
+        '200':
+          description: Replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMerchantPayment' }
+        '201':
+          description: Submitted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMerchantPayment' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/payments/{id}:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoPayment
+      summary: One of the consumer's payments
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoMerchantPayment' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/activity:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoActivity
+      summary: Everything the consumer did, newest first
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/ChiwoMerchantPayment' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/receipts/{kind}/{id}:
+    get:
+      tags: [CHIWO]
+      operationId: getChiwoReceipt
+      summary: A receipt, with parties masked
+      security: [{ session: [] }]
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [merchant_payment] } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChiwoReceipt' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     apiKey:
@@ -3281,6 +3565,70 @@ components:
         tx_hash: { type: [string, 'null'], description: A hash is not completion. }
         created_at: { type: string, format: date-time }
         mode: { $ref: '#/components/schemas/Mode' }
+    PayCode:
+      type: object
+      required: [code, branch_id, status, created_at, mode]
+      properties:
+        code: { type: string, pattern: '^[2-9A-HJ-NP-Z]{8}$' }
+        branch_id: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [active, inactive] }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoMe:
+      type: object
+      required: [signed_up, phone_on_file, terms, mode]
+      properties:
+        signed_up: { type: boolean }
+        phone_on_file: { type: boolean }
+        terms: { type: object, required: [key, version], properties: { key: { type: string }, version: { type: string } } }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoMerchant:
+      type: object
+      required: [code, trading_name, mode]
+      properties:
+        code: { type: string }
+        trading_name: { type: string }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoPaymentQuote:
+      type: object
+      required: [pay_code, amount_minor, fee_minor, total_minor, currency, rail, provider, payer_number, timing, merchant, mode]
+      properties:
+        pay_code: { type: string }
+        amount_minor: { type: string }
+        fee_minor: { type: string, description: 'What the consumer pays on top of the amount.' }
+        total_minor: { type: string }
+        currency: { type: string }
+        rail: { type: string }
+        provider: { type: string, enum: [daraja_sandbox, simulator] }
+        payer_number: { const: sandbox_test_number }
+        timing: { type: string }
+        merchant: { $ref: '#/components/schemas/ChiwoMerchant' }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoMerchantPayment:
+      type: object
+      required: [id, status, amount_minor, fee_minor, total_minor, currency, rail, merchant, created_at, updated_at, mode]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { const: merchant_payment }
+        status: { type: string, enum: [submitted, being_checked, succeeded, failed, reconciliation_required] }
+        amount_minor: { type: string }
+        fee_minor: { type: string }
+        total_minor: { type: string }
+        currency: { type: string }
+        rail: { type: string }
+        merchant: { type: object, required: [code, trading_name], properties: { code: { type: string }, trading_name: { type: string } } }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    ChiwoReceipt:
+      allOf:
+        - { $ref: '#/components/schemas/ChiwoMerchantPayment' }
+        - type: object
+          required: [kind, reference, payer_number]
+          properties:
+            kind: { const: merchant_payment }
+            reference: { type: string }
+            payer_number: { const: sandbox_test_number }
     Mode:
       const: sandbox
       description: Every record and response is sandbox data.
@@ -3814,6 +4162,8 @@ components:
                 - conflict
                 - invalid_destination
                 - chain_unavailable
+                - context_mismatch
+                - sign_up_required
                 - internal_error
             message: { type: string }
             request_id: { type: string }

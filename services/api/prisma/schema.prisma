@@ -6,7 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["audit", "business", "chain", "consent", "developer", "identity", "kelo", "ledger", "nam", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
+  schemas  = ["audit", "business", "chain", "chiwo", "consent", "developer", "identity", "kelo", "ledger", "nam", "notifications", "ops", "outbox", "payments", "pricing", "sim", "tenancy"]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -109,6 +109,7 @@ model user_account {
   registered_address_registered_address_revoked_byTouser_account                   registered_address[]       @relation("registered_address_revoked_byTouser_account")
   withdrawal_withdrawal_created_byTouser_account                                   withdrawal[]               @relation("withdrawal_created_byTouser_account")
   withdrawal_withdrawal_decided_byTouser_account                                   withdrawal[]               @relation("withdrawal_decided_byTouser_account")
+  consumer                                                                         consumer?
   consent_record                                                                   consent_record[]
   api_key_api_key_created_byTouser_account                                         api_key[]                  @relation("api_key_created_byTouser_account")
   api_key_api_key_revoked_byTouser_account                                         api_key[]                  @relation("api_key_revoked_byTouser_account")
@@ -139,6 +140,7 @@ model user_account {
   invitation_invitation_accepted_byTouser_account                                  invitation[]               @relation("invitation_accepted_byTouser_account")
   invitation_invitation_invited_byTouser_account                                   invitation[]               @relation("invitation_invited_byTouser_account")
   membership                                                                       membership[]
+  pay_code                                                                         pay_code[]
   workspace_restriction                                                            workspace_restriction[]
 
   @@schema("identity")
@@ -180,6 +182,7 @@ model workspace {
   registered_address                        registered_address[]
   transition                                transition[]
   withdrawal                                withdrawal[]
+  merchant_payment                          merchant_payment[]
   consent_record                            consent_record[]
   api_key                                   api_key[]
   webhook_delivery                          webhook_delivery[]
@@ -212,6 +215,7 @@ model workspace {
   branch                                    branch[]
   invitation                                invitation[]
   membership                                membership[]
+  pay_code                                  pay_code[]
   business                                  business                    @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace_restriction                     workspace_restriction[]
 
@@ -264,6 +268,8 @@ model asset {
   observed_transfer   observed_transfer[]
   operation           operation[]
   withdrawal          withdrawal[]
+  consumer_limit      consumer_limit[]
+  merchant_payment    merchant_payment[]
   layaway_refund      layaway_refund[]
   listing             listing[]
   plan_template       plan_template[]
@@ -379,6 +385,8 @@ model payment_intent {
   net_amount                BigInt?                     @default(dbgenerated("(amount - fee_amount)"))
   settlement_batch_id       String?                     @db.Uuid
   purpose                   String                      @default("collection")
+  channel                   String                      @default("kony")
+  merchant_payment          merchant_payment?
   layaway_instalment        layaway_instalment?
   asset                     asset                       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   branch                    branch?                     @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction, map: "payment_intent_branch_same_workspace")
@@ -511,6 +519,7 @@ model consent_record {
   request_id        String?
   mode              String         @default("sandbox")
   created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  consumer          consumer[]
   user_account      user_account   @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   person            person         @relation(fields: [person_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   workspace         workspace?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -693,6 +702,7 @@ model branch {
   workspace      workspace        @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   invitation     invitation[]
   membership     membership[]
+  pay_code       pay_code[]
 
   @@unique([id, tenant_id])
   @@schema("tenancy")
@@ -1910,4 +1920,95 @@ model vault_order {
 
   @@unique([profile_id, idempotency_key])
   @@schema("nam")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model consumer {
+  account_id       String             @id @db.Uuid
+  consent_id       String             @db.Uuid
+  status           String             @default("active")
+  mode             String             @default("sandbox")
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  user_account     user_account       @relation(fields: [account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  consent_record   consent_record     @relation(fields: [consent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  merchant_payment merchant_payment[]
+
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model consumer_limit {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operation       String
+  asset_code      String
+  per_payment_max BigInt
+  per_day_max     BigInt
+  effective_from  DateTime @db.Timestamptz(6)
+  mode            String   @default("sandbox")
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  asset           asset    @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([operation, asset_code, effective_from])
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model merchant_payment {
+  id                                           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  consumer_account_id                          String          @db.Uuid
+  idempotency_key                              String
+  request_hash                                 String
+  pay_code                                     String
+  tenant_id                                    String          @db.Uuid
+  amount                                       BigInt
+  fee_minor                                    BigInt          @default(0)
+  asset_code                                   String
+  rail                                         String
+  intent_id                                    String?         @unique @db.Uuid
+  status                                       String          @default("submitted")
+  mode                                         String          @default("sandbox")
+  created_at                                   DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                                   DateTime        @default(now()) @db.Timestamptz(6)
+  asset                                        asset           @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  consumer                                     consumer        @relation(fields: [consumer_account_id], references: [account_id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent                               payment_intent? @relation(fields: [intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pay_code_merchant_payment_pay_codeTopay_code pay_code        @relation("merchant_payment_pay_codeTopay_code", fields: [pay_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                    workspace       @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([consumer_account_id, idempotency_key])
+  @@index([consumer_account_id, created_at(sort: Desc)], map: "merchant_payment_consumer")
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model timing_note {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rail           String
+  body           String
+  effective_from DateTime @db.Timestamptz(6)
+  mode           String   @default("sandbox")
+
+  @@unique([rail, effective_from])
+  @@schema("chiwo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model pay_code {
+  code                                                 String             @id
+  tenant_id                                            String             @db.Uuid
+  branch_id                                            String?            @db.Uuid
+  status                                               String             @default("active")
+  created_by                                           String             @db.Uuid
+  mode                                                 String             @default("sandbox")
+  created_at                                           DateTime           @default(now()) @db.Timestamptz(6)
+  merchant_payment_merchant_payment_pay_codeTopay_code merchant_payment[] @relation("merchant_payment_pay_codeTopay_code")
+  branch                                               branch?            @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  user_account                                         user_account       @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workspace                                            workspace          @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenant_id, created_at], map: "pay_code_tenant")
+  @@schema("tenancy")
 }

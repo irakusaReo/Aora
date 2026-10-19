@@ -107,6 +107,10 @@ import {
   WorkspaceController,
 } from './modules/tenancy/members.controller.js';
 import { TenancyService } from './modules/tenancy/tenancy.service.js';
+import { PayCodesController, PayCodesService } from './modules/tenancy/pay-codes.js';
+import { ChiwoController } from './modules/chiwo/chiwo.controller.js';
+import { ConsumerGuard, ConsumerService } from './modules/chiwo/consumer.service.js';
+import { MerchantPaymentsService } from './modules/chiwo/merchant-payments.service.js';
 import { APP_CONFIG, type AppConfig } from './platform/config.js';
 import { Database } from './platform/database.js';
 import type { WorkspaceHook } from './seed-data.js';
@@ -149,6 +153,10 @@ const SHARED = [
   CatalogueService,
   QuotesService,
   LayawayService,
+  PayCodesService,
+  ConsumerService,
+  MerchantPaymentsService,
+  ConsumerGuard,
   SessionGuard,
   WorkspaceGuard,
   OperatorGuard,
@@ -203,6 +211,8 @@ export const CONTROLLERS = [
   CronController,
   NotificationsController,
   ProviderWebhooksController,
+  PayCodesController,
+  ChiwoController,
 ];
 
 @Module({})

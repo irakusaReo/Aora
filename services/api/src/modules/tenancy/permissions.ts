@@ -27,6 +27,9 @@ export const PERMISSIONS = {
   'webhook.manage': ['admin'],
   'member.read': ['admin', 'finance'],
   'member.manage': ['admin'],
+  // Merchant pay codes for CHIWO (phase 7A). A cashier shows them at the till.
+  'pay_code.read': ['admin', 'finance', 'cashier'],
+  'pay_code.manage': ['admin'],
   'kelo_listing.read': ['admin', 'finance', 'cashier'],
   'kelo_listing.manage': ['admin'],
   // USDC treasury on Base Sepolia (phase 5C). Approving a withdrawal is admin

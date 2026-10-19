@@ -35,6 +35,8 @@ export type ErrorCode =
   | 'conflict'
   | 'invalid_destination'
   | 'chain_unavailable'
+  | 'context_mismatch'
+  | 'sign_up_required'
   | 'internal_error';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -64,6 +66,8 @@ const STATUS: Record<ErrorCode, number> = {
   conflict: 409,
   invalid_destination: 422,
   chain_unavailable: 503,
+  context_mismatch: 400,
+  sign_up_required: 403,
   internal_error: 500,
 };
 
