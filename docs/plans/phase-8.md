@@ -87,3 +87,9 @@ Differences from sections 2 to 4, none material:
 - Routes: `POST /v1/kelo/me/purchases/{id}/claims`, `…/claims/{claim}/withdraw`; `POST /v1/workspace/kelo/claims/{id}/accept` (refund permission, step-up) and `…/reject`; `GET /v1/ops/kelo/claims`, `POST /v1/ops/kelo/claims/{id}/decision` (step-up).
 - Screens: kelo-web "Something wrong?" in each credit purchase card, the paused notice and withdraw; kony-web KELO orders shows the claim and accept (PIN) or reject (reason); internal-ops `/disputes`.
 - Deviation: no partial returns (one item per purchase), so "re-plans what is left" has nothing left to re-plan.
+
+## 10. 8D as built (2026-10-19)
+
+- `GET /v1/workspace/kelo/dashboard` (settlement permission: admin and finance), `services/api/src/modules/kelo/dashboard.service.ts`. Every money figure is summed from the ledger entries that name the workspace (`kelo_*_settlement`, `kelo_credit_return`) and from the clawback account's balance, so it equals the ledger by construction (tested against `merchant_available` and the clawback receivable). Order counts come from the order machine and open claims.
+- kony-web `/w/{id}/kelo/dashboard`, in kelo-experience §3's order: orders needing action; BNPL sales; settlements due and paid (sale, KELO fee, clawbacks netted, paid to available); returns; fees.
+- No migration. Nothing about any buyer or their credit is read or returned (tested).

@@ -65,6 +65,7 @@ import { OpsLookupController } from './modules/ops/ops.controller.js';
 import { FeatureFlagsService, OpsFeatureFlagsController } from './modules/ops/feature-flags.js';
 import { KeloCreditController } from './modules/kelo/credit/credit.controller.js';
 import { CreditService } from './modules/kelo/credit/credit.service.js';
+import { KeloDashboardService } from './modules/kelo/dashboard.service.js';
 import { ClaimsService } from './modules/kelo/credit/claims.service.js';
 import {
   KeloBuyerClaimsController,
@@ -168,6 +169,7 @@ const SHARED = [
   QuotesService,
   LayawayService,
   CreditService,
+  KeloDashboardService,
   ClaimsService,
   CreditCollectionsService,
   FeatureFlagsService,

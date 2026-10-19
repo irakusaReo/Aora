@@ -5,7 +5,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
 - **Current phase:** Phase 8 — KELO credit, in progress ([plan](plans/phase-8.md)). Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging; `chiwo-web` is deployed at https://chiwo-web.vercel.app (2026-10-19). Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (Phase 8C built)
+- **Last updated:** 2026-10-19 (Phase 8D built)
 
 ## Owner decisions of 2026-10-18
 
@@ -89,6 +89,8 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **8B built (2026-10-19, branch `phase-8b`):** repayments (`kelo.credit_repayment`; the 8A part payment now uses it too): pay the next part early or pay everything off with interest only to the day and no penalty (r. 56(4)), exact quote required; allocation principal, then charges, then interest (r. 56(2)); daily `kelo-credit` cron job (the seventh) marking parts late after the grace period with a capped late charge, marking agreements non-performing after the default period (nothing reported), and emailing reminders to the borrower only inside 08:00–19:00 Nairobi; receipts and a free statement; limit grows only for agreements repaid on time. kelo-web Pay early and `/credit/statement/{id}`. Migration `20261019000500_kelo_credit_repayments` (expand-only). 18 new tests; 681 pass. ADR 0018 and 0021 addenda; plan §8.
 - **8B merged and on staging (2026-10-19, PR #31):** migration `…000500` applied to staging first; `neon:verify staging` 8/8; health ok; **seven** cron jobs 200 (new: `kelo-credit`, also in the scheduled workflow); reconciliation 0 exceptions.
 - **8C built (2026-10-19, branch `phase-8c`):** returns and disputes on credit purchases (`kelo.purchase_claim`): a return after delivery (merchant decides; accepting needs refund rights and a PIN step-up) or a dispute once paid for (an operator decides in internal-ops `/disputes`); an open claim pauses every open part (no reminders, charges or repayment); rejected or withdrawn, everything resumes with fresh grace; accepted, the credit is undone by compensating entries, everything paid is refunded, and after delivery the merchant's net becomes a clawback receivable netted from their next KELO settlement. One unwind path serves cancellations, returns and upheld disputes. Migration `20261019000600_kelo_returns` (expand-only). 9 new tests; 692 pass. ADR 0017 and 0021 addenda; plan §9.
+- **8C merged and on staging (2026-10-19, PR #32):** migration `…000600_kelo_returns` applied to staging first (the first attempt timed out before connecting; the retry applied it); `neon:verify staging` 8/8; health ok; seven cron jobs 200; reconciliation 0 exceptions.
+- **8D built (2026-10-19, branch `phase-8d`):** the KELO dashboard in KONY (`GET /v1/workspace/kelo/dashboard`, kony-web `/w/{id}/kelo/dashboard`): orders needing action, BNPL sales, settlements due and paid, returns and clawbacks, fees, all read from the ledger; no buyer or credit data. No migration. 4 new tests. Plan §10, ADR 0017 addendum.
 
 ## Owner approvals of 2026-10-18 — carried out
 

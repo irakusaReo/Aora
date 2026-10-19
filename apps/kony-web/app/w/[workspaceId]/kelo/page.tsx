@@ -61,6 +61,7 @@ export default async function Kelo({
     <>
       <h1>KELO: {store.store.display_name}</h1>
       <p>
+        <Link href={`/w/${workspaceId}/kelo/dashboard`}>Dashboard</Link> ·{' '}
         <Link href={`/w/${workspaceId}/kelo/purchases`}>Orders</Link>
       </p>
       <p className="muted">
