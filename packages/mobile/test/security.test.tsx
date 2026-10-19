@@ -1,9 +1,15 @@
 import { AoraApiError } from '@aora/api-client';
-import { fakeApi, renderWith, services } from '@aora/mobile/testing';
+import { fakeApi, renderWith, services } from '../src/testing';
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { SecurityScreen } from '../src/screens/security';
-import { me } from './fixtures';
+import { SecurityScreen } from '../src/security';
+
+const me = (role: string, phoneSet = true): unknown => ({
+  account_id: 'acc_1',
+  is_platform_operator: false,
+  memberships: [{ workspace_id: 'w1', role }],
+  phone_set: phoneSet,
+});
 
 describe('PIN and phone', () => {
   it('sets the PIN and clears the field', async () => {

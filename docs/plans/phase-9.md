@@ -1,6 +1,6 @@
 # Phase 9 Plan — Mobile
 
-- **Status:** in progress (2026-10-19): 9A built. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
+- **Status:** in progress (2026-10-19): 9A built (PR #35, CI green); 9B built. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
 - **Scope source:** [mvp-scope.md](../product/mvp-scope.md) §3 (checkpoints 9A, 9B, 9C) and journey K8; [ADR 0016](../adr/0016-mobile-architecture.md) (mobile architecture), [ADR 0019](../adr/0019-clerk-integration.md) (Clerk); [kelo-experience.md](../product/kelo-experience.md).
 - **Branch:** one per checkpoint (`phase-9a`, `phase-9b`, `phase-9c`). Merge rules as before: CI green on the head commit, every needed Vercel variable present, then staging health and every cron job confirmed. Phase 9 adds no migration and no Vercel project: the apps are clients of the staging API and are not hosted.
 - **Test discipline:** tests strictly first for the idempotency-key store (a key survives an app restart), the outcome classifier (a timeout is "unknown", never "failed"), token storage (secure storage only), and the money formatting the apps use. Screens are tested alongside, rendered with a mocked API in CI.
@@ -60,9 +60,9 @@ No migration and no new endpoint is planned: the apps use the routes the web app
 | Screen | Routes |
 |---|---|
 | Sign-up | `GET /v1/chiwo/me`, `PUT /v1/me/phone`, `GET /v1/terms/{key}`, `POST /v1/chiwo/sign-up` |
-| Pay a shop; status; receipt | `GET /v1/chiwo/merchants/{code}`, `POST /v1/chiwo/payments/quote`, `POST /v1/chiwo/payments`, `GET /v1/chiwo/payments/{id}`, `GET /v1/chiwo/receipts/{kind}/{id}` |
+| Pay a shop; status and receipt (one screen, as on the web) | `POST /v1/chiwo/payments/quote`, `POST /v1/chiwo/payments`, `GET /v1/chiwo/receipts/{kind}/{id}` |
 | Activity | `GET /v1/chiwo/activity` |
-| USDC: balance, receive, send | `GET /v1/chiwo/usdc`, `GET /v1/chiwo/recipients`, `POST /v1/chiwo/transfers` |
+| USDC: balance, find and confirm a person, send | `GET /v1/chiwo/usdc`, `GET`/`POST /v1/chiwo/recipients`, `POST /v1/chiwo/recipients/{id}/confirm`, `POST /v1/chiwo/transfers` |
 | Requests | `GET`/`POST /v1/chiwo/requests`, `GET /v1/chiwo/requests/{id}`, `POST /v1/chiwo/requests/{id}/pay`, `POST /v1/chiwo/requests/{id}/cancel` |
 | NAM view | `GET /v1/chiwo/nam` |
 

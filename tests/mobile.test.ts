@@ -102,6 +102,19 @@ describe('mobile contract with the API (phase-9 P9-13)', () => {
       }
     }
     expect(called.size).toBeGreaterThan(5);
-    expect([...called].filter((call) => !documented.has(call))).toEqual([]);
+    // A documented `{param}` segment accepts any value, including a literal such as `merchant_payment`.
+    const matches = (call: string): boolean =>
+      [...documented].some((route) => {
+        const [method, path] = route.split(' ');
+        const [callMethod, callPath] = call.split(' ');
+        const want = (path ?? '').split('/');
+        const got = (callPath ?? '').split('/');
+        return (
+          method === callMethod &&
+          want.length === got.length &&
+          want.every((segment, index) => segment === '{}' || segment === got[index])
+        );
+      });
+    expect([...called].filter((call) => !matches(call))).toEqual([]);
   });
 });

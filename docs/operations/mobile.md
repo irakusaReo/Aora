@@ -23,10 +23,11 @@ To use a local API instead of staging, set `AORA_MOBILE_API_URL` in `.env.local`
 | App | On the phone | On the web app instead |
 |---|---|---|
 | `kony-mobile` | Choose a workspace, accept an invitation, collect by M-Pesa (STK push) or simulator, collections with gross, fee and net, refunds, balances by type, settlements, payouts with the fee shown first, USDC treasury and withdrawal approval, PIN and phone | Onboarding, branches, team, pay codes, payout recipients, developer keys, the KELO store and listings, treasury addresses and new withdrawals, NAM Vault |
+| `chiwo-mobile` | Sign-up (phone, terms), pay a shop by pay code with the fee first, payment status and receipt, activity, USDC balance, find and confirm a person and send USDC, payment requests (create, pay, cancel), NAM position, PIN and phone | Registering an on-chain address, withdrawing on chain, NAM orders and redemptions |
 
 ## Checks
 
-- `pnpm vitest run --project mobile --project kony-mobile`: screens rendered with a fake API, in CI.
+- `pnpm vitest run --project mobile --project kony-mobile --project chiwo-mobile`: screens rendered with a fake API, in CI.
 - `cd apps/kony-mobile && npx expo export --platform android --output-dir dist && node ../../scripts/check-mobile-bundle.mjs .`: the bundle builds, stays within budget and holds nothing secret-shaped. CI runs it for every app.
 - **Device check (manual, owner walk-through):** each journey once on a mid-range Android phone on a throttled connection, including signing in, a PIN step-up and a "we are checking" state (choose the simulator scenario `timeout_then_success`).
 

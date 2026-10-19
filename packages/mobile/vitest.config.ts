@@ -8,5 +8,6 @@ export default defineConfig({
     name: 'mobile',
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     environment: 'jsdom',
+    setupFiles: ['test/setup.ts'],
   },
 });
