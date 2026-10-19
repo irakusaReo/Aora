@@ -23,7 +23,12 @@ export type AccountType =
   | 'consumer_usdc_available'
   | 'consumer_usdc_withdrawals_in_flight'
   | 'consumer_nam_funding_pending'
-  | 'consumer_nam_holding';
+  | 'consumer_nam_holding'
+  | 'consumer_kelo_credit_receivable'
+  | 'kelo_merchant_payable_pending'
+  | 'kelo_credit_repayments_unapplied'
+  | 'kelo_interest_income'
+  | 'kelo_late_charge_income';
 
 /** Account types a CHIWO consumer owns (phase-7 P7-2); no workspace ever holds one. */
 export type ConsumerAccountType = Extract<AccountType, `consumer_${string}`>;
@@ -73,6 +78,16 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   consumer_nam_funding_pending: { normalSide: 'credit', allowNegative: false },
   // The consumer's principal in the vault, at cost: a liability.
   consumer_nam_holding: { normalSide: 'credit', allowNegative: false },
+  // KELO credit (phase 8, P8-8, cash-basis interest). Principal a buyer still owes KELO: an asset.
+  consumer_kelo_credit_receivable: { normalSide: 'debit', allowNegative: false },
+  // Owed to merchants for credit orders, paid on fulfilment: a liability.
+  kelo_merchant_payable_pending: { normalSide: 'credit', allowNegative: false },
+  // A repayment received and not yet allocated to its instalment: a liability.
+  kelo_credit_repayments_unapplied: { normalSide: 'credit', allowNegative: false },
+  // Interest received (never accrued ahead of payment): income.
+  kelo_interest_income: { normalSide: 'credit', allowNegative: false },
+  // Late charges received (8B): income.
+  kelo_late_charge_income: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {

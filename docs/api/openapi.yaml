@@ -2978,9 +2978,9 @@ paths:
     post:
       tags: [KELO]
       operationId: createKeloPurchase
-      summary: Buy on layaway
+      summary: Buy on layaway, or on credit with an approved decision
       description: >
-        No credit is extended. Reserves the item or place in the same transaction, records consent to the named terms version, and creates the schedule. `expected_total_minor` must equal the total shown (`fee_changed` otherwise). `sold_out` when nothing is left.
+        Layaway extends no credit: it reserves the item or place in the same transaction, records consent to the named terms version, and creates the schedule; `expected_total_minor` must equal the total shown. A credit purchase (phase 8A, only while the `kelo_credit` flag is on, `not_found` otherwise) names an approved, unexpired, unused `decision_id` of the caller; the listing, option and template come from the decision; `expected_total_payable_minor` must equal the total payable shown; consent records the agreement version, and the agreement snapshots every term. Either way, `fee_changed` when a total differs and `sold_out` when nothing is left. SANDBOX: the lender of record is a simulated lender, not licensed.
       security: [{ session: [] }]
       parameters:
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
@@ -2989,16 +2989,25 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required: [listing_id, template_key, expected_total_minor, terms_version]
-              properties:
-                listing_id: { type: string, format: uuid }
-                variant_id: { type: string, format: uuid }
-                session_id: { type: string, format: uuid }
-                template_key: { type: string }
-                expected_total_minor: { $ref: '#/components/schemas/AmountMinor' }
-                terms_version: { type: string }
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [listing_id, template_key, expected_total_minor, terms_version]
+                  properties:
+                    listing_id: { type: string, format: uuid }
+                    variant_id: { type: string, format: uuid }
+                    session_id: { type: string, format: uuid }
+                    template_key: { type: string }
+                    expected_total_minor: { $ref: '#/components/schemas/AmountMinor' }
+                    terms_version: { type: string }
+                - type: object
+                  additionalProperties: false
+                  required: [decision_id, expected_total_payable_minor, agreement_version, kid_version]
+                  properties:
+                    decision_id: { type: string, format: uuid }
+                    expected_total_payable_minor: { $ref: '#/components/schemas/AmountMinor' }
+                    agreement_version: { type: string }
+                    kid_version: { type: string }
       responses:
         '201':
           description: Purchase placed
@@ -3076,6 +3085,178 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/credit/instalments/{seq}/pay:
+    post:
+      tags: [KELO]
+      operationId: payKeloCreditInstalment
+      summary: Pay the next credit line (deposit or first part at checkout, then each part when due)
+      description: >
+        Phase 8A, `not_found` while the `kelo_credit` flag is off. Lines are paid in order; seq 0 is the deposit. Before the agreement is in force only its checkout line can be paid, and that payment puts it in force. After that, a part can be paid once it is due; paying ahead is early repayment (8B). The line is claimed for this request before any payment exists, so a second request never pushes a second payment. The repayment is owed to KELO, never a collection for the merchant, and is allocated principal first, then charges, then interest.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: seq, in: path, required: true, schema: { type: integer, minimum: 0 } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                sandbox_scenario: { type: string, description: Sandbox only. Scripts the simulator. }
+                payer_phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+      responses:
+        '202':
+          description: Payment started
+          content:
+            application/json:
+              schema: { type: object, required: [seq, status, payment_intent_id], properties: { seq: { type: integer }, status: { const: pending }, payment_intent_id: { type: string, format: uuid }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/kelo/credit/limit:
+    get:
+      tags: [KELO]
+      operationId: getKeloCreditLimit
+      summary: The caller's KELO spending limit and how much of it open plans use
+      description: >
+        Phase 8A, `not_found` while the `kelo_credit` flag is off. The limit follows the versioned limit policy (a starting limit, a step for each agreement repaid on time, a maximum). "Used" is the principal still owed on open agreements. A limit is never money the person holds, and is never worded as such.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: The limit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [limit_minor, limit_used_minor, limit_unused_minor, currency, policy_version]
+                properties:
+                  limit_minor: { $ref: '#/components/schemas/AmountMinor' }
+                  limit_used_minor: { $ref: '#/components/schemas/AmountMinor' }
+                  limit_unused_minor: { $ref: '#/components/schemas/AmountMinor' }
+                  currency: { type: string }
+                  policy_version: { type: integer }
+                  mode: { $ref: '#/components/schemas/Mode' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/kelo/credit/decisions:
+    post:
+      tags: [KELO]
+      operationId: createKeloCreditDecision
+      summary: Ask for a credit decision on one listing option and plan
+      description: >
+        Phase 8A, `not_found` while the `kelo_credit` flag is off. Applies the eligibility rule set in effect (versioned data) to the person's facts and declared monthly income, and, only with its own consent (`bureau_check.consent_version` of `kelo_bureau_check_consent`), to a SANDBOX bureau simulator. Approved or declined, the decision is final and stores its reason codes and an input snapshot; a decline gives its reasons at once, charges nothing, reserves nothing and places no order. An approval can be used once, before `expires_at`. Only the caller can read it; no merchant ever can.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [listing_id, template_key, declared_monthly_income_minor]
+              properties:
+                listing_id: { type: string, format: uuid }
+                variant_id: { type: string, format: uuid }
+                session_id: { type: string, format: uuid }
+                template_key: { type: string }
+                declared_monthly_income_minor: { $ref: '#/components/schemas/AmountMinor' }
+                bureau_check:
+                  type: object
+                  additionalProperties: false
+                  required: [consent_version]
+                  properties:
+                    consent_version: { type: string }
+                    sandbox_result: { type: string, enum: [clear, thin_file, adverse], description: Sandbox only. Scripts the bureau simulator. }
+      responses:
+        '201':
+          description: Decided
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloCreditDecision' }
+        '200':
+          description: Replay of an earlier request with the same Idempotency-Key
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloCreditDecision' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/kelo/credit/decisions/{id}:
+    get:
+      tags: [KELO]
+      operationId: getKeloCreditDecision
+      summary: Read one of the caller's own decisions
+      description: Phase 8A, `not_found` while the `kelo_credit` flag is off, and for anyone else's decision.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloCreditDecision' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/ops/feature-flags:
+    get:
+      tags: [Operations]
+      operationId: listFeatureFlags
+      summary: Feature flags and their state (platform operators)
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: Every flag
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/FeatureFlag' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/ops/feature-flags/{key}:
+    post:
+      tags: [Operations]
+      operationId: setFeatureFlag
+      summary: Switch a feature flag on or off, with a reason (platform operators, step-up)
+      description: >
+        Flags are data (phase-8 P8-1): the change takes effect on every instance at once and needs no Vercel change. Each switch is audited (`ops.feature_flag.changed`) with the reason.
+      security: [{ session: [] }]
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string, enum: [kelo_credit] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [enabled, reason]
+              properties:
+                enabled: { type: boolean }
+                reason: { type: string, minLength: 3, maxLength: 300 }
+      responses:
+        '200':
+          description: The flag after the change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeatureFlag' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /v1/kelo/me/purchases/{id}/cancel:
     post:
       tags: [KELO]
@@ -4343,18 +4524,18 @@ components:
         terms: { type: object, properties: { key: { type: string }, version: { type: string } } }
     KeloPurchase:
       type: object
-      required: [id, status, plan_status, plan_type, listing_id, listing_title, total_minor, paid_minor, currency, receive_after_last_payment, instalments, refund, created_at]
+      required: [id, status, plan_status, plan_type, listing_id, listing_title, total_minor, paid_minor, currency, receive_after_last_payment, instalments, refund, credit, created_at]
       properties:
         id: { type: string, format: uuid }
         status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled] }
         plan_status: { enum: [active, paid_in_full, settled, cancelled, refunded] }
-        plan_type: { const: layaway }
+        plan_type: { enum: [layaway, pay_in_n, monthly_financing] }
         listing_id: { type: string, format: uuid }
         listing_title: { type: string }
         total_minor: { $ref: '#/components/schemas/AmountMinor' }
         paid_minor: { type: string }
         currency: { type: string }
-        receive_after_last_payment: { const: true }
+        receive_after_last_payment: { type: boolean, description: True for layaway; a credit purchase is received first. }
         instalments:
           type: array
           items: { type: object, properties: { seq: { type: integer }, due_on: { type: string, format: date }, amount_minor: { type: string }, status: { enum: [due, pending, paid, cancelled] } } }
@@ -4367,15 +4548,103 @@ components:
                 fee_minor: { type: string }
                 refund_minor: { type: string }
                 status: { enum: [requested, pending_provider, succeeded, failed, status_unknown, reconciliation_required] }
+        credit:
+          description: The credit agreement of a credit purchase (phase 8A); null for layaway. Only the buyer ever sees it.
+          oneOf:
+            - type: 'null'
+            - { $ref: '#/components/schemas/KeloCreditAgreement' }
         created_at: { type: string, format: date-time }
         mode: { $ref: '#/components/schemas/Mode' }
+    KeloCreditLine:
+      type: object
+      required: [seq, due_on, principal_minor, interest_minor, amount_minor]
+      properties:
+        seq: { type: integer, minimum: 0, description: 0 is the deposit. }
+        due_on: { type: string, format: date }
+        principal_minor: { type: string }
+        interest_minor: { type: string }
+        amount_minor: { type: string }
+        paid_minor: { type: string }
+        status: { enum: [due, pending, paid, late, paused, cancelled] }
+    KeloCreditOffer:
+      type: object
+      description: A credit plan with every figure from the schedule engine, shown before any decision.
+      properties:
+        template_key: { type: string }
+        name: { type: string }
+        plan_type: { enum: [pay_in_n, monthly_financing] }
+        pricing_model: { enum: [none, daily_interest] }
+        instalments: { type: array, items: { $ref: '#/components/schemas/KeloCreditLine' } }
+        total_minor: { type: string }
+        deposit_minor: { type: string }
+        financed_minor: { type: string }
+        interest_total_minor: { type: string }
+        total_payable_minor: { type: string }
+        fees_minor: { type: string }
+        currency: { type: string }
+        daily_rate_text: { type: string }
+        apr_text: { type: string, description: The daily rate times 365, nominal, to two decimals. }
+        checkout_seq: { type: [integer, 'null'] }
+        receive_after_last_payment: { const: false }
+        needs_decision: { const: true }
+        lender_of_record: { type: string }
+        late_charges: { type: object, properties: { fee_minor: { type: string }, total_cap_minor: { type: string }, grace_days: { type: integer } } }
+        kid: { type: object, properties: { key: { type: string }, version: { type: string } } }
+        terms: { type: object, properties: { key: { type: string }, version: { type: string } } }
+    KeloCreditDecision:
+      type: object
+      required: [id, outcome, reason_codes, reasons, listing_id, plan, limit, lender_of_record, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        outcome: { enum: [approved, declined] }
+        reason_codes:
+          type: array
+          items: { enum: [phone_missing, overdue_instalment, too_many_open_agreements, order_out_of_range, unaffordable, over_limit, bureau_adverse] }
+        reasons: { type: array, items: { type: string } }
+        listing_id: { type: string, format: uuid }
+        variant_id: { type: [string, 'null'], format: uuid }
+        session_id: { type: [string, 'null'], format: uuid }
+        plan: { $ref: '#/components/schemas/KeloCreditOffer' }
+        limit: { type: object, properties: { limit_minor: { type: string }, limit_used_minor: { type: string }, currency: { type: string } } }
+        lender_of_record: { type: string }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        mode: { $ref: '#/components/schemas/Mode' }
+    KeloCreditAgreement:
+      type: object
+      properties:
+        agreement_id: { type: string, format: uuid }
+        status: { enum: [pending_first_payment, active, paid_off, cancelled, defaulted, paused] }
+        plan_type: { enum: [pay_in_n, monthly_financing] }
+        lender_of_record: { type: string }
+        price_minor: { type: string }
+        deposit_minor: { type: string }
+        principal_minor: { type: string }
+        interest_total_minor: { type: string }
+        total_payable_minor: { type: string }
+        daily_rate_text: { type: string }
+        apr_text: { type: string }
+        checkout_seq: { type: integer }
+        late_charges: { type: object, properties: { fee_minor: { type: string }, total_cap_minor: { type: string }, grace_days: { type: integer } } }
+        instalments: { type: array, items: { $ref: '#/components/schemas/KeloCreditLine' } }
+        documents: { type: object }
+        created_at: { type: string, format: date-time }
+    FeatureFlag:
+      type: object
+      required: [key, enabled, reason, changed_at]
+      properties:
+        key: { type: string }
+        enabled: { type: boolean }
+        reason: { type: [string, 'null'] }
+        changed_at: { type: string, format: date-time }
     KeloMerchantPurchase:
       type: object
-      required: [id, status, plan_status, listing_title, total_minor, paid_minor, merchant_fee_minor, net_minor, currency, next_action, created_at]
+      required: [id, status, plan_status, plan_type, listing_title, total_minor, paid_minor, merchant_fee_minor, net_minor, currency, next_action, created_at]
       properties:
         id: { type: string, format: uuid }
         status: { enum: [placed, payment_ready, merchant_confirmed, fulfilled, completed, cancelled] }
         plan_status: { enum: [active, paid_in_full, settled, cancelled, refunded] }
+        plan_type: { enum: [layaway, pay_in_n, monthly_financing], description: Never anything about the buyer's credit. }
         listing_title: { type: string }
         total_minor: { type: string }
         paid_minor: { type: string }

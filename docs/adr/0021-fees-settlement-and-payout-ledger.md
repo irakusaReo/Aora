@@ -115,3 +115,19 @@ A confirmed deposit from a consumer's registered address debits `chain_wallet_us
 | `consumer_nam_holding` | consumer | credit | The consumer's principal in the vault, at cost |
 
 The entries are the Phase 6 ones with the owner's accounts in place of the workspace's: an order reserves `consumer_usdc_available` → `consumer_nam_funding_pending`; its confirmation moves the wallet to the vault (platform) and pending to holding (consumer); a redemption returns what the vault paid to `consumer_usdc_available` with the same proportional cost release and rounding account.
+
+## Addendum, 2026-10-19 (Phase 8A: KELO credit, phase-8 plan P8-8)
+
+| Account | Owner | Normal side | Meaning |
+|---|---|---|---|
+| `consumer_kelo_credit_receivable` | consumer | debit | Principal the buyer still owes KELO |
+| `kelo_merchant_payable_pending` | platform | credit | Owed to merchants for credit orders, paid on fulfilment |
+| `kelo_credit_repayments_unapplied` | platform | credit | A repayment received and not yet allocated to its instalment |
+| `kelo_interest_income` | platform | credit | Interest received (cash basis: never booked before it is paid) |
+| `kelo_late_charge_income` | platform | credit | Late charges received (8B) |
+
+- A credit repayment is a payment intent with purpose `kelo_credit`: no collection fee, never in the merchant's collections, refunds, webhooks or settlement. On success payments posts provider clearing → `kelo_credit_repayments_unapplied`; reconciliation checks that account for each such intent.
+- KELO then allocates it in one entry (operation `kelo_credit_instalment`): unapplied → receivable for principal, then charges, then `kelo_interest_income` for interest (r. 56(2)).
+- The first payment also puts the agreement in force: receivable (debit) and `kelo_merchant_payable_pending` (credit), both for the price.
+- On fulfilment the payable moves to the merchant's `merchant_available` less the discount fee to `kelo_fee_revenue`, as for layaway.
+- Cancelling an active agreement before fulfilment debits the payable with the price, credits the receivable with what is still owed, reverses interest received out of `kelo_interest_income`, and credits `kelo_refunds_payable` with everything paid; the refund then leaves through the provider as for layaway. Trial balance stays zero (tested).

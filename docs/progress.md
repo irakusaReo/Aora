@@ -5,7 +5,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 - **Goal:** sandbox MVP on Vercel and Neon ([mvp-scope.md](product/mvp-scope.md)).
 - **Current phase:** Phase 8 — KELO credit, in progress ([plan](plans/phase-8.md)). Phase 7 — CHIWO web ([plan](plans/phase-7.md)) is built, merged (PRs #25–#27) and on staging; `chiwo-web` is deployed at https://chiwo-web.vercel.app (2026-10-19). Phases 5 ([plan](plans/phase-5.md)) and 6 ([plan](plans/phase-6.md)) are built, merged (PRs #20–#23) and on staging, with the chain switched off until the sandbox wallet is funded. The MVP gate is Phase 10.
 - **Build order:** re-sequenced 2026-10-18 in [mvp-scope.md](product/mvp-scope.md) §3. Old Phase 4 (rails) is now the post-gate Rails expansion phase; later phases moved up by one.
-- **Last updated:** 2026-10-19 (chiwo-web deployed; Phase 8 started)
+- **Last updated:** 2026-10-19 (Phase 8A built)
 
 ## Owner decisions of 2026-10-18
 
@@ -84,6 +84,7 @@ Read this with `CLAUDE.md` to resume work in a fresh session.
 ## Phase 8 checkpoints
 
 - **Started 2026-10-19.** O-8 answered: Kenya's credit conduct rules read and cited in [compliance/kenya-credit-conduct.md](compliance/kenya-credit-conduct.md). The 2022 DCP Regulations were repealed on 2026-09-29; the CBK (Non-Deposit Taking Credit Providers) Regulations, 2026 apply, and name BNPL. O-16 (separating credit from payments and investment) added for counsel before any pilot; it does not block the sandbox.
+- **8A built (2026-10-19, branch `phase-8a`):** KELO credit behind `kelo_credit` (off by default; operator switch in internal-ops `/flags` with PIN step-up and reason, audited). Credit terms on plan templates with the r. 29 cap as a database check; credit schedule engine (equal principal, simple daily interest, deposit, APR text) property-tested; eligibility rule set and limit policy as data; bureau simulator with its own consent; decisions with reason codes and an input snapshot (consumer-only); checkout creating a snapshotted agreement (key information document and agreement versions in consent); first payment by M-Pesa or simulator puts it in force; merchant settled on fulfilment net of the discount fee; cancellation before fulfilment reverses and refunds. Ledger: `consumer_kelo_credit_receivable`, `kelo_merchant_payable_pending`, `kelo_credit_repayments_unapplied`, `kelo_interest_income`, `kelo_late_charge_income`; payment purpose `kelo_credit`. kelo-web credit plan card, decision form, `/credit/checkout/{id}`, `/credit`, credit card in `/purchases`. Migration `20261019000400_kelo_credit` (expand-only). 33 new tests (`kelo-credit-schedule.test.ts`, `kelo-credit.test.ts`). ADR 0017, 0018 and 0021 addenda; as-built notes in the plan §7.
 
 ## Owner approvals of 2026-10-18 — carried out
 
