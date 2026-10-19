@@ -2436,6 +2436,17 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Job' }
         '401': { $ref: '#/components/responses/Error' }
+  /v1/internal/cron/kelo-credit:
+    get:
+      tags: [Internal]
+      operationId: cronKeloCredit
+      summary: KELO credit collections (late parts and capped charges, non-performing marking, reminders)
+      description: >
+        Phase 8B. Idempotent and time-bounded. Authenticated with the cron secret. A part unpaid after its grace period becomes late and is charged once, within the agreement's cap; an agreement overdue beyond its default period is marked non-performing (nothing is reported to a bureau); reminders go by email to the borrower only, inside the contact window in Nairobi time.
+      security: [{ cron: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Job' }
+        '401': { $ref: '#/components/responses/Error' }
   /v1/kelo/categories:
     get:
       tags: [KELO]
@@ -3112,12 +3123,116 @@ paths:
           description: Payment started
           content:
             application/json:
-              schema: { type: object, required: [seq, status, payment_intent_id], properties: { seq: { type: integer }, status: { const: pending }, payment_intent_id: { type: string, format: uuid }, mode: { $ref: '#/components/schemas/Mode' } } }
+              schema: { $ref: '#/components/schemas/KeloCreditRepaymentStarted' }
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/credit/quote:
+    get:
+      tags: [KELO]
+      operationId: getKeloCreditQuote
+      summary: What paying the next part, or everything, costs today
+      description: >
+        Phase 8B, `not_found` while the `kelo_credit` flag is off. Exact amounts as of today in Nairobi: principal, then late charges, then the interest earned so far; interest not yet earned is waived (r. 56(4)) and there is never a penalty. Null when nothing can be repaid.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The quote
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [as_of, currency, next, payoff]
+                properties:
+                  as_of: { type: string, format: date }
+                  currency: { type: string }
+                  next: { oneOf: [{ type: 'null' }, { $ref: '#/components/schemas/KeloCreditQuote' }] }
+                  payoff: { oneOf: [{ type: 'null' }, { $ref: '#/components/schemas/KeloCreditQuote' }] }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/credit/repay:
+    post:
+      tags: [KELO]
+      operationId: repayKeloCredit
+      summary: Pay the next part early, or pay everything off
+      description: >
+        Phase 8B, `not_found` while the `kelo_credit` flag is off. `expected_amount_minor` must equal today's quote (`fee_changed` otherwise). The allocation is fixed when the repayment starts and the parts it covers are held until its result; one repayment at a time per agreement. On success it is allocated to principal, then charges, then interest (r. 56(2)), and a receipt is emailed to the borrower.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, expected_amount_minor]
+              properties:
+                kind: { enum: [next, payoff] }
+                expected_amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                sandbox_scenario: { type: string, description: Sandbox only. Scripts the simulator. }
+                payer_phone: { type: string, pattern: '^\+[1-9][0-9]{7,14}$' }
+      responses:
+        '202':
+          description: Repayment started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeloCreditRepaymentStarted' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/kelo/me/purchases/{id}/credit/statement:
+    get:
+      tags: [KELO]
+      operationId: getKeloCreditStatement
+      summary: The agreement, every part, every repayment and the totals (free, r. 47(2))
+      description: Phase 8B, `not_found` while the `kelo_credit` flag is off, and for anyone but the borrower.
+      security: [{ session: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The statement
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agreement, currency, repayments, totals]
+                properties:
+                  agreement: { $ref: '#/components/schemas/KeloCreditAgreement' }
+                  currency: { type: string }
+                  repayments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        kind: { enum: [instalment, next, payoff] }
+                        status: { enum: [submitting, pending, succeeded, failed] }
+                        amount_minor: { type: string }
+                        principal_minor: { type: string }
+                        charges_minor: { type: string }
+                        interest_minor: { type: string }
+                        waived_minor: { type: string }
+                        created_at: { type: string, format: date-time }
+                  totals:
+                    type: object
+                    properties:
+                      paid_principal_minor: { type: string }
+                      paid_charges_minor: { type: string }
+                      paid_interest_minor: { type: string }
+                      waived_interest_minor: { type: string }
+                      outstanding_minor: { type: string }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /v1/kelo/credit/limit:
     get:
       tags: [KELO]
@@ -4566,6 +4681,8 @@ components:
         amount_minor: { type: string }
         paid_minor: { type: string }
         status: { enum: [due, pending, paid, late, paused, cancelled] }
+        late_charges_minor: { type: string }
+        interest_waived_minor: { type: string }
     KeloCreditOffer:
       type: object
       description: A credit plan with every figure from the schedule engine, shown before any decision.
@@ -4629,6 +4746,30 @@ components:
         instalments: { type: array, items: { $ref: '#/components/schemas/KeloCreditLine' } }
         documents: { type: object }
         created_at: { type: string, format: date-time }
+    KeloCreditQuote:
+      type: object
+      required: [amount_minor, principal_minor, charges_minor, interest_minor, waived_minor, no_penalty, lines]
+      properties:
+        amount_minor: { type: string }
+        principal_minor: { type: string }
+        charges_minor: { type: string }
+        interest_minor: { type: string }
+        waived_minor: { type: string, description: Interest not charged because it is paid early. }
+        no_penalty: { const: true }
+        lines:
+          type: array
+          items: { type: object, properties: { seq: { type: integer }, principal_minor: { type: string }, charges_minor: { type: string }, interest_minor: { type: string }, waived_minor: { type: string } } }
+    KeloCreditRepaymentStarted:
+      type: object
+      required: [repayment_id, kind, status, amount_minor, payment_intent_id, seq]
+      properties:
+        repayment_id: { type: string, format: uuid }
+        kind: { enum: [instalment, next, payoff] }
+        status: { enum: [pending, succeeded, failed] }
+        amount_minor: { type: string }
+        payment_intent_id: { type: [string, 'null'], format: uuid }
+        seq: { type: [integer, 'null'] }
+        mode: { $ref: '#/components/schemas/Mode' }
     FeatureFlag:
       type: object
       required: [key, enabled, reason, changed_at]

@@ -19,7 +19,14 @@ import { parseMinorUnits } from '../../../platform/money.js';
 import { SessionGuard } from '../../identity/guards.js';
 import { SCENARIOS } from '../../payments/simulator.js';
 import { BUREAU_RESULTS } from './bureau.js';
-import { CreditService, type DecisionView, type LimitView } from './credit.service.js';
+import {
+  CreditService,
+  type DecisionView,
+  type LimitView,
+  type QuoteView,
+  type RepaymentStarted,
+  type StatementView,
+} from './credit.service.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const decisionBody = z.strictObject({
@@ -39,6 +46,17 @@ const decisionBody = z.strictObject({
 });
 const payBody = z.strictObject({
   // SANDBOX ONLY: scripts the simulator. Without it, the M-Pesa rail is used.
+  sandbox_scenario: z.enum(SCENARIOS).optional(),
+  payer_phone: z
+    .string()
+    .regex(/^\+[1-9][0-9]{7,14}$/)
+    .optional(),
+});
+
+const repayBody = z.strictObject({
+  kind: z.enum(['next', 'payoff']),
+  // Validated by parseMinorUnits, so that a JSON number is rejected, not coerced.
+  expected_amount_minor: z.unknown(),
   sandbox_scenario: z.enum(SCENARIOS).optional(),
   payer_phone: z
     .string()
@@ -121,7 +139,7 @@ export class KeloCreditController {
     @Body() body: unknown,
     @Headers('idempotency-key') key: string | undefined,
     @Req() request: Request,
-  ): Promise<{ seq: number; status: string; payment_intent_id: string }> {
+  ): Promise<RepaymentStarted> {
     const idempotencyKey = requireKey(key);
     const input = parseBody(payBody, body);
     if (!/^(0|[1-9][0-9]?)$/.test(seq)) throw new AppError('not_found', 'Instalment not found.');
@@ -131,5 +149,37 @@ export class KeloCreditController {
       scenario: input.sandbox_scenario ?? null,
       payerPhone: input.payer_phone ?? null,
     });
+  }
+
+  /** What paying the next part, or everything, costs today: exact, with no penalty (r. 56(4)). */
+  @Get('me/purchases/:id/credit/quote')
+  quote(@Param('id') purchaseId: string, @Req() request: Request): Promise<QuoteView> {
+    return this.credit.quote(sessionOf(request).accountId, id(purchaseId, 'Purchase'));
+  }
+
+  /** Pays the next part early, or everything; `expected_amount_minor` must equal today's quote. */
+  @Post('me/purchases/:id/credit/repay')
+  @HttpCode(202)
+  repay(
+    @Param('id') purchaseId: string,
+    @Body() body: unknown,
+    @Headers('idempotency-key') key: string | undefined,
+    @Req() request: Request,
+  ): Promise<RepaymentStarted> {
+    const idempotencyKey = requireKey(key);
+    const input = parseBody(repayBody, body);
+    return this.credit.repay(buyer(request), idempotencyKey, {
+      purchaseId: id(purchaseId, 'Purchase'),
+      kind: input.kind,
+      expectedAmountMinor: parseMinorUnits(input.expected_amount_minor),
+      scenario: input.sandbox_scenario ?? null,
+      payerPhone: input.payer_phone ?? null,
+    });
+  }
+
+  /** The agreement, every part, every repayment and the totals, free (r. 47(2)). */
+  @Get('me/purchases/:id/credit/statement')
+  statement(@Param('id') purchaseId: string, @Req() request: Request): Promise<StatementView> {
+    return this.credit.statement(sessionOf(request).accountId, id(purchaseId, 'Purchase'));
   }
 }

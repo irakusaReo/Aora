@@ -131,3 +131,7 @@ The entries are the Phase 6 ones with the owner's accounts in place of the works
 - The first payment also puts the agreement in force: receivable (debit) and `kelo_merchant_payable_pending` (credit), both for the price.
 - On fulfilment the payable moves to the merchant's `merchant_available` less the discount fee to `kelo_fee_revenue`, as for layaway.
 - Cancelling an active agreement before fulfilment debits the payable with the price, credits the receivable with what is still owed, reverses interest received out of `kelo_interest_income`, and credits `kelo_refunds_payable` with everything paid; the refund then leaves through the provider as for layaway. Trial balance stays zero (tested).
+
+## Addendum, 2026-10-19 (Phase 8B: credit repayments)
+
+A repayment's allocation entry (operation `kelo_credit_repayment`) debits `kelo_credit_repayments_unapplied` with the amount and credits the consumer's receivable with principal, `kelo_late_charge_income` with charges and `kelo_interest_income` with interest. Charges and interest are income only when paid (cash basis); a late charge on an unpaid part is not in the ledger. Cancelling an active agreement before fulfilment also reverses any charges received.

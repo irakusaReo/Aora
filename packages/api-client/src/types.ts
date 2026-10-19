@@ -358,6 +358,46 @@ export interface KeloCreditDecision {
   created_at: string;
 }
 
+export interface KeloCreditQuoteAmount {
+  amount_minor: string;
+  principal_minor: string;
+  charges_minor: string;
+  interest_minor: string;
+  waived_minor: string;
+  no_penalty: true;
+  lines: { seq: number }[];
+}
+
+export interface KeloCreditQuote {
+  as_of: string;
+  currency: string;
+  next: KeloCreditQuoteAmount | null;
+  payoff: KeloCreditQuoteAmount | null;
+}
+
+export interface KeloCreditStatement {
+  agreement: KeloCreditAgreement;
+  currency: string;
+  repayments: {
+    id: string;
+    kind: 'instalment' | 'next' | 'payoff';
+    status: string;
+    amount_minor: string;
+    principal_minor: string;
+    charges_minor: string;
+    interest_minor: string;
+    waived_minor: string;
+    created_at: string;
+  }[];
+  totals: {
+    paid_principal_minor: string;
+    paid_charges_minor: string;
+    paid_interest_minor: string;
+    waived_interest_minor: string;
+    outstanding_minor: string;
+  };
+}
+
 export interface FeatureFlag {
   key: string;
   enabled: boolean;
@@ -387,7 +427,12 @@ export interface KeloCreditAgreement {
   apr_text: string;
   checkout_seq: number;
   late_charges: { fee_minor: string; total_cap_minor: string; grace_days: number };
-  instalments: (KeloCreditLine & { paid_minor: string; status: string })[];
+  instalments: (KeloCreditLine & {
+    late_charges_minor: string;
+    interest_waived_minor: string;
+    paid_minor: string;
+    status: string;
+  })[];
   documents: { agreement: { key: string; version: string }; kid: { key: string; version: string } };
   created_at: string;
 }

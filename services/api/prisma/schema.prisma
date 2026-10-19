@@ -125,6 +125,7 @@ model user_account {
   credit_agreement_event_credit_agreement_event_consumer_account_idTouser_account  credit_agreement_event[]   @relation("credit_agreement_event_consumer_account_idTouser_account")
   credit_decision                                                                  credit_decision[]
   credit_instalment                                                                credit_instalment[]
+  credit_repayment                                                                 credit_repayment[]
   layaway_instalment                                                               layaway_instalment[]
   layaway_refund                                                                   layaway_refund[]
   listing_plan_offer                                                               listing_plan_offer[]
@@ -411,6 +412,7 @@ model payment_intent {
   channel                   String                      @default("kony")
   merchant_payment          merchant_payment?
   credit_instalment         credit_instalment?
+  credit_repayment          credit_repayment?
   layaway_instalment        layaway_instalment?
   asset                     asset                       @relation(fields: [asset_code], references: [code], onDelete: NoAction, onUpdate: NoAction)
   branch                    branch?                     @relation(fields: [branch_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction, map: "payment_intent_branch_same_workspace")
@@ -2200,6 +2202,7 @@ model credit_agreement {
   plan_template                                                      plan_template            @relation(fields: [template_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   credit_agreement_event                                             credit_agreement_event[]
   credit_instalment                                                  credit_instalment[]
+  credit_repayment                                                   credit_repayment?
 
   @@unique([purchase_id, tenant_id])
   @@schema("kelo")
@@ -2266,27 +2269,32 @@ model credit_decision {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model credit_instalment {
-  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agreement_id         String           @db.Uuid
-  consumer_account_id  String           @db.Uuid
-  seq                  Int
-  due_on               DateTime         @db.Date
-  principal_minor      BigInt
-  interest_minor       BigInt
-  paid_principal_minor BigInt           @default(0)
-  paid_interest_minor  BigInt           @default(0)
-  late_charges_minor   BigInt           @default(0)
-  status               String           @default("due")
-  claim_key            String?
-  claimed_at           DateTime?        @db.Timestamptz(6)
-  payment_intent_id    String?          @unique @db.Uuid
-  paid_at              DateTime?        @db.Timestamptz(6)
-  mode                 String           @default("sandbox")
-  created_at           DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime         @default(now()) @db.Timestamptz(6)
-  credit_agreement     credit_agreement @relation(fields: [agreement_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user_account         user_account     @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  payment_intent       payment_intent?  @relation(fields: [payment_intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agreement_id          String            @db.Uuid
+  consumer_account_id   String            @db.Uuid
+  seq                   Int
+  due_on                DateTime          @db.Date
+  principal_minor       BigInt
+  interest_minor        BigInt
+  paid_principal_minor  BigInt            @default(0)
+  paid_interest_minor   BigInt            @default(0)
+  late_charges_minor    BigInt            @default(0)
+  status                String            @default("due")
+  claim_key             String?
+  claimed_at            DateTime?         @db.Timestamptz(6)
+  payment_intent_id     String?           @unique @db.Uuid
+  paid_at               DateTime?         @db.Timestamptz(6)
+  mode                  String            @default("sandbox")
+  created_at            DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime          @default(now()) @db.Timestamptz(6)
+  interest_waived_minor BigInt            @default(0)
+  paid_charges_minor    BigInt            @default(0)
+  repayment_id          String?           @db.Uuid
+  late_on               DateTime?         @db.Date
+  credit_agreement      credit_agreement  @relation(fields: [agreement_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account          user_account      @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent        payment_intent?   @relation(fields: [payment_intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  credit_repayment      credit_repayment? @relation(fields: [repayment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([agreement_id, seq])
   @@schema("kelo")
@@ -2332,4 +2340,48 @@ model feature_flag {
   user_account user_account? @relation(fields: [changed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("ops")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model credit_repayment {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agreement_id        String              @unique(map: "credit_repayment_in_flight", where: raw("(status = ANY (ARRAY['submitting'::text, 'pending'::text]))")) @db.Uuid
+  consumer_account_id String              @db.Uuid
+  claim_key           String
+  kind                String
+  quoted_on           DateTime            @db.Date
+  amount_minor        BigInt
+  principal_minor     BigInt
+  charges_minor       BigInt
+  interest_minor      BigInt
+  waived_minor        BigInt
+  allocation          Json
+  status              String              @default("submitting")
+  payment_intent_id   String?             @unique @db.Uuid
+  mode                String              @default("sandbox")
+  created_at          DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime            @default(now()) @db.Timestamptz(6)
+  credit_instalment   credit_instalment[]
+  credit_agreement    credit_agreement    @relation(fields: [agreement_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_account        user_account        @relation(fields: [consumer_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_intent      payment_intent?     @relation(fields: [payment_intent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([agreement_id, claim_key])
+  @@schema("kelo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reminder_policy {
+  version           Int       @id
+  days_before       Int[]
+  window_start_hour Int
+  window_end_hour   Int
+  time_zone         String    @default("Africa/Nairobi")
+  effective_from    DateTime  @db.Timestamptz(6)
+  effective_to      DateTime? @db.Timestamptz(6)
+  mode              String    @default("sandbox")
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@schema("kelo")
 }
