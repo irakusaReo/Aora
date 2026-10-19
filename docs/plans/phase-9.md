@@ -1,6 +1,6 @@
 # Phase 9 Plan — Mobile
 
-- **Status:** in progress (2026-10-19): 9A built (PR #35, CI green); 9B built. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
+- **Status:** in progress (2026-10-19): 9A merged (PR #35); 9B built (PR #36); 9C built. Run mode of 2026-10-18 (CLAUDE.md): no approval stop between phases.
 - **Scope source:** [mvp-scope.md](../product/mvp-scope.md) §3 (checkpoints 9A, 9B, 9C) and journey K8; [ADR 0016](../adr/0016-mobile-architecture.md) (mobile architecture), [ADR 0019](../adr/0019-clerk-integration.md) (Clerk); [kelo-experience.md](../product/kelo-experience.md).
 - **Branch:** one per checkpoint (`phase-9a`, `phase-9b`, `phase-9c`). Merge rules as before: CI green on the head commit, every needed Vercel variable present, then staging health and every cron job confirmed. Phase 9 adds no migration and no Vercel project: the apps are clients of the staging API and are not hosted.
 - **Test discipline:** tests strictly first for the idempotency-key store (a key survives an app restart), the outcome classifier (a timeout is "unknown", never "failed"), token storage (secure storage only), and the money formatting the apps use. Screens are tested alongside, rendered with a mocked API in CI.
@@ -73,10 +73,18 @@ No migration and no new endpoint is planned: the apps use the routes the web app
 | Marketplace, listing, plans | `GET /v1/kelo/categories`, `GET /v1/kelo/marketplace/listings`, `GET /v1/kelo/marketplace/listings/{id}`, `GET /v1/kelo/marketplace/listings/{id}/plans` |
 | Checkout (layaway, Pay in N, credit) | `POST /v1/kelo/purchases`, `GET /v1/kelo/credit/limit`, `POST /v1/kelo/credit/decisions`, `GET /v1/kelo/credit/decisions/{id}`, `GET /v1/terms/{key}` |
 | Purchases hub, instalments, statement | `GET /v1/kelo/me/purchases`, `GET /v1/kelo/me/purchases/{id}`, `POST …/instalments/{seq}/pay`, `POST …/credit/instalments/{seq}/pay`, `GET …/credit/quote`, `POST …/credit/repay`, `GET …/credit/statement`, `POST …/cancel`, `POST …/confirm-delivery` |
+| Credit statement | `GET /v1/kelo/me/purchases/{id}/credit/statement` |
 | Returns and disputes (listed on the purchase) | `POST /v1/kelo/me/purchases/{id}/claims`, `POST …/claims/{claim}/withdraw` |
 | KONY: KELO dashboard, orders, claims | `GET /v1/workspace/kelo/dashboard`, `GET /v1/workspace/kelo/purchases`, `POST …/purchases/{id}/confirm`, `POST …/purchases/{id}/fulfil`, `POST /v1/workspace/kelo/claims/{id}/accept`, `POST …/claims/{id}/reject` |
 
 With `kelo_credit` off, credit routes answer `not_found` and the apps show no credit screen or word, as the web app does.
+
+### 9C notes
+
+- **Two calls, one slot:** checkout creates the purchase and takes the first payment. Both keys derive from one stored slot key (`<key>.purchase`, `<key>.pay`), so "check again" after an unknown outcome replays both and the API answers each from its record.
+- **No figures computed on the phone:** a layaway card shows "paid of total" (both API figures); paying early uses the API's own `next` and `payoff` quotes and sends the quoted amount back; the statement shows the API's totals.
+- **The marketplace requires sign-in on mobile:** one root gate keeps the apps simple; the web marketplace stays browsable signed out.
+- **Asking for a quote** stays on the web (P9-10).
 
 ## 4. Files
 
