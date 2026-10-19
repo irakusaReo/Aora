@@ -308,18 +308,102 @@ export interface KeloPlan {
   terms: { key: string; version: string };
 }
 
+// KELO credit (phase 8A). SANDBOX: the lender of record is simulated, not licensed.
+export interface KeloCreditLine {
+  seq: number;
+  due_on: string;
+  principal_minor: string;
+  interest_minor: string;
+  amount_minor: string;
+}
+
+export interface KeloCreditPlan {
+  template_key: string;
+  name: string;
+  plan_type: 'pay_in_n' | 'monthly_financing';
+  pricing_model: 'none' | 'daily_interest';
+  instalments: KeloCreditLine[];
+  total_minor: string;
+  deposit_minor: string;
+  financed_minor: string;
+  interest_total_minor: string;
+  total_payable_minor: string;
+  fees_minor: string;
+  currency: string;
+  daily_rate_text: string;
+  apr_text: string;
+  checkout_seq: number | null;
+  receive_after_last_payment: false;
+  needs_decision: true;
+  lender_of_record: string;
+  late_charges: { fee_minor: string; total_cap_minor: string; grace_days: number };
+  kid: { key: string; version: string };
+  terms: { key: string; version: string };
+}
+
+export type KeloAnyPlan = KeloPlan | KeloCreditPlan;
+
+export interface KeloCreditDecision {
+  id: string;
+  outcome: 'approved' | 'declined';
+  reason_codes: string[];
+  reasons: string[];
+  listing_id: string;
+  variant_id: string | null;
+  session_id: string | null;
+  plan: KeloCreditPlan;
+  limit: { limit_minor: string; limit_used_minor: string; currency: string };
+  lender_of_record: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface FeatureFlag {
+  key: string;
+  enabled: boolean;
+  reason: string | null;
+  changed_at: string;
+}
+
+export interface KeloCreditLimit {
+  limit_minor: string;
+  limit_used_minor: string;
+  limit_unused_minor: string;
+  currency: string;
+  policy_version: number;
+}
+
+export interface KeloCreditAgreement {
+  agreement_id: string;
+  status: 'pending_first_payment' | 'active' | 'paid_off' | 'cancelled' | 'defaulted' | 'paused';
+  plan_type: string;
+  lender_of_record: string;
+  price_minor: string;
+  deposit_minor: string;
+  principal_minor: string;
+  interest_total_minor: string;
+  total_payable_minor: string;
+  daily_rate_text: string;
+  apr_text: string;
+  checkout_seq: number;
+  late_charges: { fee_minor: string; total_cap_minor: string; grace_days: number };
+  instalments: (KeloCreditLine & { paid_minor: string; status: string })[];
+  documents: { agreement: { key: string; version: string }; kid: { key: string; version: string } };
+  created_at: string;
+}
+
 export interface KeloPurchase {
   id: string;
   status:
     'placed' | 'payment_ready' | 'merchant_confirmed' | 'fulfilled' | 'completed' | 'cancelled';
   plan_status: 'active' | 'paid_in_full' | 'settled' | 'cancelled' | 'refunded';
-  plan_type: 'layaway';
+  plan_type: 'layaway' | 'pay_in_n' | 'monthly_financing';
   listing_id: string;
   listing_title: string;
   total_minor: string;
   paid_minor: string;
   currency: string;
-  receive_after_last_payment: true;
+  receive_after_last_payment: boolean;
   instalments: {
     seq: number;
     due_on: string;
@@ -327,6 +411,7 @@ export interface KeloPurchase {
     status: 'due' | 'pending' | 'paid' | 'cancelled';
   }[];
   refund: { paid_minor: string; fee_minor: string; refund_minor: string; status: string } | null;
+  credit: KeloCreditAgreement | null;
   created_at: string;
 }
 
@@ -334,6 +419,7 @@ export interface KeloMerchantPurchase {
   id: string;
   status: KeloPurchase['status'];
   plan_status: KeloPurchase['plan_status'];
+  plan_type: KeloPurchase['plan_type'];
   listing_title: string;
   total_minor: string;
   paid_minor: string;

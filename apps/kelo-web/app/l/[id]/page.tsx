@@ -2,15 +2,54 @@ import { auth } from '@clerk/nextjs/server';
 import {
   AoraApiError,
   formatMinor,
+  type KeloAnyPlan,
+  type KeloCreditDecision,
+  type KeloCreditPlan,
   type KeloPlan,
   type KeloPublicListing,
   type KeloPurchase,
   type List,
+  toMinorUnits,
 } from '@aora/api-client';
 import { randomUUID } from 'node:crypto';
 import { notFound, redirect } from 'next/navigation';
 import { api, exponentOf, field, isNotFound, messageOf, publicApi } from '../../../lib/api';
 import { formatDate, t } from '../../../lib/messages';
+import { CreditPlanCard } from '../../credit/plan-card';
+
+/** Asks for a credit decision; the answer is shown on the checkout screen (K2, K6). */
+async function check(form: FormData): Promise<void> {
+  'use server';
+  const listingId = field(form, 'listing_id');
+  const option = field(form, 'option');
+  const [kind, optionId] = option.split(':');
+  const income = toMinorUnits(field(form, 'income'), Number(field(form, 'exponent')));
+  let target = `/l/${listingId}?option=${encodeURIComponent(option)}&error=${encodeURIComponent(t('error.generic'))}`;
+  if (income !== null) {
+    try {
+      const decision = await (
+        await api()
+      ).post<KeloCreditDecision>(
+        '/v1/kelo/credit/decisions',
+        {
+          listing_id: listingId,
+          ...(kind === 'session' ? { session_id: optionId } : { variant_id: optionId }),
+          template_key: field(form, 'template_key'),
+          declared_monthly_income_minor: income,
+          // An explicit, unticked choice with its own consent (kelo-experience.md §2).
+          ...(field(form, 'bureau') === 'yes'
+            ? { bureau_check: { consent_version: field(form, 'bureau_version') } }
+            : {}),
+        },
+        field(form, 'decision_key'),
+      );
+      target = `/credit/checkout/${decision.id}`;
+    } catch (error) {
+      target = `/l/${listingId}?option=${encodeURIComponent(option)}&error=${encodeURIComponent(messageOf(error, t('error.generic')))}`;
+    }
+  }
+  redirect(target);
+}
 
 async function askForQuote(form: FormData): Promise<void> {
   'use server';
@@ -109,15 +148,22 @@ export default async function ListingPage({
       })),
   ];
   const chosen = options.find((o) => o.key === query['option']) ?? options[0];
-  let plans: KeloPlan[] = [];
+  let all: KeloAnyPlan[] = [];
   if (chosen && listing.type !== 'quote_service') {
     const [kind, optionId] = chosen.key.split(':');
-    plans = (
-      await client.get<List<KeloPlan>>(
+    all = (
+      await client.get<List<KeloAnyPlan>>(
         `/v1/kelo/marketplace/listings/${listing.id}/plans?${kind === 'session' ? 'session_id' : 'variant_id'}=${optionId ?? ''}`,
       )
     ).data;
   }
+  const plans = all.filter((plan): plan is KeloPlan => plan.plan_type === 'layaway');
+  // Present only while the credit flag is on: absent, never greyed out, when it is off.
+  const creditPlans = all.filter((plan): plan is KeloCreditPlan => plan.plan_type !== 'layaway');
+  const bureau =
+    creditPlans.length > 0
+      ? await client.get<{ version: string }>('/v1/terms/kelo_bureau_check_consent')
+      : null;
 
   return (
     <>
@@ -200,7 +246,41 @@ export default async function ListingPage({
             </form>
           )}
           {!chosen && <p className="muted">{t('listing.out_of_stock')}</p>}
-          {chosen && plans.length === 0 && <p className="muted">{t('plan.none')}</p>}
+          {chosen && all.length === 0 && <p className="muted">{t('plan.none')}</p>}
+          {chosen &&
+            creditPlans.map((plan) => (
+              <section key={plan.template_key} className="card" aria-label={plan.name}>
+                <h3>{t('plan.title', { name: plan.name })}</h3>
+                <CreditPlanCard plan={plan} money={money} />
+                {session.userId ? (
+                  <form action={check} className="stack">
+                    <input type="hidden" name="listing_id" value={listing.id} />
+                    <input type="hidden" name="option" value={chosen.key} />
+                    <input type="hidden" name="template_key" value={plan.template_key} />
+                    <input type="hidden" name="exponent" value={String(exponent)} />
+                    <input type="hidden" name="decision_key" value={randomUUID()} />
+                    <input type="hidden" name="bureau_version" value={bureau?.version ?? ''} />
+                    <h4>{t('credit.check_title')}</h4>
+                    <label>
+                      {t('credit.income_label', { currency: listing.currency })}
+                      <input name="income" inputMode="decimal" required />
+                    </label>
+                    <p className="muted">{t('credit.income_why')}</p>
+                    <label>
+                      <input type="checkbox" name="bureau" value="yes" /> {t('credit.bureau_label')}
+                    </label>
+                    <p className="muted">
+                      <a href="/terms/kelo_bureau_check_consent">
+                        {t('credit.bureau_terms', { version: bureau?.version ?? '' })}
+                      </a>
+                    </p>
+                    <button type="submit">{t('credit.check_button')}</button>
+                  </form>
+                ) : (
+                  <p>{t('credit.sign_in')}</p>
+                )}
+              </section>
+            ))}
           {chosen &&
             plans.map((plan) => (
               // The plan-at-a-glance card (kelo-experience.md §2), in its fixed order.

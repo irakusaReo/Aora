@@ -62,6 +62,9 @@ import {
 } from './modules/onboarding/onboarding.controller.js';
 import { OnboardingService } from './modules/onboarding/onboarding.service.js';
 import { OpsLookupController } from './modules/ops/ops.controller.js';
+import { FeatureFlagsService, OpsFeatureFlagsController } from './modules/ops/feature-flags.js';
+import { KeloCreditController } from './modules/kelo/credit/credit.controller.js';
+import { CreditService } from './modules/kelo/credit/credit.service.js';
 import { ProvisioningService } from './modules/kelo/provisioning.service.js';
 import {
   KeloProvisioningController,
@@ -157,6 +160,8 @@ const SHARED = [
   CatalogueService,
   QuotesService,
   LayawayService,
+  CreditService,
+  FeatureFlagsService,
   PayCodesService,
   ConsumerService,
   MerchantPaymentsService,
@@ -194,6 +199,8 @@ export const CONTROLLERS = [
   OnboardingController,
   OnboardingReviewsController,
   OpsLookupController,
+  OpsFeatureFlagsController,
+  KeloCreditController,
   ApiKeysController,
   WebhookEndpointsController,
   WebhookDeliveriesController,

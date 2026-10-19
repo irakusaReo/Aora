@@ -62,11 +62,13 @@ export const EVENT_WEBHOOK = 'payments.webhook.process';
 export const EVENT_DARAJA_CALLBACK = 'payments.daraja.callback';
 /** Handled by KELO: an instalment's payment reached a final state. */
 export const EVENT_LAYAWAY_PAYMENT_RESULT = 'kelo.layaway.payment_result';
+/** Handled by KELO: a credit repayment reached a final state (phase-8 P8-8). */
+export const EVENT_CREDIT_PAYMENT_RESULT = 'kelo.credit.payment_result';
 
 /** Handled by CHIWO: a consumer's payment to a merchant changed status (phase-7 P7-4). */
 export const EVENT_CHIWO_PAYMENT_RESULT = 'chiwo.merchant_payment.result';
 
-export type IntentPurpose = 'collection' | 'kelo_layaway';
+export type IntentPurpose = 'collection' | 'kelo_layaway' | 'kelo_credit';
 /** Who started the collection: the merchant (KONY) or a consumer paying them (CHIWO). */
 export type IntentChannel = 'kony' | 'chiwo';
 
@@ -163,7 +165,10 @@ export class PaymentsService implements OnModuleInit {
     scenario: Scenario | null;
     payerPhone: string | null;
     apiKeyId?: string | null;
-    /** `kelo_layaway`: an instalment held for the buyer, not a collection for the merchant (P4-9). */
+    /**
+     * `kelo_layaway`: an instalment held for the buyer, not a collection for the merchant (P4-9).
+     * `kelo_credit`: a repayment owed to KELO, never the merchant's (P8-8).
+     */
     purpose?: IntentPurpose;
     /** `chiwo`: a consumer's payment to this merchant, still the merchant's collection (P7-4). */
     channel?: IntentChannel;
@@ -716,6 +721,38 @@ export class PaymentsService implements OnModuleInit {
       });
       return 'succeeded';
     }
+    if (intent.purpose === 'kelo_credit') {
+      // Owed to KELO, not the merchant; KELO allocates it to the instalment (P8-8).
+      await this.ledger.post(tx, {
+        idempotencyKey: collectionEntryKey(intent.id),
+        tenantId: null,
+        entryType: 'kelo_credit_repayment',
+        operationType: 'payment_intent',
+        operationId: intent.id,
+        postings: [
+          {
+            accountId: await this.ledger.findAccount(tx, {
+              tenantId: null,
+              type: 'provider_clearing',
+              assetCode: intent.asset_code,
+              qualifier: intent.provider,
+            }),
+            direction: 'debit',
+            amount: intent.amount,
+          },
+          {
+            accountId: await this.ledger.findAccount(tx, {
+              tenantId: null,
+              type: 'kelo_credit_repayments_unapplied',
+              assetCode: intent.asset_code,
+            }),
+            direction: 'credit',
+            amount: intent.amount,
+          },
+        ],
+      });
+      return 'succeeded';
+    }
     await this.ledger.post(tx, {
       idempotencyKey: collectionEntryKey(intent.id),
       tenantId: intent.tenant_id,
@@ -1144,11 +1181,14 @@ export class PaymentsService implements OnModuleInit {
         reason,
       },
     });
-    if ((to === 'succeeded' || to === 'failed') && intent.purpose === 'kelo_layaway') {
+    if ((to === 'succeeded' || to === 'failed') && intent.purpose !== 'collection') {
       // KELO hears about its instalment through the outbox, in this same transaction.
       await this.outbox.enqueue(tx, {
         tenantId: intent.tenant_id,
-        type: EVENT_LAYAWAY_PAYMENT_RESULT,
+        type:
+          intent.purpose === 'kelo_credit'
+            ? EVENT_CREDIT_PAYMENT_RESULT
+            : EVENT_LAYAWAY_PAYMENT_RESULT,
         payload: { intent_id: intent.id, outcome: to },
       });
     } else if (to === 'succeeded' || to === 'failed') {

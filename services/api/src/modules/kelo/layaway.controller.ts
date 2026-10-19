@@ -26,6 +26,8 @@ import {
   type MerchantPurchaseView,
   type PlanOffer,
 } from './layaway.service.js';
+import { CreditService, type CreditView } from './credit/credit.service.js';
+import type { CreditOffer } from './credit/offer.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const choiceQuery = z.strictObject({
@@ -40,6 +42,13 @@ const purchaseBody = z.strictObject({
   // Validated by parseMinorUnits, so that a JSON number is rejected, not coerced.
   expected_total_minor: z.unknown(),
   terms_version: z.string().min(1).max(40),
+});
+/** A credit purchase: everything else comes from the approved decision (P8-5). */
+const creditPurchaseBody = z.strictObject({
+  decision_id: z.uuid(),
+  expected_total_payable_minor: z.unknown(),
+  agreement_version: z.string().min(1).max(40),
+  kid_version: z.string().min(1).max(40),
 });
 const payBody = z.strictObject({
   // SANDBOX ONLY: scripts the simulator. Without it, the M-Pesa rail is used.
@@ -86,7 +95,7 @@ export class KeloPlansController {
   async plans(
     @Param('id') listingId: string,
     @Query() query: unknown,
-  ): Promise<{ data: PlanOffer[] }> {
+  ): Promise<{ data: (PlanOffer | CreditOffer)[] }> {
     const choice = parseBody(choiceQuery, query);
     return {
       data: await this.layaway.plansFor(id(listingId, 'Listing'), {
@@ -97,11 +106,33 @@ export class KeloPlansController {
   }
 }
 
-/** A signed-in buyer's layaway purchases (journey K4). */
+type PurchaseView = BuyerPurchaseView & { credit: CreditView | null };
+
+/** A signed-in buyer's purchases: layaway (journey K4) and credit (K2, phase 8A). */
 @Controller('v1/kelo')
 @UseGuards(SessionGuard)
 export class KeloPurchasesController {
-  constructor(@Inject(LayawayService) private readonly layaway: LayawayService) {}
+  constructor(
+    @Inject(LayawayService) private readonly layaway: LayawayService,
+    @Inject(CreditService) private readonly credit: CreditService,
+  ) {}
+
+  /** Each purchase with its credit agreement, if it has one. */
+  private async withCredit(accountId: string, views: BuyerPurchaseView[]): Promise<PurchaseView[]> {
+    const credit = await this.credit.views(
+      accountId,
+      views.filter((view) => view.plan_type !== 'layaway').map((view) => view.id),
+    );
+    return views.map((view) => ({ ...view, credit: credit.get(view.id) ?? null }));
+  }
+
+  private async view(accountId: string, purchaseId: string): Promise<PurchaseView> {
+    const [view] = await this.withCredit(accountId, [
+      await this.layaway.one(accountId, purchaseId),
+    ]);
+    if (!view) throw new AppError('not_found', 'Purchase not found.');
+    return view;
+  }
 
   @Post('purchases')
   async purchase(
@@ -109,8 +140,20 @@ export class KeloPurchasesController {
     @Headers('idempotency-key') key: string | undefined,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<BuyerPurchaseView> {
+  ): Promise<PurchaseView> {
     const idempotencyKey = requireKey(key);
+    if (body && typeof body === 'object' && 'decision_id' in body) {
+      const input = parseBody(creditPurchaseBody, body);
+      const result = await this.credit.purchase(buyer(request), idempotencyKey, {
+        decisionId: input.decision_id.toLowerCase(),
+        expectedTotalPayableMinor: parseMinorUnits(input.expected_total_payable_minor),
+        agreementVersion: input.agreement_version,
+        kidVersion: input.kid_version,
+      });
+      response.status(result.replayed ? 200 : 201);
+      if (result.replayed) response.setHeader('Idempotent-Replay', 'true');
+      return this.view(sessionOf(request).accountId, result.purchaseId);
+    }
     const input = parseBody(purchaseBody, body);
     const result = await this.layaway.purchase(buyer(request), idempotencyKey, {
       listingId: input.listing_id.toLowerCase(),
@@ -122,17 +165,18 @@ export class KeloPurchasesController {
     });
     response.status(result.replayed ? 200 : 201);
     if (result.replayed) response.setHeader('Idempotent-Replay', 'true');
-    return result.purchase;
+    return { ...result.purchase, credit: null };
   }
 
   @Get('me/purchases')
-  async mine(@Req() request: Request): Promise<{ data: BuyerPurchaseView[] }> {
-    return { data: await this.layaway.mine(sessionOf(request).accountId) };
+  async mine(@Req() request: Request): Promise<{ data: PurchaseView[] }> {
+    const accountId = sessionOf(request).accountId;
+    return { data: await this.withCredit(accountId, await this.layaway.mine(accountId)) };
   }
 
   @Get('me/purchases/:id')
-  one(@Param('id') purchaseId: string, @Req() request: Request): Promise<BuyerPurchaseView> {
-    return this.layaway.one(sessionOf(request).accountId, id(purchaseId, 'Purchase'));
+  one(@Param('id') purchaseId: string, @Req() request: Request): Promise<PurchaseView> {
+    return this.view(sessionOf(request).accountId, id(purchaseId, 'Purchase'));
   }
 
   @Post('me/purchases/:id/instalments/:seq/pay')
@@ -157,17 +201,26 @@ export class KeloPurchasesController {
 
   @Post('me/purchases/:id/cancel')
   @HttpCode(200)
-  cancel(@Param('id') purchaseId: string, @Req() request: Request): Promise<BuyerPurchaseView> {
-    return this.layaway.cancel(buyer(request), id(purchaseId, 'Purchase'));
+  async cancel(@Param('id') purchaseId: string, @Req() request: Request): Promise<PurchaseView> {
+    const actor = buyer(request);
+    const purchase = id(purchaseId, 'Purchase');
+    if (await this.credit.isCredit(actor.accountId, purchase)) {
+      await this.credit.cancel(actor, purchase);
+    } else {
+      await this.layaway.cancel(actor, purchase);
+    }
+    return this.view(actor.accountId, purchase);
   }
 
   @Post('me/purchases/:id/confirm-delivery')
   @HttpCode(200)
-  confirmDelivery(
+  async confirmDelivery(
     @Param('id') purchaseId: string,
     @Req() request: Request,
-  ): Promise<BuyerPurchaseView> {
-    return this.layaway.confirmDelivery(buyer(request), id(purchaseId, 'Purchase'));
+  ): Promise<PurchaseView> {
+    const actor = buyer(request);
+    await this.layaway.confirmDelivery(actor, id(purchaseId, 'Purchase'));
+    return this.view(actor.accountId, id(purchaseId, 'Purchase'));
   }
 }
 

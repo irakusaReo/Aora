@@ -33,6 +33,7 @@ export default async function RootLayout({
               <Link href="/">Exceptions</Link>
               <Link href="/reviews">Onboarding reviews</Link>
               <Link href="/kelo">KELO</Link>
+              <Link href="/flags">Flags</Link>
               <Link href="/chain">Base Sepolia</Link>
               <Link href="/lookup">Lookup</Link>
               <Link href="/audit">Audit trail</Link>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { api, exponentOf, field, messageOf } from '../../lib/api';
 import { t } from '../../lib/messages';
+import { CreditPurchaseCard } from '../credit/purchase-card';
 
 // Safaricom's published sandbox test number: the only payer Daraja's sandbox allows.
 const DARAJA_TEST_NUMBER = '+254708374149';
@@ -18,6 +19,14 @@ async function act(form: FormData): Promise<void> {
     if (action === 'pay') {
       await client.post(
         `/v1/kelo/me/purchases/${id}/instalments/${field(form, 'seq')}/pay`,
+        field(form, 'rail') === 'mpesa'
+          ? { payer_phone: DARAJA_TEST_NUMBER }
+          : { sandbox_scenario: 'success' },
+        field(form, 'pay_key'),
+      );
+    } else if (action === 'pay_credit') {
+      await client.post(
+        `/v1/kelo/me/purchases/${id}/credit/instalments/${field(form, 'seq')}/pay`,
         field(form, 'rail') === 'mpesa'
           ? { payer_phone: DARAJA_TEST_NUMBER }
           : { sandbox_scenario: 'success' },
@@ -41,6 +50,8 @@ export default async function Purchases({
 }): Promise<React.JSX.Element> {
   const query = await searchParams;
   const client = await api();
+  // Nairobi's date (UTC+3 all year), the calendar KELO's schedules are dated in.
+  const today = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 10);
   const [purchases, assets] = await Promise.all([
     client.get<List<KeloPurchase>>('/v1/kelo/me/purchases'),
     client.get<List<{ code: string; exponent: number }>>('/v1/assets'),
@@ -53,6 +64,17 @@ export default async function Purchases({
       {purchases.data.map((purchase) => {
         const money = (minor: string): string =>
           `${purchase.currency} ${formatMinor(minor, exponentOf(assets.data, purchase.currency))}`;
+        if (purchase.credit) {
+          return (
+            <CreditPurchaseCard
+              key={purchase.id}
+              purchase={{ ...purchase, credit: purchase.credit }}
+              money={money}
+              act={act}
+              today={today}
+            />
+          );
+        }
         const open = purchase.instalments.filter(
           (line) => line.status !== 'paid' && line.status !== 'cancelled',
         );

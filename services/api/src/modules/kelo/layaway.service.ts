@@ -11,6 +11,24 @@ import { EVENT_LAYAWAY_PAYMENT_RESULT, PaymentsService } from '../payments/payme
 import { ReconciliationService } from '../payments/reconciliation.service.js';
 import { type Scenario, SimulatorProvider } from '../payments/simulator.js';
 import { SANDBOX_PROVIDER } from '../../seed-data.js';
+import { FeatureFlagsService } from '../ops/feature-flags.js';
+import { AGREEMENT_TERMS_KEY, type CreditOffer, creditOffer, kidKey } from './credit/offer.js';
+import {
+  allowedTemplates,
+  EVENT_REFUND_SUBMIT,
+  effective,
+  lockPurchaseForBuyer,
+  movePurchase,
+  type PlanTemplate,
+  type PlanType,
+  payloadId,
+  priceOf,
+  type PurchaseRow,
+  type PurchaseStatus,
+  purchaseEvent,
+  release,
+  reserve,
+} from './purchase-common.js';
 import {
   basisPoints,
   cancellationRefund,
@@ -19,22 +37,10 @@ import {
   type ScheduleLine,
 } from './schedule.js';
 
-export type PurchaseStatus =
-  'placed' | 'payment_ready' | 'merchant_confirmed' | 'fulfilled' | 'completed' | 'cancelled';
+export { PURCHASE_TRANSITIONS, type PurchaseStatus } from './purchase-common.js';
 export type PlanStatus = 'active' | 'paid_in_full' | 'settled' | 'cancelled' | 'refunded';
 
-/** The layaway subset of ADR 0017's order machine. */
-export const PURCHASE_TRANSITIONS: Readonly<Record<PurchaseStatus, readonly PurchaseStatus[]>> = {
-  placed: ['payment_ready', 'cancelled'],
-  payment_ready: ['merchant_confirmed', 'cancelled'],
-  merchant_confirmed: ['fulfilled', 'cancelled'],
-  fulfilled: ['completed'],
-  completed: [],
-  cancelled: [],
-};
-
 const TERMS_KEY = 'kelo_layaway_terms';
-const EVENT_REFUND_SUBMIT = 'kelo.layaway.refund_submit';
 const EVENT_REFUND_INQUIRY = 'kelo.layaway.refund_inquiry';
 /** A claim older than this with no payment behind it is taken to have been abandoned. */
 const STALE_CLAIM_SECONDS = 120;
@@ -42,7 +48,6 @@ const STALE_CLAIM_SECONDS = 120;
 type Purchase = Prisma.purchaseGetPayload<{
   include: { layaway_instalment: true; layaway_refund: true };
 }>;
-type PurchaseRow = Prisma.purchaseGetPayload<object>;
 
 export interface PlanOffer {
   readonly template_key: string;
@@ -66,13 +71,15 @@ export interface BuyerPurchaseView {
   readonly id: string;
   readonly status: PurchaseStatus;
   readonly plan_status: PlanStatus;
-  readonly plan_type: 'layaway';
+  readonly plan_type: PlanType;
   readonly listing_id: string;
   readonly listing_title: string;
   readonly total_minor: string;
   readonly paid_minor: string;
   readonly currency: string;
-  readonly receive_after_last_payment: true;
+  /** Layaway: the item comes after the last payment. Credit: it comes first. */
+  readonly receive_after_last_payment: boolean;
+  /** Layaway instalments; a credit purchase's are in its agreement (`credit`). */
   readonly instalments: { seq: number; due_on: string; amount_minor: string; status: string }[];
   readonly refund: {
     paid_minor: string;
@@ -87,6 +94,8 @@ export interface MerchantPurchaseView {
   readonly id: string;
   readonly status: PurchaseStatus;
   readonly plan_status: PlanStatus;
+  /** Layaway or a BNPL plan; never anything about the buyer's credit (P8-9). */
+  readonly plan_type: PlanType;
   readonly listing_title: string;
   readonly total_minor: string;
   readonly paid_minor: string;
@@ -110,13 +119,13 @@ function buyerView(row: Purchase, listingTitle: string): BuyerPurchaseView {
     id: row.id,
     status: row.status as PurchaseStatus,
     plan_status: row.plan_status as PlanStatus,
-    plan_type: 'layaway',
+    plan_type: row.plan_type as PlanType,
     listing_id: row.listing_id,
     listing_title: listingTitle,
     total_minor: row.total_minor.toString(),
     paid_minor: row.paid_minor.toString(),
     currency: row.currency,
-    receive_after_last_payment: true,
+    receive_after_last_payment: row.plan_type === 'layaway',
     instalments: [...row.layaway_instalment]
       .sort((a, b) => a.seq - b.seq)
       .map((line) => ({
@@ -140,7 +149,8 @@ function buyerView(row: Purchase, listingTitle: string): BuyerPurchaseView {
 
 function merchantView(row: PurchaseRow & { listing: { title: string } }): MerchantPurchaseView {
   const status = row.status as PurchaseStatus;
-  const paidInFull = row.plan_status === 'paid_in_full';
+  // A credit order is paid by KELO on fulfilment, so it never waits for the buyer's payments.
+  const paidInFull = row.plan_type !== 'layaway' || row.plan_status === 'paid_in_full';
   const next: MerchantPurchaseView['next_action'] =
     status === 'placed'
       ? 'wait_for_payments'
@@ -155,6 +165,7 @@ function merchantView(row: PurchaseRow & { listing: { title: string } }): Mercha
     id: row.id,
     status,
     plan_status: row.plan_status as PlanStatus,
+    plan_type: row.plan_type as PlanType,
     listing_title: row.listing.title,
     total_minor: row.total_minor.toString(),
     paid_minor: row.paid_minor.toString(),
@@ -163,17 +174,6 @@ function merchantView(row: PurchaseRow & { listing: { title: string } }): Mercha
     currency: row.currency,
     next_action: next,
     created_at: row.created_at.toISOString(),
-  };
-}
-
-/** In effect at `now`: started, and not yet ended. Shared by every versioned table. */
-function effective(now: Date): {
-  effective_from: { lte: Date };
-  OR: ({ effective_to: null } | { effective_to: { gt: Date } })[];
-} {
-  return {
-    effective_from: { lte: now },
-    OR: [{ effective_to: null }, { effective_to: { gt: now } }],
   };
 }
 
@@ -193,6 +193,7 @@ export class LayawayService implements OnModuleInit {
     @Inject(PaymentsService) private readonly payments: PaymentsService,
     @Inject(SimulatorProvider) private readonly simulator: SimulatorProvider,
     @Inject(ReconciliationService) private readonly reconciliation: ReconciliationService,
+    @Inject(FeatureFlagsService) private readonly flags: FeatureFlagsService,
   ) {}
 
   onModuleInit(): void {
@@ -284,48 +285,58 @@ export class LayawayService implements OnModuleInit {
   async plansFor(
     listingId: string,
     choice: { variantId: string | null; sessionId: string | null },
-  ): Promise<PlanOffer[]> {
+  ): Promise<(PlanOffer | CreditOffer)[]> {
     return this.db.asPlatform(async (tx) => {
       const listing = await tx.listing.findFirst({ where: { id: listingId, status: 'published' } });
       if (!listing) throw new AppError('not_found', 'Listing not found.');
-      const price = await this.priceOf(tx, listing.id, choice);
+      const price = await priceOf(tx, listing.id, choice);
       const offers = await tx.listing_plan_offer.findMany({
         where: { listing_id: listing.id, withdrawn_at: null },
       });
       const allowed = await this.allowedTemplates(tx, listing.category_slug);
-      const rule = await this.refundRule(tx, listing.category_slug);
-      const terms = await this.currentTerms(tx);
       const today = nairobiToday();
-      return allowed
+      const shown = allowed
         .filter((template) => offers.some((offer) => offer.template_key === template.key))
         .filter((template) => template.currency === listing.currency)
         .filter(
           (template) => price >= template.min_order_minor && price <= template.max_order_minor,
         )
-        .filter((template) => price >= BigInt(template.instalment_count))
-        .map((template) => ({
-          template_key: template.key,
-          name: template.name,
-          plan_type: 'layaway' as const,
-          instalments: serialiseSchedule(
-            layawaySchedule({
-              totalMinor: price,
-              instalmentCount: template.instalment_count,
-              intervalDays: template.interval_days,
-              startDate: today,
-            }),
+        .filter((template) => price >= BigInt(template.instalment_count));
+      const credit = await Promise.all(
+        shown
+          .filter((template) => template.plan_type !== 'layaway')
+          .map(async (template) =>
+            creditOffer(template, price, today, await this.creditDocuments(tx, template.key)),
           ),
-          total_minor: price.toString(),
-          fees_minor: '0',
-          currency: listing.currency,
-          receive_after_last_payment: true as const,
-          cancellation: {
-            fee_bps: rule.fee_bps,
-            fee_cap_minor: rule.fee_cap_minor.toString(),
-            after_start_returned_bps: rule.after_start_returned_bps,
-          },
-          terms: { key: terms.key, version: terms.version },
-        }));
+      );
+      const layaway = shown.filter((template) => template.plan_type === 'layaway');
+      if (layaway.length === 0) return credit;
+      const rule = await this.refundRule(tx, listing.category_slug);
+      const terms = await this.currentTerms(tx);
+      const layawayOffers: PlanOffer[] = layaway.map((template) => ({
+        template_key: template.key,
+        name: template.name,
+        plan_type: 'layaway' as const,
+        instalments: serialiseSchedule(
+          layawaySchedule({
+            totalMinor: price,
+            instalmentCount: template.instalment_count,
+            intervalDays: template.interval_days,
+            startDate: today,
+          }),
+        ),
+        total_minor: price.toString(),
+        fees_minor: '0',
+        currency: listing.currency,
+        receive_after_last_payment: true as const,
+        cancellation: {
+          fee_bps: rule.fee_bps,
+          fee_cap_minor: rule.fee_cap_minor.toString(),
+          after_start_returned_bps: rule.after_start_returned_bps,
+        },
+        terms: { key: terms.key, version: terms.version },
+      }));
+      return [...layawayOffers, ...credit];
     });
   }
 
@@ -378,7 +389,11 @@ export class LayawayService implements OnModuleInit {
       );
       if (!offer || !template)
         throw new AppError('invalid_request', 'Invalid request: template_key.');
-      const price = await this.priceOf(tx, listing.id, input);
+      // A credit plan is bought with an approved decision (P8-5), never here.
+      if (template.plan_type !== 'layaway') {
+        throw new AppError('invalid_request', 'A credit plan needs a decision_id.');
+      }
+      const price = await priceOf(tx, listing.id, input);
       // What the buyer was shown is what is charged, to the minor unit (ADR 0018).
       if (price !== input.expectedTotalMinor) {
         throw new AppError(
@@ -401,18 +416,7 @@ export class LayawayService implements OnModuleInit {
       if (!terms) throw new AppError('invalid_request', 'That terms version is not in effect.');
       const rule = await this.refundRule(tx, listing.category_slug);
 
-      // Reserve in the same transaction as the order; the database refuses a
-      // reservation beyond stock or capacity, so concurrent buyers cannot oversell.
-      const reserved = input.sessionId
-        ? await tx.$executeRaw`
-            update kelo.listing_session set reserved = reserved + 1
-             where id = ${input.sessionId}::uuid and listing_id = ${listing.id}::uuid
-               and reserved < capacity and starts_at > now()`
-        : await tx.$executeRaw`
-            update kelo.listing_variant set stock_reserved = stock_reserved + 1
-             where id = ${input.variantId}::uuid and listing_id = ${listing.id}::uuid
-               and stock_reserved < stock_on_hand`;
-      if (reserved !== 1) throw new AppError('sold_out', 'This is no longer available.');
+      await reserve(tx, listing.id, input);
 
       const account = await tx.user_account.findUniqueOrThrow({ where: { id: actor.accountId } });
       const consent = await tx.consent_record.create({
@@ -459,7 +463,7 @@ export class LayawayService implements OnModuleInit {
           amount_minor: line.amount_minor,
         })),
       });
-      await this.event(tx, created, 'status', null, 'placed', 'user', actor.accountId);
+      await purchaseEvent(tx, created, 'status', null, 'placed', 'user', actor.accountId);
       await this.audit.record(tx, {
         tenantId: listing.tenant_id,
         actorKind: 'user',
@@ -522,7 +526,7 @@ export class LayawayService implements OnModuleInit {
   ): Promise<{ seq: number; status: string; payment_intent_id: string }> {
     const claimKey = createHash('sha256').update(idempotencyKey).digest('hex');
     const claimed = await this.db.asPlatform(async (tx) => {
-      const purchase = await this.lockForBuyer(tx, actor.accountId, input.purchaseId);
+      const purchase = await lockPurchaseForBuyer(tx, actor.accountId, input.purchaseId);
       if (purchase.plan_status !== 'active' || purchase.status === 'cancelled') {
         throw new AppError('invalid_state_transition', 'This purchase takes no more payments.');
       }
@@ -641,9 +645,9 @@ export class LayawayService implements OnModuleInit {
         data: { paid_minor: paid, ...(paidInFull ? { plan_status: 'paid_in_full' } : {}) },
       });
       if (paidInFull)
-        await this.event(tx, purchase, 'plan_status', 'active', 'paid_in_full', 'system', null);
+        await purchaseEvent(tx, purchase, 'plan_status', 'active', 'paid_in_full', 'system', null);
       if (purchase.status === 'placed')
-        await this.move(tx, purchase, 'payment_ready', 'system', null);
+        await movePurchase(tx, purchase, 'payment_ready', 'system', null);
     });
   }
 
@@ -652,7 +656,13 @@ export class LayawayService implements OnModuleInit {
     purchaseId: string,
   ): Promise<BuyerPurchaseView> {
     await this.db.asPlatform(async (tx) => {
-      const purchase = await this.lockForBuyer(tx, actor.accountId, purchaseId);
+      const purchase = await lockPurchaseForBuyer(tx, actor.accountId, purchaseId);
+      if (purchase.plan_type !== 'layaway') {
+        throw new AppError(
+          'invalid_state_transition',
+          'A credit purchase is cancelled by KELO credit.',
+        );
+      }
       if (!['placed', 'payment_ready', 'merchant_confirmed'].includes(purchase.status)) {
         throw new AppError('invalid_state_transition', 'This purchase can no longer be cancelled.');
       }
@@ -664,7 +674,7 @@ export class LayawayService implements OnModuleInit {
         );
       }
       const rule = await tx.refund_rule.findUniqueOrThrow({
-        where: { id: purchase.refund_rule_id },
+        where: { id: purchase.refund_rule_id ?? '' },
       });
       const session = purchase.session_id
         ? await tx.listing_session.findUniqueOrThrow({ where: { id: purchase.session_id } })
@@ -682,10 +692,10 @@ export class LayawayService implements OnModuleInit {
         where: { purchase_id: purchase.id, status: 'due' },
         data: { status: 'cancelled' },
       });
-      await this.release(tx, purchase);
-      await this.move(tx, purchase, 'cancelled', 'user', actor.accountId);
+      await release(tx, purchase);
+      await movePurchase(tx, purchase, 'cancelled', 'user', actor.accountId);
       await tx.purchase.update({ where: { id: purchase.id }, data: { plan_status: 'cancelled' } });
-      await this.event(
+      await purchaseEvent(
         tx,
         purchase,
         'plan_status',
@@ -779,7 +789,7 @@ export class LayawayService implements OnModuleInit {
     purchaseId: string,
   ): Promise<BuyerPurchaseView> {
     await this.db.asPlatform(async (tx) => {
-      const purchase = await this.lockForBuyer(tx, actor.accountId, purchaseId);
+      const purchase = await lockPurchaseForBuyer(tx, actor.accountId, purchaseId);
       const evidence = await this.evidenceRule(tx, purchase);
       if (evidence !== 'consumer_confirmation') {
         throw new AppError(
@@ -819,7 +829,7 @@ export class LayawayService implements OnModuleInit {
   ): Promise<MerchantPurchaseView> {
     return this.db.asPlatform(async (tx) => {
       const purchase = await this.lockForMerchant(tx, actor.tenantId, purchaseId);
-      await this.move(tx, purchase, 'merchant_confirmed', 'user', actor.accountId);
+      await movePurchase(tx, purchase, 'merchant_confirmed', 'user', actor.accountId);
       await this.merchantAudit(tx, actor, 'kelo.purchase.merchant_confirmed', purchase.id);
       return this.merchantReload(tx, purchase.id);
     });
@@ -888,27 +898,40 @@ export class LayawayService implements OnModuleInit {
         'The merchant has not confirmed this purchase yet.',
       );
     }
-    if (purchase.plan_status !== 'paid_in_full') {
+    const credit = purchase.plan_type !== 'layaway';
+    if (credit) {
+      // KELO pays the merchant once the agreement is in force (P8-8).
+      const agreement = await tx.credit_agreement.findFirst({
+        where: { purchase_id: purchase.id },
+      });
+      if (!agreement || !['active', 'paid_off'].includes(agreement.status)) {
+        throw new AppError('invalid_state_transition', 'The credit agreement is not in force.');
+      }
+    } else if (purchase.plan_status !== 'paid_in_full') {
       throw new AppError(
         'invalid_state_transition',
         'Layaway items are fulfilled after the last payment.',
       );
     }
-    await this.move(tx, purchase, 'fulfilled', actorKind, actorAccountId);
+    await movePurchase(tx, purchase, 'fulfilled', actorKind, actorAccountId);
     await tx.purchase.update({
       where: { id: purchase.id },
       data: { fulfilment_evidence: evidence.slice(0, 120) },
     });
     const net = purchase.total_minor - purchase.merchant_fee_minor;
     await this.ledger.post(tx, {
-      idempotencyKey: `kelo.layaway.settle:${purchase.id}`,
+      idempotencyKey: `kelo.${credit ? 'credit' : 'layaway'}.settle:${purchase.id}`,
       tenantId: purchase.tenant_id,
-      entryType: 'kelo_layaway_settlement',
+      entryType: credit ? 'kelo_credit_settlement' : 'kelo_layaway_settlement',
       operationType: 'kelo_purchase',
       operationId: purchase.id,
       postings: [
         {
-          accountId: await this.account(tx, 'kelo_layaway_funds_held', purchase.currency),
+          accountId: await this.account(
+            tx,
+            credit ? 'kelo_merchant_payable_pending' : 'kelo_layaway_funds_held',
+            purchase.currency,
+          ),
           direction: 'debit',
           amount: purchase.total_minor,
         },
@@ -944,9 +967,17 @@ export class LayawayService implements OnModuleInit {
          where id = ${purchase.variant_id}::uuid`;
     }
     const fulfilled = await tx.purchase.findUniqueOrThrow({ where: { id: purchase.id } });
-    await this.move(tx, fulfilled, 'completed', 'system', null);
+    await movePurchase(tx, fulfilled, 'completed', 'system', null);
     await tx.purchase.update({ where: { id: purchase.id }, data: { plan_status: 'settled' } });
-    await this.event(tx, purchase, 'plan_status', 'paid_in_full', 'settled', 'system', null);
+    await purchaseEvent(
+      tx,
+      purchase,
+      'plan_status',
+      purchase.plan_status,
+      'settled',
+      'system',
+      null,
+    );
     await this.audit.record(tx, {
       tenantId: purchase.tenant_id,
       actorKind,
@@ -1067,7 +1098,7 @@ export class LayawayService implements OnModuleInit {
       data: { plan_status: 'refunded' },
     });
     const purchase = await tx.purchase.findUniqueOrThrow({ where: { id: refund.purchase_id } });
-    await this.event(tx, purchase, 'plan_status', 'cancelled', 'refunded', 'provider', null);
+    await purchaseEvent(tx, purchase, 'plan_status', 'cancelled', 'refunded', 'provider', null);
   }
 
   /** The money stays owed in "refunds payable"; an operator follows it up. */
@@ -1096,29 +1127,14 @@ export class LayawayService implements OnModuleInit {
     });
   }
 
-  private async release(tx: Tx, purchase: PurchaseRow): Promise<void> {
-    if (purchase.session_id) {
-      await tx.$executeRaw`update kelo.listing_session set reserved = reserved - 1 where id = ${purchase.session_id}::uuid`;
-    } else if (purchase.variant_id) {
-      await tx.$executeRaw`update kelo.listing_variant set stock_reserved = stock_reserved - 1 where id = ${purchase.variant_id}::uuid`;
-    }
-  }
-
-  private async allowedTemplates(
-    tx: Tx,
-    categorySlug: string,
-  ): Promise<Prisma.plan_templateGetPayload<object>[]> {
-    const now = new Date();
-    const rules = await tx.category_plan_rule.findMany({
-      where: { category_slug: categorySlug, ...effective(now) },
-    });
-    const keys = [...new Set(rules.map((rule) => rule.template_key))];
-    const templates = await tx.plan_template.findMany({
-      where: { key: { in: keys }, plan_type: 'layaway', ...effective(now) },
-      orderBy: [{ key: 'asc' }, { version: 'desc' }],
-      distinct: ['key'],
-    });
-    return templates;
+  /** Layaway always; credit templates only while the `kelo_credit` flag is on (P8-1). */
+  private async allowedTemplates(tx: Tx, categorySlug: string): Promise<PlanTemplate[]> {
+    const credit = await this.flags.isEnabled('kelo_credit', tx);
+    return allowedTemplates(
+      tx,
+      categorySlug,
+      credit ? ['layaway', 'pay_in_n', 'monthly_financing'] : ['layaway'],
+    );
   }
 
   private async refundRule(
@@ -1134,6 +1150,24 @@ export class LayawayService implements OnModuleInit {
     return rule;
   }
 
+  /** The current key information document and agreement versions for a credit template. */
+  private async creditDocuments(
+    tx: Tx,
+    templateKey: string,
+  ): Promise<{ kidVersion: string; termsVersion: string }> {
+    const now = new Date();
+    const [kid, terms] = await Promise.all(
+      [kidKey(templateKey), AGREEMENT_TERMS_KEY].map((key) =>
+        tx.terms_document.findFirst({
+          where: { key, language: 'en', ...effective(now) },
+          orderBy: { effective_from: 'desc' },
+        }),
+      ),
+    );
+    if (!kid || !terms) throw new AppError('internal_error', 'Credit documents are not published.');
+    return { kidVersion: kid.version, termsVersion: terms.version };
+  }
+
   private async currentTerms(tx: Tx): Promise<{ key: string; version: string }> {
     const now = new Date();
     const terms = await tx.terms_document.findFirst({
@@ -1142,32 +1176,6 @@ export class LayawayService implements OnModuleInit {
     });
     if (!terms) throw new AppError('internal_error', 'Layaway terms are not published.');
     return { key: terms.key, version: terms.version };
-  }
-
-  /** The price of the chosen variant or future session of a listing. */
-  private async priceOf(
-    tx: Tx,
-    listingId: string,
-    choice: { variantId: string | null; sessionId: string | null },
-  ): Promise<bigint> {
-    if ((choice.variantId === null) === (choice.sessionId === null)) {
-      throw new AppError(
-        'invalid_request',
-        'Invalid request: give exactly one of variant_id and session_id.',
-      );
-    }
-    if (choice.variantId) {
-      const variant = await tx.listing_variant.findFirst({
-        where: { id: choice.variantId, listing_id: listingId },
-      });
-      if (!variant) throw new AppError('not_found', 'Variant not found.');
-      return variant.price_minor;
-    }
-    const session = await tx.listing_session.findFirst({
-      where: { id: choice.sessionId ?? '', listing_id: listingId, starts_at: { gt: new Date() } },
-    });
-    if (!session) throw new AppError('not_found', 'Session not found.');
-    return session.price_minor;
   }
 
   private async evidenceRule(tx: Tx, purchase: PurchaseRow): Promise<string> {
@@ -1183,17 +1191,6 @@ export class LayawayService implements OnModuleInit {
     return tx.purchase.findUniqueOrThrow({ where: { id: purchaseId } });
   }
 
-  private async lockForBuyer(tx: Tx, accountId: string, purchaseId: string): Promise<PurchaseRow> {
-    await tx.$queryRaw`
-      select id from kelo.purchase where id = ${purchaseId}::uuid and consumer_account_id = ${accountId}::uuid for update`;
-    const row = await tx.purchase.findFirst({
-      where: { id: purchaseId, consumer_account_id: accountId },
-    });
-    // Someone else's purchase looks like one that does not exist.
-    if (!row) throw new AppError('not_found', 'Purchase not found.');
-    return row;
-  }
-
   private async lockForMerchant(
     tx: Tx,
     tenantId: string,
@@ -1206,55 +1203,13 @@ export class LayawayService implements OnModuleInit {
     return row;
   }
 
-  private async move(
-    tx: Tx,
-    purchase: PurchaseRow,
-    to: PurchaseStatus,
-    actorKind: 'user' | 'system',
-    actorAccountId: string | null,
-  ): Promise<void> {
-    const from = purchase.status as PurchaseStatus;
-    if (!PURCHASE_TRANSITIONS[from].includes(to)) {
-      throw new AppError(
-        'invalid_state_transition',
-        `Cannot move a purchase from ${from} to ${to}.`,
-      );
-    }
-    const updated = await tx.purchase.updateMany({
-      where: { id: purchase.id, status: from },
-      data: { status: to },
-    });
-    if (updated.count !== 1) {
-      throw new AppError('invalid_state_transition', 'Purchase status changed concurrently.');
-    }
-    await this.event(tx, purchase, 'status', from, to, actorKind, actorAccountId);
-  }
-
-  private async event(
-    tx: Tx,
-    purchase: PurchaseRow,
-    field: 'status' | 'plan_status',
-    from: string | null,
-    to: string,
-    actorKind: 'user' | 'system' | 'provider',
-    actorAccountId: string | null,
-  ): Promise<void> {
-    await tx.purchase_event.create({
-      data: {
-        tenant_id: purchase.tenant_id,
-        purchase_id: purchase.id,
-        field,
-        from_value: from,
-        to_value: to,
-        actor_kind: actorKind,
-        actor_account_id: actorAccountId,
-      },
-    });
-  }
-
   private account(
     tx: Tx,
-    type: 'kelo_layaway_funds_held' | 'kelo_fee_revenue' | 'kelo_refunds_payable',
+    type:
+      | 'kelo_layaway_funds_held'
+      | 'kelo_fee_revenue'
+      | 'kelo_refunds_payable'
+      | 'kelo_merchant_payable_pending',
     assetCode: string,
   ): Promise<string> {
     return this.ledger.findAccount(tx, { tenantId: null, type, assetCode });
@@ -1306,11 +1261,4 @@ export class LayawayService implements OnModuleInit {
 
 function intentKey(instalmentId: string, claimKey: string): string {
   return `kelo:${instalmentId}:${claimKey}`;
-}
-
-function payloadId(event: OutboxEvent, key: string): string {
-  const payload = event.payload as Record<string, unknown> | null;
-  const value = payload?.[key];
-  if (typeof value !== 'string') throw new Error(`Outbox event ${event.id} is missing ${key}.`);
-  return value;
 }

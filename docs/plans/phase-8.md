@@ -59,3 +59,15 @@ Flag off: every credit route and plan is absent. The schedule engine (property):
 ## 6. Files
 
 `services/api/src/modules/kelo/credit/` (`schedule.ts` additions, `eligibility.ts`, `credit.service.ts`, `credit.controller.ts`, `bureau.ts`), `services/api/src/modules/ops/feature-flags.ts`, migrations, `services/api/test/kelo-credit-*.test.ts`, kelo-web plan selector and checkout, internal-ops flag page, docs (ADR 0017, 0018, 0021 addenda).
+
+## 7. 8A as built (2026-10-19)
+
+Differences from sections 2 to 4, none material:
+
+- **Receivable name:** `consumer_kelo_credit_receivable`, because the 7B database rule gives consumers only `consumer_*` account types.
+- **Allocation account:** payments posts a successful repayment to `kelo_credit_repayments_unapplied` (platform); KELO allocates it to principal, charges and interest in its own entry. The payments module never needs to know an instalment's split, and reconciliation checks the unapplied account per intent.
+- **The agreement entry is posted when the first payment succeeds** (activation), not at acceptance, so a failed first payment needs no reversal.
+- **The deposit is line 0** of the agreement's instalments; Pay in N has no deposit and its line 1 is due at checkout. A template takes exactly one of the two (database check).
+- **Routes:** the credit purchase reuses `POST /v1/kelo/purchases` with a body naming `decision_id`, `expected_total_payable_minor`, `agreement_version` and `kid_version`; repayments use `POST /v1/kelo/me/purchases/{id}/credit/instalments/{seq}/pay`; the buyer's purchase view gains `credit` (the agreement, or null).
+- **Cancellation refunds** reuse `kelo.layaway_refund` (no fee) and its provider path.
+- **Screens:** kelo-web credit plan card, decision form on the listing page, `/credit/checkout/{decision}` (decision and agreement), `/credit` (the limit, worded "You can spread up to …"), and a credit card in `/purchases`; internal-ops `/flags`.

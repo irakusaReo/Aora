@@ -113,3 +113,11 @@ A KONY payment link or a developer-API checkout can offer KELO as a payment meth
 - **Instalments** are paid in order. Each is claimed (`submitting`, keyed by a hash of the request's Idempotency-Key) before its payment is created, so two requests can never both push a payment; a retry with the same key adopts the payment; a claim with no payment behind it after two minutes is reclaimed. `pending` is "being checked" and cannot be paid again. A declined payment returns the instalment to `due`.
 - **Fulfilment evidence** follows the category: the buyer's confirmation (`consumer_confirmation`), a merchant proof reference (`merchant_proof`), or the session having started (`session_start`).
 - **Plans offered** are the merchant's choice per listing (`kelo.listing_plan_offer`, none by default) among the templates the category allows (`kelo.category_plan_rule`). The buyer sees every payment, the total, "no fees", the late rule and the cancellation rule before agreeing, all from the schedule engine.
+
+## Addendum, 2026-10-19 (Phase 8A: credit purchases)
+
+- `kelo.purchase.plan_type` now also takes `pay_in_n` and `monthly_financing`. A credit purchase has no layaway refund rule (`refund_rule_id` may be null only for credit) and is fulfilled once its agreement is in force, not after the last payment; the database check that waits for the last payment applies to layaway only.
+- The order machine is unchanged. For a credit purchase, `payment_ready` means the agreement is `active`, which happens when the deposit or first part is paid.
+- The shared order helpers (transitions, reservation, price lookup, events) live in `services/api/src/modules/kelo/purchase-common.ts`; layaway and credit both use them.
+- **Isolation (P8-9):** decisions, agreements, agreement events and credit instalments have consumer row-level security and no tenant policy. A merchant's purchase list shows the plan type and the order, never a limit, decision, reason, income, interest or schedule (tested through the merchant's own row-level context).
+- **Cancellation before fulfilment:** a pending agreement is cancelled with no money moved; an active one is reversed (see ADR 0021) and everything the buyer paid is refunded through the existing refund path (`kelo.layaway_refund`, no fee).

@@ -87,6 +87,57 @@ const EN: Messages = {
   'instalment.status.pending': 'Being checked',
   'instalment.status.paid': 'Paid',
   'instalment.status.cancelled': 'Cancelled',
+  'credit.sandbox_lender':
+    'Lender: {lender}. SANDBOX: no real credit is given and nothing is reported to a credit bureau.',
+  'credit.receive_first': 'You receive it first and pay over time.',
+  'credit.first_payment': 'First payment today: {amount}',
+  'credit.deposit': 'Deposit today: {amount}',
+  'credit.part':
+    'Payment {seq} on {date}: {amount} ({principal} towards the price, {interest} interest)',
+  'credit.part_no_interest': 'Payment {seq} on {date}: {amount}',
+  'credit.cost_none': 'No interest and no fees if you pay on time.',
+  'credit.cost':
+    'Interest: {amount} in total, charged only on what you still owe, at {daily} a day.',
+  'credit.apr':
+    'Annual percentage rate (APR): {apr}. The law asks us to show it; it is the daily rate times 365.',
+  'credit.total': 'Total you will pay: {amount}',
+  'credit.late':
+    'If a payment is more than {days} days late, a late charge of {fee} is added, never more than {cap} in total.',
+  'credit.early': 'You can pay early at any time, free, and then pay interest only up to that day.',
+  'credit.kid': 'Key information document, version {version}',
+  'credit.agreement': 'Credit agreement, version {version}',
+  'credit.check_title': 'Check if you can use this plan',
+  'credit.income_label': 'Your monthly income, in {currency}',
+  'credit.income_why':
+    'We ask so that no single payment is more than a fair share of your income. It is used for this decision only.',
+  'credit.bureau_label':
+    'Also check my repayment history with a credit bureau (optional; SANDBOX: a simulator).',
+  'credit.bureau_terms': 'What this check means, version {version}',
+  'credit.check_button': 'Check this plan',
+  'credit.sign_in': 'Sign in to check this plan.',
+  'credit.approved': 'You can use this plan.',
+  'credit.declined': 'You cannot use this plan right now. Nothing was charged.',
+  'credit.declined_other_ways':
+    'You can still buy this item another way: on layaway if the listing offers it, or by paying in full.',
+  'credit.expires': 'This answer is valid until {date}.',
+  'credit.spread_up_to': 'You can spread up to {amount} across your KELO plans.',
+  'credit.spread_in_use': '{amount} of it is in use by plans you are paying off.',
+  'credit.grows': 'It grows each time you repay a plan on time.',
+  'credit.limit_title': 'How much you can spread',
+  'credit.agree': 'Agree and pay {amount} now',
+  'credit.agree_terms':
+    'By agreeing you accept the credit agreement and the key information document above.',
+  'credit.status.pending_first_payment': 'Waiting for your first payment',
+  'credit.status.active': 'In progress',
+  'credit.status.paid_off': 'Paid off',
+  'credit.status.cancelled': 'Cancelled',
+  'credit.status.defaulted': 'Overdue',
+  'credit.status.paused': 'Paused',
+  'credit.left': 'Left to pay: {amount}',
+  'credit.pay_due': 'Pay {amount} now',
+  'credit.early_soon': 'Paying early arrives in the next update.',
+  'instalment.status.late': 'Late',
+  'instalment.status.paused': 'Paused',
   'error.generic': 'Something went wrong. Please try again.',
 };
 
