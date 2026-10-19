@@ -106,3 +106,12 @@ A consumer's payment to a KONY merchant through CHIWO **is the merchant's collec
 | `consumer_usdc_withdrawals_in_flight` | consumer | credit | Reserved for the consumer's on-chain withdrawals not yet resolved |
 
 A confirmed deposit from a consumer's registered address debits `chain_wallet_usdc` and credits their `consumer_usdc_available`. A transfer between CHIWO consumers is one entry, sender's available to recipient's available, with no fee and no chain transaction; paying a payment request is such a transfer, and a request names at most one (`chiwo.transfer.request_id` unique). An on-chain withdrawal reserves into `…_in_flight`, leaves `chain_wallet_usdc` once confirmed, and is released if the transaction fails or reverts, exactly like a workspace withdrawal but with no second approver (P7-11). Limits per transfer, per withdrawal and per day are `chiwo.consumer_limit` rows (sandbox data).
+
+## Addendum, 2026-10-19 (Phase 7C: personal NAM, phase-7 plan P7-14)
+
+| Account | Owner | Normal side | Meaning |
+|---|---|---|---|
+| `consumer_nam_funding_pending` | consumer | credit | Set aside for a personal NAM order not yet confirmed |
+| `consumer_nam_holding` | consumer | credit | The consumer's principal in the vault, at cost |
+
+The entries are the Phase 6 ones with the owner's accounts in place of the workspace's: an order reserves `consumer_usdc_available` → `consumer_nam_funding_pending`; its confirmation moves the wallet to the vault (platform) and pending to holding (consumer); a redemption returns what the vault paid to `consumer_usdc_available` with the same proportional cost release and rounding account.

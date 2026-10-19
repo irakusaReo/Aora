@@ -21,7 +21,9 @@ export type AccountType =
   | 'merchant_nam_funding_pending'
   | 'merchant_nam_holding'
   | 'consumer_usdc_available'
-  | 'consumer_usdc_withdrawals_in_flight';
+  | 'consumer_usdc_withdrawals_in_flight'
+  | 'consumer_nam_funding_pending'
+  | 'consumer_nam_holding';
 
 /** Account types a CHIWO consumer owns (phase-7 P7-2); no workspace ever holds one. */
 export type ConsumerAccountType = Extract<AccountType, `consumer_${string}`>;
@@ -67,6 +69,10 @@ const CHART: Record<AccountType, { normalSide: Direction; allowNegative: boolean
   consumer_usdc_available: { normalSide: 'credit', allowNegative: false },
   // Reserved for the consumer's withdrawals not yet resolved: a liability.
   consumer_usdc_withdrawals_in_flight: { normalSide: 'credit', allowNegative: false },
+  // CHIWO NAM (phase 7C). Set aside for a personal order not yet confirmed: a liability.
+  consumer_nam_funding_pending: { normalSide: 'credit', allowNegative: false },
+  // The consumer's principal in the vault, at cost: a liability.
+  consumer_nam_holding: { normalSide: 'credit', allowNegative: false },
 };
 
 export interface PostingInput {

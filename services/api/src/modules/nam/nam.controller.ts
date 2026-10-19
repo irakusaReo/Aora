@@ -8,30 +8,31 @@ import { SessionGuard, StepUpGuard, WorkspaceGuard } from '../identity/guards.js
 import { Permit } from '../tenancy/permissions.js';
 import {
   type Actor,
+  type NamOwner,
   type NamView,
   NamService,
   type OrderView,
   type RedemptionView,
 } from './nam.service.js';
 
-const orderBody = z.strictObject({
+export const orderBody = z.strictObject({
   amount_minor: z.unknown(),
   disclosure_version: z.string().min(1).max(40),
 });
-const redemptionBody = z.union([
+export const redemptionBody = z.union([
   z.strictObject({ shares: z.string().regex(/^[1-9][0-9]{0,77}$/) }),
   z.strictObject({ all: z.literal(true) }),
 ]);
 
 function actorOf(request: Request): Actor {
-  return {
-    tenantId: tenantOf(request).tenantId,
-    accountId: sessionOf(request).accountId,
-    requestId: contextOf(request).requestId,
-  };
+  return { accountId: sessionOf(request).accountId, requestId: contextOf(request).requestId };
 }
 
-function keyOf(key: string | undefined): string {
+function workspaceOf(request: Request): NamOwner {
+  return { kind: 'workspace', tenantId: tenantOf(request).tenantId };
+}
+
+export function keyOf(key: string | undefined): string {
   if (!key || key.length > 200) {
     throw new AppError(
       'idempotency_key_required',
@@ -50,7 +51,7 @@ export class NamController {
   @Get()
   @Permit('nam.read')
   view(@Req() request: Request): Promise<NamView> {
-    return this.nam.view(tenantOf(request).tenantId);
+    return this.nam.view(workspaceOf(request));
   }
 
   @Post('orders')
@@ -64,7 +65,7 @@ export class NamController {
   ): Promise<OrderView> {
     const idempotencyKey = keyOf(key);
     const input = parseBody(orderBody, body);
-    const result = await this.nam.createOrder(actorOf(request), {
+    const result = await this.nam.createOrder(workspaceOf(request), actorOf(request), {
       idempotencyKey,
       amount: parseMinorUnits(input.amount_minor),
       disclosureVersion: input.disclosure_version,
@@ -77,7 +78,7 @@ export class NamController {
   @Get('orders')
   @Permit('nam.read')
   async orders(@Req() request: Request): Promise<{ data: OrderView[] }> {
-    return { data: await this.nam.listOrders(tenantOf(request).tenantId) };
+    return { data: await this.nam.listOrders(workspaceOf(request)) };
   }
 
   @Post('redemptions')
@@ -91,7 +92,7 @@ export class NamController {
   ): Promise<RedemptionView> {
     const idempotencyKey = keyOf(key);
     const input = parseBody(redemptionBody, body);
-    const result = await this.nam.createRedemption(actorOf(request), {
+    const result = await this.nam.createRedemption(workspaceOf(request), actorOf(request), {
       idempotencyKey,
       shares: 'all' in input ? 'all' : BigInt(input.shares),
     });
@@ -103,6 +104,6 @@ export class NamController {
   @Get('redemptions')
   @Permit('nam.read')
   async redemptions(@Req() request: Request): Promise<{ data: RedemptionView[] }> {
-    return { data: await this.nam.listRedemptions(tenantOf(request).tenantId) };
+    return { data: await this.nam.listRedemptions(workspaceOf(request)) };
   }
 }

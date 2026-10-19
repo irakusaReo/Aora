@@ -1996,6 +1996,129 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/nam:
+    get:
+      tags: [CHIWO]
+      operationId: chiwoGetNam
+      summary: The NAM Vault for the signed-in person (personal investor profile) (sandbox; no return offered)
+      description: >
+        Personal (CHIWO): the signed-in person's own investor profile, never a workspace's; refuses `Aora-Workspace-Id`. Product facts, the current
+        disclosure, and the person's funding set aside, shares held and what the
+        vault would return for them now (the contract's `convertToAssets`, never a
+        rate). `chain_unavailable` until the vault is deployed in this environment.
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamOverview' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/nam/orders:
+    get:
+      tags: [CHIWO]
+      operationId: chiwoListNamOrders
+      summary: NAM orders, newest first
+      description: "Personal (CHIWO): the signed-in person's own investor profile, never a workspace's; refuses `Aora-Workspace-Id`."
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/NamOrder' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [CHIWO]
+      operationId: chiwoPlaceNamOrder
+      summary: Fund the NAM Vault from the personal USDC balance
+      description: >
+        Personal (CHIWO): the signed-in person's own investor profile, never a workspace's; refuses `Aora-Workspace-Id`. Requires a PIN step-up. Records
+        personal-capacity consent to the named version of `nam_vault_disclosure_personal` (`conflict` if it
+        is not the current one) and sets the amount aside at once
+        (`insufficient_funds` otherwise). The holding appears only from the vault's
+        `Deposit` event in a confirmed receipt.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount_minor, disclosure_version]
+              properties:
+                amount_minor: { $ref: '#/components/schemas/AmountMinor' }
+                disclosure_version: { type: string }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamOrder' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamOrder' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /v1/chiwo/nam/redemptions:
+    get:
+      tags: [CHIWO]
+      operationId: chiwoListNamRedemptions
+      summary: NAM redemptions, newest first
+      description: "Personal (CHIWO): the signed-in person's own investor profile, never a workspace's; refuses `Aora-Workspace-Id`."
+      security: [{ session: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, required: [data], properties: { data: { type: array, items: { $ref: '#/components/schemas/NamRedemption' } }, mode: { $ref: '#/components/schemas/Mode' } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [CHIWO]
+      operationId: chiwoRequestNamRedemption
+      summary: Redeem shares back to the personal USDC balance
+      description: >
+        Personal (CHIWO): the signed-in person's own investor profile, never a workspace's; refuses `Aora-Workspace-Id`. Requires a PIN step-up. `shares`
+        or `all: true`. `insufficient_funds` above the shares not already being
+        redeemed. Completes only from the vault's `Withdraw` event in a confirmed
+        receipt; the personal USDC balance receives what the vault returned.
+      security: [{ session: [] }]
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { type: object, additionalProperties: false, required: [shares], properties: { shares: { type: string, pattern: '^[1-9][0-9]*$' } } }
+                - { type: object, additionalProperties: false, required: [all], properties: { all: { const: true } } }
+      responses:
+        '201':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamRedemption' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NamRedemption' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /v1/treasury:
     get:
       tags: [Treasury]
